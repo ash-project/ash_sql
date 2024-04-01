@@ -26,7 +26,7 @@ defmodule AshSql.MixProject do
       name: :ash_sql,
       licenses: ["MIT"],
       files: ~w(lib .formatter.exs mix.exs README* LICENSE*
-      CHANGELOG* documentation),
+      CHANGELOG*),
       links: %{
         GitHub: "https://github.com/ash-project/ash_sql"
       }
