@@ -2,13 +2,59 @@ defmodule AshSql.MixProject do
   @moduledoc false
   use Mix.Project
 
+  @description """
+  Shared utilities for ecto-based sql data layers.
+  """
+
+  @version "0.1.0"
+
   def project do
     [
       app: :ash_sql,
-      version: "0.1.0",
+      version: @version,
+      description: @description,
       elixir: "~> 1.16",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      docs: docs(),
+      package: package()
+    ]
+  end
+
+  defp package do
+    [
+      name: :ash_sql,
+      licenses: ["MIT"],
+      files: ~w(lib .formatter.exs mix.exs README* LICENSE*
+      CHANGELOG* documentation),
+      links: %{
+        GitHub: "https://github.com/ash-project/ash_sql"
+      }
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      source_ref: "v#{@version}",
+      before_closing_head_tag: fn type ->
+        if type == :html do
+          """
+          <script>
+            if (location.hostname === "hexdocs.pm") {
+              var script = document.createElement("script");
+              script.src = "https://plausible.io/js/script.js";
+              script.setAttribute("defer", "defer")
+              script.setAttribute("data-domain", "ashhexdocs")
+              document.head.appendChild(script);
+            }
+          </script>
+          """
+        end
+      end,
+      extras: [
+        "README.md"
+      ]
     ]
   end
 
