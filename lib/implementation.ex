@@ -30,6 +30,7 @@ defmodule AshSql.Implementation do
   @callback manual_relationship_subquery_function() :: atom
 
   @callback require_ash_functions_for_or_and_and?() :: boolean
+  @callback require_extension_for_citext() :: {true, String.t()} | false
   @callback type_expr(expr :: term, type :: term) :: term
 
   defmacro __using__(_) do
