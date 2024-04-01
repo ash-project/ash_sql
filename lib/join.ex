@@ -498,14 +498,14 @@ defmodule AshSql.Join do
           end
         end)
 
-      case module.ash_postgres_join(
+      case apply(module, query.__ash_bindings__.sql_behaviour.manual_relationship_function(), [
              query,
              opts,
              current_binding,
              initial_ash_bindings.current,
              kind,
              relationship_destination
-           ) do
+           ]) do
         {:ok, query} ->
           AshSql.Aggregate.add_aggregates(
             query,

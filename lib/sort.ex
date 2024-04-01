@@ -305,7 +305,7 @@ defmodule AshSql.Sort do
     end
   end
 
-  def order_to_postgres_order(dir) do
+  def order_to_sql_order(dir) do
     case dir do
       :asc -> nil
       :asc_nils_last -> " ASC NULLS LAST"

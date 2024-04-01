@@ -16,7 +16,7 @@ defmodule AshSql.Distinct do
       {:error, {distinct_statement, query}} ->
         query
         |> Ecto.Query.exclude(:order_by)
-        |> AshSql.Bindings.default_bindings(AshPostgres.SqlImplementation, resource)
+        |> AshSql.Bindings.default_bindings(query.__ash_bindings__.sql_behaviour, resource)
         |> Map.put(:distinct, distinct_statement)
         |> AshSql.Sort.apply_sort(
           query.__ash_bindings__[:distinct_sort] || query.__ash_bindings__[:sort],
@@ -68,7 +68,7 @@ defmodule AshSql.Distinct do
             from([row, distinct] in joined_query,
               select: distinct
             )
-            |> AshSql.Bindings.default_bindings(AshPostgres.SqlImplementation, resource)
+            |> AshSql.Bindings.default_bindings(query.__ash_bindings__.sql_behaviour, resource)
             |> AshSql.Sort.apply_sort(query.__ash_bindings__[:sort], resource)
             |> case do
               {:ok, joined_query} ->

@@ -24,6 +24,9 @@ defmodule AshSql.Implementation do
 
   @callback list_aggregate(Ash.Resource.t()) :: String.t()
 
+  @callback manual_relationship_function() :: atom
+  @callback manual_relationship_subquery_function() :: atom
+
   defmacro __using__(_) do
     quote do
       @behaviour AshSql.Implementation

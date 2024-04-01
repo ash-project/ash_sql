@@ -236,11 +236,15 @@ defmodule AshSql.Aggregate do
                                        from(row in subquery, distinct: true)
 
                                      {:ok, subquery} =
-                                       module.ash_postgres_subquery(
-                                         opts,
-                                         source_binding,
-                                         current_binding - 1,
-                                         subquery
+                                       apply(
+                                         module,
+                                         query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function,
+                                         [
+                                           opts,
+                                           source_binding,
+                                           current_binding - 1,
+                                           subquery
+                                         ]
                                        )
 
                                      AshSql.Join.set_join_prefix(

@@ -6,7 +6,7 @@ defmodule AshSql.Query do
     from(row in {implementation.table(resource) || "", resource}, [])
   end
 
-  def set_context(resource, data_layer_query, context) do
+  def set_context(resource, data_layer_query, sql_behaviour, context) do
     start_bindings = context[:data_layer][:start_bindings_at] || 0
     data_layer_query = from(row in data_layer_query, as: ^start_bindings)
 
@@ -29,7 +29,7 @@ defmodule AshSql.Query do
 
     data_layer_query =
       data_layer_query
-      |> AshSql.Bindings.default_bindings(resource, AshPostgres.SqlImplementation, context)
+      |> AshSql.Bindings.default_bindings(resource, sql_behaviour, context)
       |> AshSql.Bindings.add_parent_bindings(context)
 
     case context[:data_layer][:lateral_join_source] do
@@ -37,7 +37,7 @@ defmodule AshSql.Query do
         parent =
           resource
           |> resource_to_query(data_layer_query.__ash_bindings__.sql_behaviour)
-          |> AshSql.Bindings.default_bindings(resource, AshPostgres.SqlImplementation, context)
+          |> AshSql.Bindings.default_bindings(resource, sql_behaviour, context)
 
         parent =
           case rest do
@@ -68,7 +68,8 @@ defmodule AshSql.Query do
   end
 
   def return_query(%{__ash_bindings__: %{lateral_join?: true}} = query, resource) do
-    query = AshSql.Bindings.default_bindings(query, AshPostgres.SqlImplementation, resource)
+    query =
+      AshSql.Bindings.default_bindings(query, query.__ash_bindings__.sql_behaviour, resource)
 
     if query.__ash_bindings__[:sort_applied?] do
       {:ok, query}
@@ -82,7 +83,8 @@ defmodule AshSql.Query do
   end
 
   def return_query(query, resource) do
-    query = AshSql.Bindings.default_bindings(query, AshPostgres.SqlImplementation, resource)
+    query =
+      AshSql.Bindings.default_bindings(query, query.__ash_bindings__.sql_behaviour, resource)
 
     with_sort_applied =
       if query.__ash_bindings__[:sort_applied?] do
