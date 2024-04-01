@@ -225,45 +225,52 @@ defmodule AshSql.Expr do
              right
            ],
            embedded?: pred_embedded?
-         },
+         } = expr,
          bindings,
          embedded?,
          acc,
-         _
+         type
        )
        when is_list(right) do
-    attribute =
-      case aggregate.field do
-        nil ->
-          nil
+    case bindings.sql_behaviour.expr(query, expr, bindings, true, acc, type) do
+      {:ok, expr, acc} ->
+        {expr, acc}
 
-        %{} = field ->
-          field
+      :error ->
+        attribute =
+          case aggregate.field do
+            nil ->
+              nil
 
-        field ->
-          related = Ash.Resource.Info.related(resource, aggregate.relationship_path)
-          Ash.Resource.Info.attribute(related, field)
-      end
+            %{} = field ->
+              field
 
-    attribute_type =
-      if attribute do
-        attribute.type
-      end
+            field ->
+              related = Ash.Resource.Info.related(resource, aggregate.relationship_path)
+              Ash.Resource.Info.attribute(related, field)
+          end
 
-    attribute_constraints =
-      if attribute do
-        attribute.constraints
-      end
+        attribute_type =
+          if attribute do
+            attribute.type
+          end
 
-    {:ok, type, constraints} =
-      Ash.Query.Aggregate.kind_to_type(aggregate.kind, attribute_type, attribute_constraints)
+        attribute_constraints =
+          if attribute do
+            attribute.constraints
+          end
 
-    type
-    |> Ash.Resource.Info.aggregate_type(aggregate)
-    |> split_at_paths(constraints, right)
-    |> Enum.reduce(do_dynamic_expr(query, left, bindings, embedded?, acc), fn data, {expr, acc} ->
-      do_get_path(query, expr, data, bindings, embedded?, pred_embedded?, acc)
-    end)
+        {:ok, type, constraints} =
+          Ash.Query.Aggregate.kind_to_type(aggregate.kind, attribute_type, attribute_constraints)
+
+        type
+        |> Ash.Resource.Info.aggregate_type(aggregate)
+        |> split_at_paths(constraints, right)
+        |> Enum.reduce(do_dynamic_expr(query, left, bindings, embedded?, acc), fn data,
+                                                                                  {expr, acc} ->
+          do_get_path(query, expr, data, bindings, embedded?, pred_embedded?, acc)
+        end)
+    end
   end
 
   defp do_dynamic_expr(
@@ -271,18 +278,25 @@ defmodule AshSql.Expr do
          %GetPath{
            arguments: [%Ref{attribute: %{type: type, constraints: constraints}} = left, right],
            embedded?: pred_embedded?
-         },
+         } = expr,
          bindings,
          embedded?,
          acc,
          _
        )
        when is_list(right) do
-    type
-    |> split_at_paths(constraints, right)
-    |> Enum.reduce(do_dynamic_expr(query, left, bindings, embedded?, acc), fn data, {expr, acc} ->
-      do_get_path(query, expr, data, bindings, embedded?, pred_embedded?, acc)
-    end)
+    case bindings.sql_behaviour.expr(query, expr, bindings, true, acc, type) do
+      {:ok, expr, acc} ->
+        {expr, acc}
+
+      :error ->
+        type
+        |> split_at_paths(constraints, right)
+        |> Enum.reduce(do_dynamic_expr(query, left, bindings, embedded?, acc), fn data,
+                                                                                  {expr, acc} ->
+          do_get_path(query, expr, data, bindings, embedded?, pred_embedded?, acc)
+        end)
+    end
   end
 
   defp do_dynamic_expr(
@@ -831,7 +845,7 @@ defmodule AshSql.Expr do
         {left_expr, acc} =
           do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc)
 
-        {Ecto.Query.dynamic(type(^left_expr, ^left_type)), acc}
+        {query.__ash_bindings__.sql_behaviour.type_expr(left_expr, left_type), acc}
       else
         do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc, left_type)
       end
@@ -841,7 +855,7 @@ defmodule AshSql.Expr do
         {right_expr, acc} =
           do_dynamic_expr(query, right, bindings, pred_embedded? || embedded?, acc)
 
-        {Ecto.Query.dynamic(type(^right_expr, ^right_type)), acc}
+        {query.__ash_bindings__.sql_behaviour.type_expr(right_expr, right_type), acc}
       else
         do_dynamic_expr(query, right, bindings, pred_embedded? || embedded?, acc, right_type)
       end
@@ -875,7 +889,13 @@ defmodule AshSql.Expr do
         {Ecto.Query.dynamic(^left_expr - ^right_expr), acc}
 
       :/ ->
-        {Ecto.Query.dynamic(type(^left_expr, :decimal) / type(^right_expr, :decimal)), acc}
+        typed_left =
+          query.__ash_bindings__.sql_behaviour.type_expr(left_expr, :decimal)
+
+        typed_right =
+          query.__ash_bindings__.sql_behaviour.type_expr(right_expr, :decimal)
+
+        {Ecto.Query.dynamic(^typed_left / ^typed_right), acc}
 
       :* ->
         {Ecto.Query.dynamic(^left_expr * ^right_expr), acc}
@@ -900,46 +920,104 @@ defmodule AshSql.Expr do
         )
 
       :|| ->
-        require_ash_functions!(query, "||")
+        if "ash-functions" in query.__ash_bindings__.sql_behaviour.repo(
+             query.__ash_bindings__.resource,
+             :mutate
+           ).installed_extensions() do
+          do_dynamic_expr(
+            query,
+            %Fragment{
+              embedded?: pred_embedded?,
+              arguments: [
+                raw: "ash_elixir_or(",
+                casted_expr: left_expr,
+                raw: ", ",
+                casted_expr: right_expr,
+                raw: ")"
+              ]
+            },
+            bindings,
+            embedded?,
+            acc,
+            type
+          )
+        else
+          if query.__ash_bindings__.sql_behaviour.require_ash_functions_for_or_and_and?() do
+            require_ash_functions!(query, "||")
+          end
 
-        do_dynamic_expr(
-          query,
-          %Fragment{
-            embedded?: pred_embedded?,
-            arguments: [
-              raw: "ash_elixir_or(",
-              casted_expr: left_expr,
-              raw: ", ",
-              casted_expr: right_expr,
-              raw: ")"
-            ]
-          },
-          bindings,
-          embedded?,
-          acc,
-          type
-        )
+          do_dynamic_expr(
+            query,
+            %Ash.Query.Function.Fragment{
+              embedded?: pred_embedded?,
+              arguments: [
+                raw: "(CASE WHEN (",
+                casted_expr: left_expr,
+                raw: " == FALSE OR ",
+                casted_expr: left_expr,
+                raw: " IS NULL) THEN ",
+                casted_expr: right_expr,
+                raw: " ELSE ",
+                casted_expr: left_expr,
+                raw: "END)"
+              ]
+            },
+            bindings,
+            embedded?,
+            acc,
+            type
+          )
+        end
 
       :&& ->
-        require_ash_functions!(query, "&&")
+        if "ash-functions" in query.__ash_bindings__.sql_behaviour.repo(
+             query.__ash_bindings__.resource,
+             :mutate
+           ).installed_extensions() do
+          do_dynamic_expr(
+            query,
+            %Fragment{
+              embedded?: pred_embedded?,
+              arguments: [
+                raw: "ash_elixir_and(",
+                casted_expr: left_expr,
+                raw: ", ",
+                casted_expr: right_expr,
+                raw: ")"
+              ]
+            },
+            bindings,
+            embedded?,
+            acc,
+            type
+          )
+        else
+          if query.__ash_bindings__.sql_behaviour.require_ash_functions_for_or_and_and?() do
+            require_ash_functions!(query, "&&")
+          end
 
-        do_dynamic_expr(
-          query,
-          %Fragment{
-            embedded?: pred_embedded?,
-            arguments: [
-              raw: "ash_elixir_and(",
-              casted_expr: left_expr,
-              raw: ", ",
-              casted_expr: right_expr,
-              raw: ")"
-            ]
-          },
-          bindings,
-          embedded?,
-          acc,
-          type
-        )
+          do_dynamic_expr(
+            query,
+            %Fragment{
+              embedded?: pred_embedded?,
+              arguments: [
+                raw: "(CASE WHEN (",
+                casted_expr: left_expr,
+                raw: " == FALSE OR ",
+                casted_expr: left_expr,
+                raw: " IS NULL) THEN ",
+                casted_expr: left_expr,
+                raw: " ELSE ",
+                casted_expr: right_expr,
+                raw: "END)"
+              ]
+            },
+            bindings,
+            embedded?,
+            acc,
+            type
+          )
+        end
 
       other ->
         raise "Operator not implemented #{other}"
@@ -960,18 +1038,17 @@ defmodule AshSql.Expr do
        ) do
     {string, acc} = do_dynamic_expr(query, string, bindings, embedded?, acc)
 
-    require_extension!(query.__ash_bindings__.resource, "citext", expression, query)
+    case query.__ash_bindings__.sql_behaviour.require_extension_for_citext() do
+      {true, extension} ->
+        require_extension!(query.__ash_bindings__.resource, extension, expression, query)
+
+      false ->
+        :ok
+    end
 
     do_dynamic_expr(
       query,
-      %Fragment{
-        embedded?: embedded?,
-        arguments: [
-          raw: "",
-          casted_expr: string,
-          raw: "::citext"
-        ]
-      },
+      %Ash.Query.Function.Type{arguments: [string, Ash.Type.CiString, []]},
       bindings,
       embedded?,
       acc,
@@ -1200,14 +1277,17 @@ defmodule AshSql.Expr do
         expr
       else
         if type do
-          Ecto.Query.dynamic(coalesce(^expr, type(^aggregate.default_value, ^type)))
+          typed_default =
+            query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
+
+          Ecto.Query.dynamic(coalesce(^expr, ^typed_default))
         else
           Ecto.Query.dynamic(coalesce(^expr, ^aggregate.default_value))
         end
       end
 
     if type do
-      {Ecto.Query.dynamic(type(^coalesced, ^type)), acc}
+      {query.__ash_bindings__.sql_behaviour.type_expr(coalesced, type), acc}
     else
       {coalesced, acc}
     end
@@ -1275,7 +1355,7 @@ defmodule AshSql.Expr do
           {expr, acc}
 
         _ ->
-          {Ecto.Query.dynamic(type(^expr, ^type)), acc}
+          {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
       end
     else
       do_dynamic_expr(query, arg1, bindings, embedded?, acc, type)
@@ -1321,7 +1401,7 @@ defmodule AshSql.Expr do
     {frag, acc} =
       do_dynamic_expr(query, frag, bindings, embedded?, acc)
 
-    {Ecto.Query.dynamic(type(^frag, ^type)), acc}
+    {query.__ash_bindings__.sql_behaviour.type_expr(frag, type), acc}
   end
 
   defp do_dynamic_expr(
@@ -1453,7 +1533,7 @@ defmodule AshSql.Expr do
       validate_type!(query, type, value)
 
       dynamic =
-        Ecto.Query.dynamic(type(^nil, ^type))
+        query.__ash_bindings__.sql_behaviour.type_expr(nil, type)
 
       {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
     else
@@ -1627,11 +1707,14 @@ defmodule AshSql.Expr do
         type ->
           validate_type!(query, type, ref)
 
-          if query.__ash_bindings__[:parent?] do
-            Ecto.Query.dynamic(type(field(parent_as(^ref_binding), ^name), ^type))
-          else
-            Ecto.Query.dynamic(type(field(as(^ref_binding), ^name), ^type))
-          end
+          ref_dynamic =
+            if query.__ash_bindings__[:parent?] do
+              Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+            else
+              Ecto.Query.dynamic(field(as(^ref_binding), ^name))
+            end
+
+          query.__ash_bindings__.sql_behaviour.type_expr(ref_dynamic, type)
       end
 
     {expr, acc}
@@ -1708,7 +1791,7 @@ defmodule AshSql.Expr do
         end)
 
       if embedded? do
-        {Ecto.Query.dynamic([], type(^value, :map)), acc}
+        {query.__ash_bindings__.sql_behaviour.type_expr(value, :map), acc}
       else
         {value, acc}
       end
@@ -1780,7 +1863,7 @@ defmodule AshSql.Expr do
           if type do
             validate_type!(query, type, value)
 
-            {Ecto.Query.dynamic(type(^value, ^type)), acc}
+            {query.__ash_bindings__.sql_behaviour.type_expr(value, type), acc}
           else
             {value, acc}
           end
@@ -2099,17 +2182,23 @@ defmodule AshSql.Expr do
   end
 
   defp validate_type!(resource, type, context, query) do
-    case type do
-      {:parameterized, Ash.Type.CiStringWrapper.EctoType, _} ->
-        require_extension!(resource, "citext", context, query)
+    case query.__ash_bindings__.sql_behaviour.require_extension_for_citext() do
+      {true, extension} ->
+        case type do
+          {:parameterized, AshSql.Type.CiStringWrapper.EctoType, _} ->
+            require_extension!(resource, extension, context, query)
 
-      :ci_string ->
-        require_extension!(resource, "citext", context, query)
+          :ci_string ->
+            require_extension!(resource, extension, context, query)
 
-      :citext ->
-        require_extension!(resource, "citext", context, query)
+          :citext ->
+            require_extension!(resource, extension, context, query)
 
-      _ ->
+          _ ->
+            :ok
+        end
+
+      false ->
         :ok
     end
   end
@@ -2221,7 +2310,7 @@ defmodule AshSql.Expr do
       )
 
     if type do
-      {Ecto.Query.dynamic(type(^expr, ^type)), acc}
+      {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
     else
       {expr, acc}
     end
@@ -2256,7 +2345,7 @@ defmodule AshSql.Expr do
       )
 
     if type do
-      {Ecto.Query.dynamic(type(^expr, ^type)), acc}
+      {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
     else
       {expr, acc}
     end
@@ -2278,7 +2367,7 @@ defmodule AshSql.Expr do
   defp require_extension!(resource, extension, context, query) do
     repo = query.__ash_bindings__.sql_behaviour.repo(resource, :mutate)
 
-    unless extension in repo.installed_extensions() do
+    if extension not in repo.installed_extensions() do
       raise Ash.Error.Query.InvalidExpression,
         expression: context,
         message:

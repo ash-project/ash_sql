@@ -1,7 +1,7 @@
 defmodule AshSql.Implementation do
   @moduledoc false
   @callback table(Ash.Resource.t()) :: String.t()
-  @callback schema(Ash.Resource.t()) :: String.t()
+  @callback schema(Ash.Resource.t()) :: String.t() | nil
   @callback repo(Ash.Resource.t(), :mutate | :read) :: module
   @callback expr(Ecto.Query.t(), Ash.Expr.t(), map, boolean, AshSql.Expr.ExprInfo.t(), term) ::
               {:ok, term, AshSql.Expr.ExprInfo.t()} | {:error, term} | :error
@@ -22,14 +22,39 @@ defmodule AshSql.Implementation do
 
   @callback determine_types(module, list(term)) :: list(term)
 
-  @callback list_aggregate(Ash.Resource.t()) :: String.t()
+  @callback list_aggregate(Ash.Resource.t()) :: String.t() | nil
+
+  @callback multicolumn_distinct?() :: boolean
 
   @callback manual_relationship_function() :: atom
   @callback manual_relationship_subquery_function() :: atom
 
+  @callback require_ash_functions_for_or_and_and?() :: boolean
+  @callback type_expr(expr :: term, type :: term) :: term
+
   defmacro __using__(_) do
     quote do
       @behaviour AshSql.Implementation
+      require Ecto.Query
+
+      def expr(_, _, _, _, _, _), do: :error
+      def simple_join_first_aggregates(_), do: []
+      def list_aggregate(_), do: nil
+      def multicolumn_distinct?(), do: true
+      def require_ash_functions_for_or_and_and?, do: false
+      def require_extension_for_citext, do: false
+
+      def type_expr(expr, type) do
+        Ecto.Query.dynamic(type(^expr, ^type))
+      end
+
+      defoverridable expr: 6,
+                     require_ash_functions_for_or_and_and?: 0,
+                     require_extension_for_citext: 0,
+                     simple_join_first_aggregates: 1,
+                     type_expr: 2,
+                     list_aggregate: 1,
+                     multicolumn_distinct?: 0
     end
   end
 end

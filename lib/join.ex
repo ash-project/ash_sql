@@ -352,7 +352,10 @@ defmodule AshSql.Join do
       %{
         join_query
         | prefix:
-            query.prefix || query.__ash_bindings__.sql_behaviour.schema(resource) || "public"
+            query.prefix || query.__ash_bindings__.sql_behaviour.schema(resource) ||
+              query.__ash_bindings__.sql_behaviour.repo(resource, :mutate).config()[
+                :default_prefix
+              ]
       }
     else
       %{
@@ -361,8 +364,7 @@ defmodule AshSql.Join do
             query.__ash_bindings__.sql_behaviour.schema(resource) ||
               query.__ash_bindings__.sql_behaviour.repo(resource, :mutate).config()[
                 :default_prefix
-              ] ||
-              "public"
+              ]
       }
     end
   end
@@ -445,9 +447,15 @@ defmodule AshSql.Join do
     if !joined_query.__ash_bindings__.in_group? &&
          relationship.cardinality == :many &&
          !joined_query.distinct do
-      from(row in joined_query,
-        distinct: ^Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
-      )
+      pkey = Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
+
+      if joined_query.__ash_bindings__.sql_behaviour.multicolumn_distinct?() do
+        from(row in joined_query,
+          distinct: ^pkey
+        )
+      else
+        from(row in joined_query, distinct: true)
+      end
     else
       joined_query
     end

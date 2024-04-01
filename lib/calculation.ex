@@ -90,7 +90,7 @@ defmodule AshSql.Calculation do
 
               expr =
                 if type do
-                  Ecto.Query.dynamic(type(^expr, ^type))
+                  query.__ash_bindings__.sql_behaviour.type_expr(expr, type)
                 else
                   expr
                 end

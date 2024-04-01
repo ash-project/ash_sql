@@ -609,7 +609,10 @@ defmodule AshSql.Aggregate do
         with_default =
           if aggregate.default_value do
             if type do
-              Ecto.Query.dynamic(coalesce(^value, type(^aggregate.default_value, ^type)))
+              type_expr =
+                query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
+
+              Ecto.Query.dynamic(coalesce(^value, ^type_expr))
             else
               Ecto.Query.dynamic(coalesce(^value, ^aggregate.default_value))
             end
@@ -619,7 +622,7 @@ defmodule AshSql.Aggregate do
 
         casted =
           if type do
-            Ecto.Query.dynamic(type(^with_default, ^type))
+            query.__ash_bindings__.sql_behaviour.type_expr(with_default, type)
           else
             with_default
           end
@@ -1124,12 +1127,8 @@ defmodule AshSql.Aggregate do
 
     field =
       if type do
-        Ecto.Query.dynamic(
-          type(
-            field(as(^binding), ^aggregate.name),
-            ^type
-          )
-        )
+        field_ref = Ecto.Query.dynamic(field(as(^binding), ^aggregate.name))
+        query.__ash_bindings__.sql_behaviour.type_expr(field_ref, type)
       else
         Ecto.Query.dynamic(field(as(^binding), ^aggregate.name))
       end
@@ -1139,13 +1138,13 @@ defmodule AshSql.Aggregate do
         field
       else
         if type do
+          typed_default =
+            query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
+
           Ecto.Query.dynamic(
             coalesce(
               ^field,
-              type(
-                ^aggregate.default_value,
-                ^type
-              )
+              ^typed_default
             )
           )
         else
@@ -1159,7 +1158,7 @@ defmodule AshSql.Aggregate do
       end
 
     if type do
-      Ecto.Query.dynamic(type(^coalesced, ^type))
+      query.__ash_bindings__.sql_behaviour.type_expr(coalesced, type)
     else
       coalesced
     end
@@ -1301,7 +1300,10 @@ defmodule AshSql.Aggregate do
     with_default =
       if aggregate.default_value do
         if type do
-          Ecto.Query.dynamic(coalesce(^value, type(^aggregate.default_value, ^type)))
+          typed_default =
+            query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
+
+          Ecto.Query.dynamic(coalesce(^value, ^typed_default))
         else
           Ecto.Query.dynamic(coalesce(^value, ^aggregate.default_value))
         end
@@ -1311,7 +1313,7 @@ defmodule AshSql.Aggregate do
 
     casted =
       if type do
-        Ecto.Query.dynamic(type(^with_default, ^type))
+        query.__ash_bindings__.sql_behaviour.type_expr(with_default, type)
       else
         with_default
       end
@@ -1439,7 +1441,10 @@ defmodule AshSql.Aggregate do
     with_default =
       if aggregate.default_value do
         if type do
-          Ecto.Query.dynamic(coalesce(^filtered, type(^aggregate.default_value, ^type)))
+          typed_default =
+            query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
+
+          Ecto.Query.dynamic(coalesce(^filtered, ^typed_default))
         else
           Ecto.Query.dynamic(coalesce(^filtered, ^aggregate.default_value))
         end
@@ -1449,7 +1454,7 @@ defmodule AshSql.Aggregate do
 
     cast =
       if type do
-        Ecto.Query.dynamic(type(^with_default, ^type))
+        query.__ash_bindings__.sql_behaviour.type_expr(with_default, type)
       else
         with_default
       end
@@ -1537,7 +1542,10 @@ defmodule AshSql.Aggregate do
     with_default =
       if aggregate.default_value do
         if type do
-          Ecto.Query.dynamic(coalesce(^filtered, type(^aggregate.default_value, ^type)))
+          typed_default =
+            query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
+
+          Ecto.Query.dynamic(coalesce(^filtered, ^typed_default))
         else
           Ecto.Query.dynamic(coalesce(^filtered, ^aggregate.default_value))
         end
@@ -1547,7 +1555,7 @@ defmodule AshSql.Aggregate do
 
     cast =
       if type do
-        Ecto.Query.dynamic(type(^with_default, ^type))
+        query.__ash_bindings__.sql_behaviour.type_expr(with_default, type)
       else
         with_default
       end

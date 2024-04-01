@@ -164,10 +164,16 @@ defmodule AshSql.Sort do
                     Ecto.Query.dynamic(field(as(^binding), ^sort))
                   else
                     if attribute_type do
+                      typed_default =
+                        query.__ash_bindings__.sql_behaviour.type_expr(
+                          aggregate.default,
+                          type
+                        )
+
                       Ecto.Query.dynamic(
                         coalesce(
                           field(as(^binding), ^sort),
-                          type(^default_value, ^attribute_type)
+                          ^typed_default
                         )
                       )
                     else
