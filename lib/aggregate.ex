@@ -20,10 +20,6 @@ defmodule AshSql.Aggregate do
   def add_aggregates(query, [], _, _, _, _), do: {:ok, query}
 
   def add_aggregates(query, aggregates, resource, select?, source_binding, root_data) do
-    if source_binding == false do
-      raise "WHAT"
-    end
-
     case resource_aggregates_to_aggregates(resource, aggregates) do
       {:ok, aggregates} ->
         {query, aggregates} =
@@ -1211,11 +1207,7 @@ defmodule AshSql.Aggregate do
     has_sort? = has_sort?(aggregate.query)
 
     array_agg =
-      if query.__ash_bindings__.sql_behaviour.list_aggregate(aggregate.resource) do
-        "any_value"
-      else
-        "array_agg"
-      end
+      query.__ash_bindings__.sql_behaviour.list_aggregate(aggregate.resource)
 
     {sorted, query} =
       if has_sort? || first_relationship.sort not in [nil, []] do

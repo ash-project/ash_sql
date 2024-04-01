@@ -1036,24 +1036,29 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    {string, acc} = do_dynamic_expr(query, string, bindings, embedded?, acc)
-
     case query.__ash_bindings__.sql_behaviour.require_extension_for_citext() do
       {true, extension} ->
         require_extension!(query.__ash_bindings__.resource, extension, expression, query)
 
-      false ->
-        :ok
-    end
+        do_dynamic_expr(
+          query,
+          %Ash.Query.Function.Fragment{arguments: [raw: "", expr: string, raw: "::citext"]},
+          bindings,
+          embedded?,
+          acc,
+          type
+        )
 
-    do_dynamic_expr(
-      query,
-      %Ash.Query.Function.Type{arguments: [string, Ash.Type.CiString, []]},
-      bindings,
-      embedded?,
-      acc,
-      type
-    )
+      false ->
+        do_dynamic_expr(
+          query,
+          %Ash.Query.Function.Type{arguments: [string, Ash.Type.CiString, []]},
+          bindings,
+          embedded?,
+          acc,
+          type
+        )
+    end
   end
 
   defp do_dynamic_expr(
@@ -2185,7 +2190,7 @@ defmodule AshSql.Expr do
     case query.__ash_bindings__.sql_behaviour.require_extension_for_citext() do
       {true, extension} ->
         case type do
-          {:parameterized, AshSql.Type.CiStringWrapper.EctoType, _} ->
+          {:parameterized, AshSql.Type.CiString, _} ->
             require_extension!(resource, extension, context, query)
 
           :ci_string ->
