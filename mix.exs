@@ -13,7 +13,7 @@ defmodule AshSql.MixProject do
       app: :ash_sql,
       version: @version,
       description: @description,
-      elixir: "~> 1.16",
+      elixir: "~> 1.13",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       docs: docs(),
