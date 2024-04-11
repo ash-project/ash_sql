@@ -18,7 +18,7 @@ defmodule AshSql do
 
   def repo_opts(_repo, sql_behaviour, timeout, tenant, resource) do
     if Ash.Resource.Info.multitenancy_strategy(resource) == :context do
-      [prefix: Ash.ToTenant.to_tenant(resource, tenant)]
+      [prefix: tenant]
     else
       if schema = sql_behaviour.schema(resource) do
         [prefix: schema]
