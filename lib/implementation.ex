@@ -41,7 +41,7 @@ defmodule AshSql.Implementation do
       def expr(_, _, _, _, _, _), do: :error
       def simple_join_first_aggregates(_), do: []
       def list_aggregate(_), do: nil
-      def multicolumn_distinct?(), do: true
+      def multicolumn_distinct?, do: true
       def require_ash_functions_for_or_and_and?, do: false
       def require_extension_for_citext, do: false
 
