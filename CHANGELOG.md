@@ -5,6 +5,23 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.1.1-rc.5](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.4...v0.1.1-rc.5) (2024-04-11)
+
+
+
+
+### Bug Fixes:
+
+* don't use to_tenant
+
+* loosen elixir requirements
+
+### Improvements:
+
+* automatically wrap fragments in parenthesis
+
+* remove unnecessary parenthesis from builtin fragments
+
 ## [v0.1.1-rc.4](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.3...v0.1.1-rc.4) (2024-04-05)
 
 
