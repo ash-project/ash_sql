@@ -567,6 +567,13 @@ defmodule AshSql.Aggregate do
           {resource, []}
       end
 
+    join_filters =
+      if has_filter?(aggregate) do
+        %{path ++ aggregate.relationship_path => aggregate.query.filter}
+      else
+        %{}
+      end
+
     case AshSql.Join.join_all_relationships(
            query,
            nil,
@@ -580,7 +587,8 @@ defmodule AshSql.Aggregate do
            ],
            [],
            nil,
-           false
+           false,
+           join_filters
          ) do
       {:ok, query} ->
         ref =
