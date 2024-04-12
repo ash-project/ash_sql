@@ -569,7 +569,7 @@ defmodule AshSql.Aggregate do
 
     join_filters =
       if has_filter?(aggregate) do
-        %{path ++ aggregate.relationship_path => aggregate.query.filter}
+        %{(path ++ aggregate.relationship_path) => aggregate.query.filter}
       else
         %{}
       end

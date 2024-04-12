@@ -147,10 +147,7 @@ defmodule AshSql.Join do
                  source,
                  filter,
                  sort?,
-                 Ash.Filter.move_to_relationship_path(
-                   join_filters[Enum.map(current_path, & &1.name)],
-                   [relationship.name]
-                 )
+                 join_filters[Enum.map(current_path, & &1.name)]
                ) do
             {:ok, joined_query} ->
               joined_query_with_distinct = add_distinct(relationship, join_type, joined_query)
@@ -239,6 +236,18 @@ defmodule AshSql.Join do
           on_parent_expr.(query)
         else
           query
+        end
+
+      query =
+        case opts[:apply_filter] do
+          nil ->
+            query
+
+          apply_filter ->
+            {query, acc} =
+              maybe_apply_filter(query, root_query, root_query.__ash_bindings__, apply_filter)
+
+            AshSql.Bindings.merge_expr_accumulator(query, acc)
         end
 
       query = on_subquery.(query)
@@ -481,12 +490,7 @@ defmodule AshSql.Join do
     used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
 
     with {:ok, relationship_destination} <-
-           related_subquery(relationship, query, sort?: sort?) do
-      {relationship_destination, acc} =
-        maybe_apply_filter(relationship_destination, query, query.__ash_bindings__, apply_filter)
-
-      query = AshSql.Bindings.merge_expr_accumulator(query, acc)
-
+           related_subquery(relationship, query, sort?: sort?, apply_filter?: apply_filter) do
       binding_kinds =
         case kind do
           :left ->
@@ -574,7 +578,7 @@ defmodule AshSql.Join do
 
     with {:ok, relationship_through} <- related_subquery(join_relationship, query),
          {:ok, relationship_destination} <-
-           related_subquery(relationship, query, sort?: sort?) do
+           related_subquery(relationship, query, sort?: sort?, apply_filter?: apply_filter) do
       {relationship_destination, dest_acc} =
         maybe_apply_filter(relationship_destination, query, query.__ash_bindings__, apply_filter)
 
@@ -683,6 +687,7 @@ defmodule AshSql.Join do
 
     case related_subquery(relationship, query,
            sort?: sort?,
+           apply_filter: apply_filter,
            on_parent_expr: fn subquery ->
              if Map.get(relationship, :no_attributes?) do
                subquery
@@ -702,16 +707,6 @@ defmodule AshSql.Join do
         {:error, error}
 
       {:ok, relationship_destination} ->
-        {relationship_destination, acc} =
-          maybe_apply_filter(
-            relationship_destination,
-            query,
-            query.__ash_bindings__,
-            apply_filter
-          )
-
-        query = AshSql.Bindings.merge_expr_accumulator(query, acc)
-
         query =
           case {kind, Map.get(relationship, :no_attributes?, false),
                 relationship_destination.__ash_bindings__.context[:data_layer][
