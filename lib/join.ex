@@ -238,18 +238,6 @@ defmodule AshSql.Join do
           query
         end
 
-      query =
-        case opts[:apply_filter] do
-          nil ->
-            query
-
-          apply_filter ->
-            {query, acc} =
-              maybe_apply_filter(query, root_query, root_query.__ash_bindings__, apply_filter)
-
-            AshSql.Bindings.merge_expr_accumulator(query, acc)
-        end
-
       query = on_subquery.(query)
 
       query =
@@ -302,6 +290,7 @@ defmodule AshSql.Join do
     |> Ash.Query.set_context(relationship.context)
     |> Ash.Query.do_filter(relationship.filter, parent_stack: parent_resources)
     |> Ash.Query.do_filter(filter, parent_stack: parent_resources)
+    |> Ash.Query.do_filter(opts[:apply_filter], parent_stack: parent_resources)
     |> Ash.Query.for_read(read_action, %{},
       actor: context[:private][:actor],
       tenant: context[:private][:tenant]
