@@ -275,6 +275,7 @@ defmodule AshSql.Join do
   defp related_query(relationship, query, opts) do
     sort? = Keyword.get(opts, :sort?, false)
     filter = Keyword.get(opts, :filter, nil)
+    filter_subquery? = Keyword.get(opts, :filter_subquery?, false)
     parent_resources = Keyword.get(opts, :parent_stack, [relationship.source])
 
     read_action =
@@ -289,14 +290,19 @@ defmodule AshSql.Join do
     |> Ash.Query.set_context(%{data_layer: %{table: nil}})
     |> Ash.Query.set_context(relationship.context)
     |> Ash.Query.do_filter(relationship.filter, parent_stack: parent_resources)
-    |> Ash.Query.do_filter(filter, parent_stack: parent_resources)
+    |> then(fn query ->
+      if Map.get(relationship, :from_many?) && filter_subquery? do
+        query
+      else
+        Ash.Query.do_filter(query, filter, parent_stack: parent_resources)
+      end
+    end)
     |> Ash.Query.do_filter(opts[:apply_filter], parent_stack: parent_resources)
     |> Ash.Query.for_read(read_action, %{},
       actor: context[:private][:actor],
       tenant: context[:private][:tenant]
     )
     |> Ash.Query.unset([:sort, :distinct, :select, :limit, :offset])
-    |> limit_from_many(relationship)
     |> then(fn query ->
       if sort? do
         Ash.Query.sort(query, relationship.sort)
@@ -314,6 +320,8 @@ defmodule AshSql.Join do
         )
         |> case do
           {:ok, ecto_query} ->
+            ecto_query = limit_from_many(ecto_query, relationship, filter, filter_subquery?)
+
             {:ok,
              ecto_query
              |> set_join_prefix(query, relationship.destination)
@@ -328,11 +336,20 @@ defmodule AshSql.Join do
     end
   end
 
-  defp limit_from_many(query, %{from_many?: true}) do
-    Ash.Query.limit(query, 1)
+  defp limit_from_many(query, %{from_many?: true}, filter, filter_subquery?) do
+    if filter_subquery? do
+      query =
+        from(row in Ecto.Query.subquery(from(row in query, limit: 1)), as: ^0)
+        |> Map.put(:__ash_bindings__, query.__ash_bindings__)
+
+      {:ok, query} = AshSql.Filter.filter(query, filter, query.__ash_bindings__.resource)
+      query
+    else
+      from(row in query, limit: 1)
+    end
   end
 
-  defp limit_from_many(query, _), do: query
+  defp limit_from_many(query, _, _, _), do: query
 
   defp set_has_parent_expr_context(query, relationship) do
     has_parent_expr? =

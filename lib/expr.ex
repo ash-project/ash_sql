@@ -1601,6 +1601,8 @@ defmodule AshSql.Expr do
     {:ok, subquery} =
       AshSql.Join.related_subquery(first_relationship, query,
         filter: filter,
+        filter_subquery?: true,
+        sort?: Map.get(first_relationship, :from_many?),
         parent_resources: [
           query.__ash_bindings__.resource
           | query.__ash_bindings__[:parent_resources] || []
@@ -1608,9 +1610,7 @@ defmodule AshSql.Expr do
         return_subquery?: true,
         on_subquery: fn subquery ->
           subquery =
-            Ecto.Query.from(row in Ecto.Query.exclude(subquery, :select),
-              select: fragment("1")
-            )
+            Ecto.Query.from(row in subquery, select: fragment("1"))
             |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
 
           cond do
