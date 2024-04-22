@@ -313,7 +313,7 @@ defmodule AshSql.Expr do
         %Fragment{
           embedded?: pred_embedded?,
           arguments: [
-            raw: "strpos((",
+            raw: "#{bindings.sql_behaviour.strpos_function()}((",
             expr: left,
             raw: "::citext), (",
             expr: right,
@@ -331,7 +331,7 @@ defmodule AshSql.Expr do
         %Fragment{
           embedded?: pred_embedded?,
           arguments: [
-            raw: "strpos(lower(",
+            raw: "#{bindings.sql_behaviour.strpos_function()}(lower(",
             expr: left,
             raw: "), lower(",
             expr: right,
@@ -407,7 +407,7 @@ defmodule AshSql.Expr do
       %Fragment{
         embedded?: pred_embedded?,
         arguments: [
-          raw: "strpos((",
+          raw: "#{bindings.sql_behaviour.strpos_function()}((",
           expr: left,
           raw: "), (",
           expr: right,

@@ -31,12 +31,15 @@ defmodule AshSql.Implementation do
 
   @callback require_ash_functions_for_or_and_and?() :: boolean
   @callback require_extension_for_citext() :: {true, String.t()} | false
+  @callback strpos_function() :: String.t()
   @callback type_expr(expr :: term, type :: term) :: term
 
   defmacro __using__(_) do
     quote do
       @behaviour AshSql.Implementation
       require Ecto.Query
+
+      def strpos_function, do: "strpos"
 
       def expr(_, _, _, _, _, _), do: :error
       def simple_join_first_aggregates(_), do: []
@@ -50,6 +53,7 @@ defmodule AshSql.Implementation do
       end
 
       defoverridable expr: 6,
+                     strpos_function: 0,
                      require_ash_functions_for_or_and_and?: 0,
                      require_extension_for_citext: 0,
                      simple_join_first_aggregates: 1,
