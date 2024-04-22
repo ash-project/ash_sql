@@ -734,16 +734,17 @@ defmodule AshSql.Aggregate do
 
           %Ash.Query.Calculation{
             module: module,
-            opts: opts
+            opts: opts,
+            context: context
           } = calc ->
-            expression = module.expression(opts, aggregate.context)
+            expression = module.expression(opts, context)
 
             expression =
               Ash.Expr.fill_template(
                 expression,
-                aggregate.context.actor,
-                aggregate.context.arguments,
-                aggregate.context.source_context
+                context.actor,
+                context.arguments,
+                context.source_context
               )
 
             {:ok, expression} =
