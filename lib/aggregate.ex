@@ -712,7 +712,7 @@ defmodule AshSql.Aggregate do
               Ash.Expr.fill_template(
                 expression,
                 aggregate.context[:actor],
-                aggregate.context,
+                %{},
                 aggregate.context
               )
 
