@@ -309,13 +309,17 @@ defmodule AshSql.Expr do
        ) do
     if "citext" in bindings.sql_behaviour.repo(query.__ash_bindings__.resource, :mutate).installed_extensions() do
       text = escape_contains(right.string)
+
       {left, acc} =
         AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
+
       {Ecto.Query.dynamic(like(type(^left, :citext), ^text)), acc}
     else
       text = escape_contains(right.string)
+
       {left, acc} =
         AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
+
       {Ecto.Query.dynamic(like(fragment("lower(?)", ^left), ^text)), acc}
     end
   end
@@ -375,13 +379,15 @@ defmodule AshSql.Expr do
          embedded?,
          acc,
          _type
-       ) when is_binary(right) do
+       )
+       when is_binary(right) do
     text = escape_contains(right)
+
     {left, acc} =
       AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
+
     {Ecto.Query.dynamic(like(^left, ^text)), acc}
   end
-
 
   defp do_dynamic_expr(
          query,
