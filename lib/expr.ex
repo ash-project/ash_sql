@@ -305,44 +305,18 @@ defmodule AshSql.Expr do
          bindings,
          embedded?,
          acc,
-         type
+         _type
        ) do
     if "citext" in bindings.sql_behaviour.repo(query.__ash_bindings__.resource, :mutate).installed_extensions() do
-      do_dynamic_expr(
-        query,
-        %Fragment{
-          embedded?: pred_embedded?,
-          arguments: [
-            raw: "#{bindings.sql_behaviour.strpos_function()}((",
-            expr: left,
-            raw: "::citext), (",
-            expr: right,
-            raw: ")) > 0"
-          ]
-        },
-        bindings,
-        embedded?,
-        acc,
-        type
-      )
+      text = escape_contains(right.string)
+      {left, acc} =
+        AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
+      {Ecto.Query.dynamic(like(type(^left, :citext), ^text)), acc}
     else
-      do_dynamic_expr(
-        query,
-        %Fragment{
-          embedded?: pred_embedded?,
-          arguments: [
-            raw: "#{bindings.sql_behaviour.strpos_function()}(lower(",
-            expr: left,
-            raw: "), lower(",
-            expr: right,
-            raw: ")) > 0"
-          ]
-        },
-        bindings,
-        embedded?,
-        acc,
-        type
-      )
+      text = escape_contains(right.string)
+      {left, acc} =
+        AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
+      {Ecto.Query.dynamic(like(fragment("lower(?)", ^left), ^text)), acc}
     end
   end
 
@@ -393,6 +367,21 @@ defmodule AshSql.Expr do
       )
     end
   end
+
+  defp do_dynamic_expr(
+         query,
+         %Contains{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) when is_binary(right) do
+    text = escape_contains(right)
+    {left, acc} =
+      AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
+    {Ecto.Query.dynamic(like(^left, ^text)), acc}
+  end
+
 
   defp do_dynamic_expr(
          query,
@@ -2479,4 +2468,8 @@ defmodule AshSql.Expr do
   end
 
   def split_and_statements(other), do: [other]
+
+  defp escape_contains(text) do
+    "%" <> String.replace(text, ~r/([\%_])/u, "\\\\\\0") <> "%"
+  end
 end
