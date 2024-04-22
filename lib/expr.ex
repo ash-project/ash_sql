@@ -313,7 +313,7 @@ defmodule AshSql.Expr do
       {left, acc} =
         AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
 
-      {Ecto.Query.dynamic(like(type(^left, :citext), ^text)), acc}
+      {Ecto.Query.dynamic(like(fragment("(?)::citext", ^left), ^text)), acc}
     else
       text = escape_contains(right.string)
 
