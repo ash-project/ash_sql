@@ -22,6 +22,15 @@ defmodule AshSql.Aggregate do
   def add_aggregates(query, aggregates, resource, select?, source_binding, root_data) do
     case resource_aggregates_to_aggregates(resource, aggregates) do
       {:ok, aggregates} ->
+        tenant =
+          case Enum.at(aggregates, 0) do
+            %{context: %{tenant: tenant}} ->
+              Ash.ToTenant.to_tenant(tenant, resource)
+
+            _ ->
+              nil
+          end
+
         {query, aggregates} =
           Enum.reduce(
             aggregates,
@@ -214,7 +223,7 @@ defmodule AshSql.Aggregate do
 
                                    AshSql.Join.set_join_prefix(
                                      subquery,
-                                     query,
+                                     %{query | prefix: tenant},
                                      first_relationship.destination
                                    )
                                  else
@@ -245,7 +254,7 @@ defmodule AshSql.Aggregate do
 
                                      AshSql.Join.set_join_prefix(
                                        subquery,
-                                       query,
+                                       %{query | prefix: tenant},
                                        first_relationship.destination
                                      )
                                    else
@@ -269,7 +278,7 @@ defmodule AshSql.Aggregate do
                              subquery =
                                AshSql.Join.set_join_prefix(
                                  subquery,
-                                 query,
+                                 %{query | prefix: tenant},
                                  first_relationship.destination
                                )
 
