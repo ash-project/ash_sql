@@ -462,6 +462,9 @@ defmodule AshSql.Expr do
           [condition_type, when_true, when_false]
       end
 
+    when_true_type = when_true_type || when_false_type || type
+    when_false_type = when_false_type || when_true_type || type
+
     {condition, acc} =
       do_dynamic_expr(
         query,
@@ -1444,7 +1447,7 @@ defmodule AshSql.Expr do
        ) do
     do_dynamic_expr(
       query,
-      DateTime.utc_now(),
+      %Ash.Query.Function.Type{arguments: [DateTime.utc_now(), :datetime, []]},
       bindings,
       embedded? || pred_embedded?,
       acc,
@@ -1562,12 +1565,26 @@ defmodule AshSql.Expr do
       # its weird, but there isn't any other way that I can tell :)
       validate_type!(query, type, value)
 
+      field_ref =
+        case bindings[:updating_field] do
+          nil ->
+            nil
+
+          ref ->
+            Ecto.Query.dynamic([row], field(row, ^ref))
+        end
+
       dynamic =
-        query.__ash_bindings__.sql_behaviour.type_expr(nil, type)
+        query.__ash_bindings__.sql_behaviour.type_expr(field_ref, type)
 
       {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
     else
-      {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
+      if bindings[:updating_field] do
+        field_ref = Ecto.Query.dynamic([row], field(row, ^bindings[:updating_field]))
+        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^field_ref)), acc}
+      else
+        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
+      end
     end
   end
 

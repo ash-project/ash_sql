@@ -28,7 +28,10 @@ defmodule AshSql.Atomics do
         case AshSql.Expr.dynamic_expr(
                query,
                expr,
-               Map.put(query.__ash_bindings__, :location, :update),
+               Map.merge(query.__ash_bindings__, %{
+                 location: :update,
+                 updating_field: attribute.name
+               }),
                false,
                type
              ) do
