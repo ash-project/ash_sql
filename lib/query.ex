@@ -69,7 +69,7 @@ defmodule AshSql.Query do
 
   def return_query(%{__ash_bindings__: %{lateral_join?: true}} = query, resource) do
     query =
-      AshSql.Bindings.default_bindings(query, query.__ash_bindings__.sql_behaviour, resource)
+      AshSql.Bindings.default_bindings(query, resource, query.__ash_bindings__.sql_behaviour)
 
     if query.__ash_bindings__[:sort_applied?] do
       {:ok, query}
@@ -84,7 +84,7 @@ defmodule AshSql.Query do
 
   def return_query(query, resource) do
     query =
-      AshSql.Bindings.default_bindings(query, query.__ash_bindings__.sql_behaviour, resource)
+      AshSql.Bindings.default_bindings(query, resource, query.__ash_bindings__.sql_behaviour)
 
     with_sort_applied =
       if query.__ash_bindings__[:sort_applied?] do

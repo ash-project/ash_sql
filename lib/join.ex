@@ -249,8 +249,8 @@ defmodule AshSql.Join do
           else
             from(row in subquery(query), as: ^0)
             |> AshSql.Bindings.default_bindings(
-              query.__ash_bindings__.sql_behaviour,
-              relationship.destination
+              relationship.destination,
+              query.__ash_bindings__.sql_behaviour
             )
             |> AshSql.Bindings.merge_expr_accumulator(
               query.__ash_bindings__.expression_accumulator

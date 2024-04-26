@@ -24,7 +24,7 @@ defmodule AshSql.Bindings do
 
   def default_bindings(query, resource, sql_behaviour, context \\ %{})
 
-  def default_bindings(%{__ash_bindings__: _} = query, _sql_behaviour, _resource, _context),
+  def default_bindings(%{__ash_bindings__: _} = query, _resource, _sql_behaviour, _context),
     do: query
 
   def default_bindings(query, resource, sql_behaviour, context) do
