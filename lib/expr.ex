@@ -307,21 +307,12 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    if "citext" in bindings.sql_behaviour.repo(query.__ash_bindings__.resource, :mutate).installed_extensions() do
-      text = escape_contains(right.string)
+    text = escape_contains(right.string)
 
-      {left, acc} =
-        AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
+    {left, acc} =
+      AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
 
-      {Ecto.Query.dynamic(like(fragment("(?)::citext", ^left), ^text)), acc}
-    else
-      text = escape_contains(right.string)
-
-      {left, acc} =
-        AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
-
-      {Ecto.Query.dynamic(like(fragment("lower(?)", ^left), ^text)), acc}
-    end
+    {Ecto.Query.dynamic(ilike(^left, ^text)), acc}
   end
 
   defp do_dynamic_expr(
