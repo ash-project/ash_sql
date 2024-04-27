@@ -27,7 +27,7 @@ defmodule AshSql.Filter do
 
   def add_filter_expression(query, filter) do
     filter
-    |> AshSql.Expr.split_and_statements()
+    |> AshSql.Expr.split_statements(:and)
     |> Enum.reduce(query, fn filter, query ->
       {dynamic, acc} = AshSql.Expr.dynamic_expr(query, filter, query.__ash_bindings__)
 

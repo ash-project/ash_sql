@@ -2,26 +2,35 @@ defmodule AshSql.Join do
   @moduledoc false
   import Ecto.Query, only: [from: 2, subquery: 1]
 
-  alias Ash.Query.{BooleanExpression, Not, Ref}
+  alias Ash.Query.{Not, Ref}
 
   @known_inner_join_operators [
-                                Eq,
-                                GreaterThan,
-                                GreaterThanOrEqual,
-                                In,
-                                LessThanOrEqual,
-                                LessThan,
-                                NotEq
-                              ]
-                              |> Enum.map(&Module.concat(Ash.Query.Operator, &1))
+    Ash.Query.Operator.Eq,
+    Ash.Query.Operator.GreaterThan,
+    Ash.Query.Operator.GreaterThanOrEqual,
+    Ash.Query.Operator.In,
+    Ash.Query.Operator.LessThanOrEqual,
+    Ash.Query.Operator.LessThan,
+    Ash.Query.Operator.NotEq
+  ]
 
   @known_inner_join_functions [
-                                Ago,
-                                Contains
-                              ]
-                              |> Enum.map(&Module.concat(Ash.Query.Function, &1))
-
-  @known_inner_join_predicates @known_inner_join_functions ++ @known_inner_join_operators
+    Ash.Query.Function.Ago,
+    Ash.Query.Function.Contains,
+    Ash.Query.Function.At,
+    Ash.Query.Function.DateAdd,
+    Ash.Query.Function.DateTimeAdd,
+    Ash.Query.Function.FromNow,
+    Ash.Query.Function.GetPath,
+    Ash.Query.Function.Length,
+    Ash.Query.Function.Minus,
+    Ash.Query.Function.Round,
+    Ash.Query.Function.StringDowncase,
+    Ash.Query.Function.StringJoin,
+    Ash.Query.Function.StringLength,
+    Ash.Query.Function.StringSplit,
+    Ash.Query.Function.StringTrim
+  ]
 
   def join_all_relationships(
         query,
@@ -385,61 +394,56 @@ defmodule AshSql.Join do
     end
   end
 
-  defp can_inner_join?(path, expr, seen_an_or? \\ false)
-
-  defp can_inner_join?(path, %{expression: expr}, seen_an_or?),
-    do: can_inner_join?(path, expr, seen_an_or?)
-
-  defp can_inner_join?(_path, expr, _seen_an_or?) when expr in [nil, true, false], do: true
-
-  defp can_inner_join?(path, %BooleanExpression{op: :and, left: left, right: right}, seen_an_or?) do
-    can_inner_join?(path, left, seen_an_or?) || can_inner_join?(path, right, seen_an_or?)
+  defp can_inner_join?(path, expr) do
+    expr
+    |> AshSql.Expr.split_statements(:and)
+    |> Enum.any?(&known_inner_join_predicate_for_path_in_all_branches?(path, &1))
   end
 
-  defp can_inner_join?(path, %BooleanExpression{op: :or, left: left, right: right}, _) do
-    can_inner_join?(path, left, true) && can_inner_join?(path, right, true)
-  end
+  defp known_inner_join_predicate_for_path_in_all_branches?(path, expr) do
+    expr
+    |> AshSql.Expr.split_statements(:or)
+    |> case do
+      [expr] ->
+        case AshSql.Expr.split_statements(expr, :and) do
+          [expr] ->
+            known_predicates_only_containing?(path, expr)
 
-  defp can_inner_join?(
-         _,
-         %Not{},
-         _
-       ) do
-    false
-  end
+          many ->
+            Enum.any?(many, &known_inner_join_predicate_for_path_in_all_branches?(path, &1))
+        end
 
-  defp can_inner_join?(
-         search_path,
-         %struct{__operator__?: true, left: %Ref{relationship_path: relationship_path}},
-         seen_an_or?
-       )
-       when search_path == relationship_path and struct in @known_inner_join_predicates do
-    not seen_an_or?
-  end
-
-  defp can_inner_join?(
-         search_path,
-         %struct{__operator__?: true, right: %Ref{relationship_path: relationship_path}},
-         seen_an_or?
-       )
-       when search_path == relationship_path and struct in @known_inner_join_predicates do
-    not seen_an_or?
-  end
-
-  defp can_inner_join?(
-         search_path,
-         %struct{__function__?: true, arguments: arguments},
-         seen_an_or?
-       )
-       when struct in @known_inner_join_predicates do
-    if Enum.any?(arguments, &match?(%Ref{relationship_path: ^search_path}, &1)) do
-      not seen_an_or?
-    else
-      true
+      branches ->
+        Enum.all?(branches, &can_inner_join?(path, &1))
     end
   end
 
-  defp can_inner_join?(_, _, _), do: false
+  defp known_predicates_only_containing?(path, %Not{expression: expression}) do
+    known_predicates_only_containing?(path, expression)
+  end
+
+  defp known_predicates_only_containing?(path, %struct{
+         __operator__?: true,
+         left: left,
+         right: right
+       })
+       when struct in @known_inner_join_operators do
+    Enum.any?([left, right], &known_predicates_only_containing?(path, &1))
+  end
+
+  defp known_predicates_only_containing?(path, %struct{
+         __function__?: true,
+         arguments: arguments
+       })
+       when struct in @known_inner_join_functions do
+    Enum.any?(arguments, &known_predicates_only_containing?(path, &1))
+  end
+
+  defp known_predicates_only_containing?(path, %Ref{relationship_path: path}) do
+    true
+  end
+
+  defp known_predicates_only_containing?(_, _), do: false
 
   @doc false
   def get_binding(resource, candidate_path, %{__ash_bindings__: _} = query, types) do

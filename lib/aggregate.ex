@@ -410,7 +410,7 @@ defmodule AshSql.Aggregate do
     |> Enum.reduce_while({nil, []}, fn
       %{query: %{filter: filter}} = agg, {global_filters, aggs} when not is_nil(filter) ->
         and_statements =
-          AshSql.Expr.split_and_statements(filter)
+          AshSql.Expr.split_statements(filter, :and)
 
         global_filters =
           if global_filters do

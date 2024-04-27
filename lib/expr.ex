@@ -2459,29 +2459,35 @@ defmodule AshSql.Expr do
   end
 
   @doc false
-  def split_and_statements(%Ash.Filter{expression: expression}) do
-    split_and_statements(expression)
+  def split_statements(%Ash.Filter{expression: expression}, op) do
+    split_statements(expression, op)
   end
 
-  def split_and_statements(%BooleanExpression{op: :and, left: left, right: right}) do
-    split_and_statements(left) ++ split_and_statements(right)
+  def split_statements(
+        %Not{
+          expression: %BooleanExpression{op: :or, left: left, right: right}
+        },
+        op
+      ) do
+    split_statements(
+      %BooleanExpression{
+        op: :and,
+        left: %Not{expression: left},
+        right: %Not{expression: right}
+      },
+      op
+    )
   end
 
-  def split_and_statements(%Not{expression: %Not{expression: expression}}) do
-    split_and_statements(expression)
+  def split_statements(%Not{expression: %Not{expression: expression}}, op) do
+    split_statements(expression, op)
   end
 
-  def split_and_statements(%Not{
-        expression: %BooleanExpression{op: :or, left: left, right: right}
-      }) do
-    split_and_statements(%BooleanExpression{
-      op: :and,
-      left: %Not{expression: left},
-      right: %Not{expression: right}
-    })
+  def split_statements(%BooleanExpression{op: op, left: left, right: right}, op) do
+    split_statements(left, op) ++ split_statements(right, op)
   end
 
-  def split_and_statements(other), do: [other]
+  def split_statements(other, _op), do: [other]
 
   defp escape_contains(text) do
     "%" <> String.replace(text, ~r/([\%_])/u, "\\\\\\0") <> "%"
