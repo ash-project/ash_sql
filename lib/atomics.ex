@@ -8,9 +8,9 @@ defmodule AshSql.Atomics do
         updating_one_changes,
         existing_set
       ) do
-    query =
+    {:ok, query} =
       if is_nil(filter) do
-        query
+        {:ok, query}
       else
         AshSql.Filter.filter(query, filter, resource)
       end
