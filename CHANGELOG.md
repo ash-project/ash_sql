@@ -5,6 +5,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.1.1-rc.14](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.13...v0.1.1-rc.14) (2024-04-29)
+
+
+
+
+### Bug Fixes:
+
+* fix argument order in AshSql.Bindings.default_bindings/4
+
+* query_with_atomics pattern matching error
+
+* fix argument order in AshSql.Bindings.default_bindings/4
+
 ## [v0.1.1-rc.13](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.12...v0.1.1-rc.13) (2024-04-27)
 
 
