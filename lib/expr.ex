@@ -1328,6 +1328,17 @@ defmodule AshSql.Expr do
 
   defp do_dynamic_expr(
          query,
+         %Ash.CustomExpression{expression: expr},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
+  end
+
+  defp do_dynamic_expr(
+         query,
          %Round{arguments: [num | rest], embedded?: pred_embedded?},
          bindings,
          embedded?,
