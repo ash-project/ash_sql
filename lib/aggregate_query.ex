@@ -4,7 +4,7 @@ defmodule AshSql.AggregateQuery do
 
   def run_aggregate_query(original_query, aggregates, resource, implementation) do
     original_query =
-      AshSql.Bindings.default_bindings(original_query, implementation, resource)
+      AshSql.Bindings.default_bindings(original_query, resource, implementation)
 
     {can_group, cant_group} =
       aggregates
