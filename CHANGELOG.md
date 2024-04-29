@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.1.1-rc.15](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.14...v0.1.1-rc.15) (2024-04-29)
+
+
+
+
+### Bug Fixes:
+
+* properly support custom expressions
+
 ## [v0.1.1-rc.14](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.13...v0.1.1-rc.14) (2024-04-29)
 
 
