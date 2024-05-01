@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.1.1-rc.16](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.15...v0.1.1-rc.16) (2024-05-01)
+
+
+
+
+### Bug Fixes:
+
+* hydrate & fill template for related queries
+
 ## [v0.1.1-rc.15](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.14...v0.1.1-rc.15) (2024-04-29)
 
 
