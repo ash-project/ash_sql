@@ -312,6 +312,7 @@ defmodule AshSql.Join do
       tenant: context[:private][:tenant]
     )
     |> Ash.Query.unset([:sort, :distinct, :select, :limit, :offset])
+    |> hydrate_refs(context[:private][:actor])
     |> then(fn query ->
       if sort? do
         Ash.Query.sort(query, relationship.sort)
@@ -342,6 +343,16 @@ defmodule AshSql.Join do
 
       %{errors: errors} ->
         {:error, errors}
+    end
+  end
+
+  defp hydrate_refs(query, actor) do
+    query.filter
+    |> Ash.Expr.fill_template(actor, %{}, query.context)
+    |> Ash.Filter.hydrate_refs(%{resource: query.resource})
+    |> case do
+      {:ok, result} -> %{query | filter: result}
+      {:error, error} -> Ash.Query.add_error(query, error)
     end
   end
 
