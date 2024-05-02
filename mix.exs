@@ -6,7 +6,7 @@ defmodule AshSql.MixProject do
   Shared utilities for ecto-based sql data layers.
   """
 
-  @version "0.1.1-rc.16"
+  @version "0.1.1-rc.17"
 
   def project do
     [
