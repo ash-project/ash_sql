@@ -1670,6 +1670,31 @@ defmodule AshSql.Expr do
 
           cond do
             Map.get(first_relationship, :manual) ->
+              {module, opts} = first_relationship.manual
+
+              source_binding =
+                ref_binding(
+                  %Ref{
+                    attribute:
+                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                    relationship_path: at_path,
+                    resource: resource
+                  },
+                  bindings
+                )
+
+              {:ok, subquery} =
+                apply(
+                  module,
+                  query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function,
+                  [
+                    opts,
+                    source_binding,
+                    0,
+                    subquery
+                  ]
+                )
+
               subquery
 
             Map.get(first_relationship, :no_attributes?) ->
