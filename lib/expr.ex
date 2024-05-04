@@ -1458,7 +1458,7 @@ defmodule AshSql.Expr do
        ) do
     do_dynamic_expr(
       query,
-      %Ash.Query.Function.Type{arguments: [DateTime.utc_now(), :datetime, []]},
+      %Ash.Query.Function.Type{arguments: [DateTime.utc_now(), type || :datetime, []]},
       bindings,
       embedded? || pred_embedded?,
       acc,
