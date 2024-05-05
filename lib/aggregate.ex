@@ -715,7 +715,7 @@ defmodule AshSql.Aggregate do
             constraints: constraints
           } ->
             {:ok, new_calc} = Ash.Query.Calculation.new(name, module, opts, type, constraints)
-            expression = module.expression(opts, aggregate.context)
+            expression = module.expression(opts, new_calc.context)
 
             expression =
               Ash.Expr.fill_template(
@@ -1696,7 +1696,7 @@ defmodule AshSql.Aggregate do
               Map.get(calculation, :constraints, [])
             )
 
-          AshSql.Expr.validate_type!(resource, calc_type, "#{inspect(calculation.name)}")
+          AshSql.Expr.validate_type!(query, calc_type, "#{inspect(calculation.name)}")
 
           {:ok, query_calc} =
             Ash.Query.Calculation.new(
@@ -1704,10 +1704,17 @@ defmodule AshSql.Aggregate do
               module,
               opts,
               calculation.type,
-              Map.get(aggregate, :context, %{})
+              calculation.constraints
             )
 
-          query_calc
+          Ash.Actions.Read.add_calc_context(
+            query_calc,
+            aggregate.context.actor,
+            aggregate.context.authorize?,
+            aggregate.context.tenant,
+            aggregate.context.tracer,
+            nil
+          )
 
         other ->
           other
