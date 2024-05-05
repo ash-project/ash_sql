@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.1.1-rc.18](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.17...v0.1.1-rc.18) (2024-05-05)
+
+
+
+
+### Bug Fixes:
+
+* don't use `ilike` if its not supported
+
+* use type for now expr if available
+
 ## [v0.1.1-rc.17](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.16...v0.1.1-rc.17) (2024-05-02)
 
 
