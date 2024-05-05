@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.1.1-rc.19](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.18...v0.1.1-rc.19) (2024-05-05)
+
+
+
+
+### Bug Fixes:
+
+* use calculation context, and set calculation constraints for aggregates
+
 ## [v0.1.1-rc.18](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.17...v0.1.1-rc.18) (2024-05-05)
 
 
