@@ -305,14 +305,34 @@ defmodule AshSql.Expr do
          bindings,
          embedded?,
          acc,
-         _type
+         type
        ) do
-    text = escape_contains(right.string)
+    if bindings.sql_behaviour.ilike?() do
+      text = escape_contains(right.string)
 
-    {left, acc} =
-      AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
+      {left, acc} =
+        AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
 
-    {Ecto.Query.dynamic(ilike(^left, ^text)), acc}
+      {Ecto.Query.dynamic(ilike(^left, ^text)), acc}
+    else
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: pred_embedded?,
+          arguments: [
+            raw: "#{bindings.sql_behaviour.strpos_function()}((",
+            expr: left,
+            raw: "), (",
+            expr: right,
+            raw: ")) > 0"
+          ]
+        },
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
+    end
   end
 
   defp do_dynamic_expr(

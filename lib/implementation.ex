@@ -20,6 +20,8 @@ defmodule AshSql.Implementation do
             ) ::
               term
 
+  @callback ilike?() :: boolean()
+
   @callback determine_types(module, list(term)) :: list(term)
 
   @callback list_aggregate(Ash.Resource.t()) :: String.t() | nil
@@ -47,12 +49,14 @@ defmodule AshSql.Implementation do
       def multicolumn_distinct?, do: true
       def require_ash_functions_for_or_and_and?, do: false
       def require_extension_for_citext, do: false
+      def ilike?, do: true
 
       def type_expr(expr, type) do
         Ecto.Query.dynamic(type(^expr, ^type))
       end
 
       defoverridable expr: 6,
+                     ilike?: 0,
                      strpos_function: 0,
                      require_ash_functions_for_or_and_and?: 0,
                      require_extension_for_citext: 0,
