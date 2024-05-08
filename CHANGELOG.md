@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.1.1-rc.20](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.19...v0.1.1-rc.20) (2024-05-08)
+
+
+
+
+### Bug Fixes:
+
+* don't use `fragment("1")` because ecto requires a proper select
+
 ## [v0.1.1-rc.19](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.18...v0.1.1-rc.19) (2024-05-05)
 
 
