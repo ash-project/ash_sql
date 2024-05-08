@@ -1685,7 +1685,7 @@ defmodule AshSql.Expr do
         return_subquery?: true,
         on_subquery: fn subquery ->
           subquery =
-            Ecto.Query.from(row in subquery, select: fragment("1"))
+            Ecto.Query.from(row in subquery, select: row)
             |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
 
           cond do
