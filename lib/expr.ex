@@ -1001,7 +1001,7 @@ defmodule AshSql.Expr do
               arguments: [
                 raw: "CASE WHEN (",
                 casted_expr: left_expr,
-                raw: " == FALSE OR ",
+                raw: " = FALSE OR ",
                 casted_expr: left_expr,
                 raw: " IS NULL) THEN ",
                 casted_expr: right_expr,
@@ -1051,7 +1051,7 @@ defmodule AshSql.Expr do
               arguments: [
                 raw: "CASE WHEN (",
                 casted_expr: left_expr,
-                raw: " == FALSE OR ",
+                raw: " = FALSE OR ",
                 casted_expr: left_expr,
                 raw: " IS NULL) THEN ",
                 casted_expr: left_expr,
