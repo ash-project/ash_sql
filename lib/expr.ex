@@ -1265,10 +1265,10 @@ defmodule AshSql.Expr do
         ref =
           Ash.Actions.Read.add_calc_context_to_filter(
             ref,
-            aggregate.context[:actor],
-            aggregate.context[:authorize?],
-            aggregate.context[:tenant],
-            aggregate.context[:tracer],
+            aggregate.context.actor,
+            aggregate.context.authorize?,
+            aggregate.context.tenant,
+            aggregate.context.tracer,
             nil
           )
 
