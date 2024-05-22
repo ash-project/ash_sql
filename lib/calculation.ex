@@ -11,6 +11,8 @@ defmodule AshSql.Calculation do
   def add_calculations(query, [], _, _, _select?), do: {:ok, query}
 
   def add_calculations(query, calculations, resource, source_binding, select?) do
+    query.__ash_bindings__[:parent_bindings]
+
     {:ok, query} =
       AshSql.Join.join_all_relationships(
         query,

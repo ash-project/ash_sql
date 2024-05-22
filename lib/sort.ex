@@ -30,6 +30,9 @@ defmodule AshSql.Sort do
               []
           end
 
+        {%Ash.Query.Aggregate{} = aggregate, _} ->
+          [aggregate]
+
         {key, _} ->
           case Ash.Resource.Info.aggregate(resource, key) do
             nil ->
@@ -79,6 +82,46 @@ defmodule AshSql.Sort do
         sort
         |> sanitize_sort()
         |> Enum.reduce_while({:ok, [], query}, fn
+          {order, %Ash.Query.Aggregate{} = agg}, {:ok, query_expr, query} ->
+            type =
+              if agg.type do
+                query.__ash_bindings__.sql_behaviour.parameterized_type(
+                  agg.type,
+                  agg.constraints
+                )
+              else
+                nil
+              end
+
+            expr =
+              %Ash.Query.Ref{
+                attribute: agg,
+                resource: resource,
+                relationship_path: relationship_path
+              }
+
+            bindings =
+              if query.__ash_bindings__[:parent_bindings] do
+                Map.update!(query.__ash_bindings__, :parent_bindings, fn parent ->
+                  Map.put(parent, :parent_is_parent_as?, false)
+                end)
+              else
+                query.__ash_bindings__
+              end
+
+            {expr, acc} =
+              AshSql.Expr.dynamic_expr(
+                query,
+                expr,
+                bindings,
+                false,
+                type
+              )
+
+            {:cont,
+             {:ok, query_expr ++ [{order, expr}],
+              AshSql.Bindings.merge_expr_accumulator(query, acc)}}
+
           {order, %Ash.Query.Calculation{} = calc}, {:ok, query_expr, query} ->
             type =
               if calc.type do

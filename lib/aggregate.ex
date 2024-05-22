@@ -736,6 +736,7 @@ defmodule AshSql.Aggregate do
                 agg_query,
                 [{new_calc, expression}],
                 agg_query.__ash_bindings__.resource,
+                0,
                 false
               )
 
@@ -1605,7 +1606,7 @@ defmodule AshSql.Aggregate do
         )
 
       {:ok, query} =
-        AshSql.Aggregate.add_aggregates(
+        add_aggregates(
           query,
           used_aggregates,
           query.__ash_bindings__.resource,

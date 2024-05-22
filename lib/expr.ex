@@ -1309,7 +1309,11 @@ defmodule AshSql.Expr do
         value
       else
         if query.__ash_bindings__[:parent?] do
-          Ecto.Query.dynamic(field(parent_as(^ref_binding), ^field_name))
+          if rewrite_to_non_parent_binding?(ref_binding, query) do
+            Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
+          else
+            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^field_name))
+          end
         else
           Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
         end
@@ -1802,7 +1806,11 @@ defmodule AshSql.Expr do
       case bindings.sql_behaviour.parameterized_type(attr_type || expr_type, constraints) do
         nil ->
           if query.__ash_bindings__[:parent?] do
-            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+            if rewrite_to_non_parent_binding?(ref_binding, query) do
+              Ecto.Query.dynamic(field(as(^ref_binding), ^name))
+            else
+              Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+            end
           else
             Ecto.Query.dynamic(field(as(^ref_binding), ^name))
           end
@@ -1812,7 +1820,11 @@ defmodule AshSql.Expr do
 
           ref_dynamic =
             if query.__ash_bindings__[:parent?] do
-              Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+              if rewrite_to_non_parent_binding?(ref_binding, query) do
+                Ecto.Query.dynamic(field(as(^ref_binding), ^name))
+              else
+                Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+              end
             else
               Ecto.Query.dynamic(field(as(^ref_binding), ^name))
             end
@@ -1839,7 +1851,11 @@ defmodule AshSql.Expr do
 
     expr =
       if query.__ash_bindings__[:parent?] do
-        Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+        if rewrite_to_non_parent_binding?(ref_binding, query) do
+          Ecto.Query.dynamic(field(as(^ref_binding), ^name))
+        else
+          Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+        end
       else
         Ecto.Query.dynamic(field(as(^ref_binding), ^name))
       end
@@ -1853,32 +1869,41 @@ defmodule AshSql.Expr do
 
   defp do_dynamic_expr(query, value, bindings, embedded?, acc, type)
        when is_map(value) and not is_struct(value) do
-    if bindings[:location] == :update &&
-         Enum.any?(value, fn {key, value} ->
-           Ash.Expr.expr?(key) || Ash.Expr.expr?(value)
-         end) do
+    if bindings[:location] == :update do
       elements =
         value
         |> Enum.flat_map(fn {key, list_item} ->
+          list_item = reverse_engineer_type(list_item)
+
           if is_atom(key) do
-            [{:expr, %Ash.Query.Function.Type{arguments: [key, :atom, []]}}, {:expr, list_item}]
+            [
+              {:expr, %Ash.Query.Function.Type{arguments: [key, :atom, []]}},
+              [
+                {:raw, "("},
+                {:expr, list_item},
+                {:raw, ")"}
+              ]
+            ]
           else
             [
               {:expr, %Ash.Query.Function.Type{arguments: [key, :string, []]}},
-              {:expr, list_item}
+              [{:raw, "("}, {:expr, list_item}, {:raw, ")"}]
             ]
           end
         end)
         |> Enum.intersperse({:raw, ","})
+        |> List.flatten()
 
       do_dynamic_expr(
         query,
         %Fragment{
           embedded?: embedded?,
           arguments:
-            [
-              raw: "jsonb_build_object("
-            ] ++ elements ++ [raw: ")"]
+            squash_raw(
+              [
+                raw: "jsonb_build_object("
+              ] ++ elements ++ [raw: ")"]
+            )
         },
         bindings,
         embedded?,
@@ -1974,6 +1999,51 @@ defmodule AshSql.Expr do
         {value, acc} ->
           {value, acc}
       end
+    end
+  end
+
+  defp squash_raw(list, trail \\ [])
+  defp squash_raw([], trail), do: Enum.reverse(trail)
+
+  defp squash_raw([{:raw, left}, {:raw, right} | rest], trail) do
+    squash_raw([{:raw, left <> right} | rest], trail)
+  end
+
+  defp squash_raw([other | rest], trail), do: squash_raw(rest, [other | trail])
+
+  # I literally hate this
+  defp reverse_engineer_type(value) do
+    case value do
+      list_item when is_integer(list_item) ->
+        %Type{arguments: [list_item, :integer, []]}
+
+      list_item when is_float(list_item) ->
+        %Type{arguments: [list_item, :float, []]}
+
+      list_item when is_boolean(list_item) ->
+        %Type{arguments: [list_item, :boolean, []]}
+
+      list_item when is_binary(list_item) ->
+        %Type{arguments: [list_item, :string, []]}
+
+      list_item when is_atom(list_item) ->
+        %Type{arguments: [list_item, :atom, []]}
+
+      [] ->
+        %Type{arguments: [[], {:array, :string}, []]}
+
+      [item | _] = list_item ->
+        %{arguments: [_, type, constraints]} = type_func = reverse_engineer_type(item)
+        %{type_func | arguments: [list_item, {:array, type}, [items: constraints || []]]}
+
+      %{} = list_item ->
+        %Type{arguments: [list_item, :map, []]}
+
+      %Decimal{} = list_item ->
+        %Type{arguments: [list_item, :decimal, []]}
+
+      list_item ->
+        list_item
     end
   end
 
@@ -2183,42 +2253,50 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp list_expr(query, value, bindings, embedded?, acc, type) do
-    if !Enum.empty?(value) &&
-         Enum.any?(value, fn value ->
-           Ash.Expr.expr?(value) || is_map(value) || is_list(value)
-         end) do
-      type =
-        case type do
-          {:array, type} -> type
-          {:in, type} -> type
-          _ -> nil
+  defp list_requires_encoding?(value) do
+    !Enum.empty?(value) &&
+      Enum.any?(value, fn value ->
+        Ash.Expr.expr?(value) || is_map(value) || is_list(value)
+      end)
+  end
+
+  defp encode_list(query, value, bindings, embedded?, acc, type) do
+    type =
+      case type do
+        {:array, type} -> type
+        {:in, type} -> type
+        _ -> nil
+      end
+
+    elements =
+      Enum.map(value, fn list_item ->
+        if type do
+          {:expr, %Ash.Query.Function.Type{arguments: [list_item, type, []]}}
+        else
+          {:expr, list_item}
         end
+      end)
+      |> Enum.intersperse({:raw, ","})
 
-      elements =
-        Enum.map(value, fn list_item ->
-          if type do
-            {:expr, %Ash.Query.Function.Type{arguments: [list_item, type, []]}}
-          else
-            {:expr, list_item}
-          end
-        end)
-        |> Enum.intersperse({:raw, ","})
+    do_dynamic_expr(
+      query,
+      %Fragment{
+        embedded?: embedded?,
+        arguments:
+          [
+            raw: "ARRAY["
+          ] ++ elements ++ [raw: "]"]
+      },
+      bindings,
+      embedded?,
+      acc,
+      type
+    )
+  end
 
-      do_dynamic_expr(
-        query,
-        %Fragment{
-          embedded?: embedded?,
-          arguments:
-            [
-              raw: "ARRAY["
-            ] ++ elements ++ [raw: "]"]
-        },
-        bindings,
-        embedded?,
-        acc,
-        type
-      )
+  defp list_expr(query, value, bindings, embedded?, acc, type) do
+    if list_requires_encoding?(value) do
+      encode_list(query, value, bindings, embedded?, acc, type)
     else
       type =
         case type do
@@ -2308,15 +2386,19 @@ defmodule AshSql.Expr do
 
   defp maybe_sanitize_list(query, value, bindings, embedded?, acc, type) do
     if is_list(value) do
-      value
-      |> Enum.reduce({[], acc}, fn item, {list, acc} ->
-        {new_item, acc} = do_dynamic_expr(query, item, bindings, embedded?, acc, type)
+      if list_requires_encoding?(value) do
+        encode_list(query, value, bindings, embedded?, acc, type)
+      else
+        value
+        |> Enum.reduce({[], acc}, fn item, {list, acc} ->
+          {new_item, acc} = do_dynamic_expr(query, item, bindings, embedded?, acc, type)
 
-        {[new_item | list], acc}
-      end)
-      |> then(fn {list, acc} ->
-        {Enum.reverse(list), acc}
-      end)
+          {[new_item | list], acc}
+        end)
+        |> then(fn {list, acc} ->
+          {Enum.reverse(list), acc}
+        end)
+      end
     else
       case bindings.sql_behaviour.expr(query, value, bindings, true, acc, type) do
         {:ok, expr, acc} ->
@@ -2547,5 +2629,16 @@ defmodule AshSql.Expr do
 
   defp escape_contains(text) do
     "%" <> String.replace(text, ~r/([\%_])/u, "\\\\\\0") <> "%"
+  end
+
+  defp rewrite_to_non_parent_binding?(ref_binding, query) do
+    with {_, [_, last_rel]} <- query.__ash_bindings__.context[:data_layer][:lateral_join_source],
+         [maybe_join_rel] <- query.__ash_bindings__.bindings[ref_binding][:path],
+         true <- elem(last_rel, 3).name == maybe_join_rel do
+      true
+    else
+      _ ->
+        false
+    end
   end
 end
