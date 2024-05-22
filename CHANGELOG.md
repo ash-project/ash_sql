@@ -5,6 +5,21 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.1.3](https://github.com/ash-project/ash_sql/compare/v0.1.2...v0.1.3) (2024-05-22)
+
+
+
+
+### Bug Fixes:
+
+* handle anonymous sorting aggregates
+
+* properly set aggregate source binding when adding aggregate calculations
+
+* use period notation to access aggregate context fields (#30)
+
+* use SQL standard = instead of non standard == (#28)
+
 ## [v0.1.2](https://github.com/ash-project/ash_sql/compare/v0.1.1-rc.20...v0.1.2) (2024-05-10)
 
 
