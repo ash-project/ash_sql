@@ -1959,7 +1959,8 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp default_dynamic_expr(query, value, bindings, embedded?, acc, {:in, type}) when is_list(value) do
+  defp default_dynamic_expr(query, value, bindings, embedded?, acc, {:in, type})
+       when is_list(value) do
     list_expr(query, value, bindings, embedded?, acc, {:array, type})
   end
 
