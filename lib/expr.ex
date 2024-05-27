@@ -58,20 +58,28 @@ defmodule AshSql.Expr do
     do_dynamic_expr(query, expression, bindings, embedded?, acc, type)
   end
 
-  defp do_dynamic_expr(query, expr, bindings, embedded?, acc, type \\ nil)
+  defp do_dynamic_expr(query, expr, bindings, embedded?, acc, type \\ nil) do
+    case bindings.sql_behaviour.expr(query, expr, bindings, embedded?, acc, type) do
+      {:ok, expr, acc} -> {expr, acc}
+      {:error, error} -> {:error, error}
+      :error -> default_dynamic_expr(query, expr, bindings, embedded?, acc, type)
+    end
+  end
 
-  defp do_dynamic_expr(_, {:embed, other}, _bindings, _true, acc, _type) do
+  defp default_dynamic_expr(query, expr, bindings, embedded?, acc, type)
+
+  defp default_dynamic_expr(_, {:embed, other}, _bindings, _true, acc, _type) do
     {other, acc}
   end
 
-  defp do_dynamic_expr(query, %Not{expression: expression}, bindings, embedded?, acc, _type) do
+  defp default_dynamic_expr(query, %Not{expression: expression}, bindings, embedded?, acc, _type) do
     {new_expression, acc} =
       do_dynamic_expr(query, expression, bindings, embedded?, acc, :boolean)
 
     {Ecto.Query.dynamic(not (^new_expression)), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %IsNil{left: left, right: true, embedded?: pred_embedded?},
          bindings,
@@ -84,7 +92,7 @@ defmodule AshSql.Expr do
     {Ecto.Query.dynamic(is_nil(^left_expr)), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %IsNil{left: left, right: false, embedded?: pred_embedded?},
          bindings,
@@ -97,7 +105,7 @@ defmodule AshSql.Expr do
     {Ecto.Query.dynamic(not is_nil(^left_expr)), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %IsNil{left: left, right: right, embedded?: pred_embedded?},
          bindings,
@@ -113,7 +121,7 @@ defmodule AshSql.Expr do
     {Ecto.Query.dynamic(is_nil(^left_expr) == ^right_expr), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          _query,
          %Lazy{arguments: [{m, f, a}]},
          _bindings,
@@ -124,7 +132,7 @@ defmodule AshSql.Expr do
     {apply(m, f, a), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Ago{arguments: [left, right], embedded?: pred_embedded?},
          bindings,
@@ -141,7 +149,7 @@ defmodule AshSql.Expr do
      ), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %At{arguments: [left, right], embedded?: pred_embedded?},
          bindings,
@@ -165,7 +173,7 @@ defmodule AshSql.Expr do
     {expr, acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %FromNow{arguments: [left, right], embedded?: pred_embedded?},
          bindings,
@@ -182,7 +190,7 @@ defmodule AshSql.Expr do
      ), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %DateTimeAdd{arguments: [datetime, amount, interval], embedded?: pred_embedded?},
          bindings,
@@ -200,7 +208,7 @@ defmodule AshSql.Expr do
      acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %DateAdd{arguments: [date, amount, interval], embedded?: pred_embedded?},
          bindings,
@@ -217,7 +225,7 @@ defmodule AshSql.Expr do
     {Ecto.Query.dynamic(fragment("(?)", datetime_add(^date, ^amount, ^to_string(interval)))), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %GetPath{
            arguments: [
@@ -273,7 +281,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %GetPath{
            arguments: [%Ref{attribute: %{type: type, constraints: constraints}} = left, right],
@@ -299,7 +307,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Contains{arguments: [left, %Ash.CiString{} = right], embedded?: pred_embedded?},
          bindings,
@@ -335,7 +343,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %CountNils{arguments: [list], embedded?: pred_embedded?},
          bindings,
@@ -383,7 +391,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Contains{arguments: [left, right], embedded?: pred_embedded?},
          bindings,
@@ -400,7 +408,7 @@ defmodule AshSql.Expr do
     {Ecto.Query.dynamic(like(^left, ^text)), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Contains{arguments: [left, right], embedded?: pred_embedded?},
          bindings,
@@ -427,7 +435,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Length{arguments: [list], embedded?: pred_embedded?},
          bindings,
@@ -452,7 +460,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %If{arguments: [condition, when_true, when_false], embedded?: pred_embedded?},
          bindings,
@@ -551,7 +559,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %StringJoin{arguments: [values, joiner], embedded?: pred_embedded?},
          bindings,
@@ -576,7 +584,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %StringJoin{arguments: [values, joiner], embedded?: pred_embedded?},
          bindings,
@@ -597,7 +605,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %StringSplit{arguments: [string, delimiter, options], embedded?: pred_embedded?},
          bindings,
@@ -646,7 +654,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %StringJoin{arguments: [values], embedded?: pred_embedded?},
          bindings,
@@ -675,7 +683,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %StringJoin{arguments: [values], embedded?: pred_embedded?},
          bindings,
@@ -693,7 +701,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %StringLength{arguments: [value], embedded?: pred_embedded?},
          bindings,
@@ -714,7 +722,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %StringDowncase{arguments: [value], embedded?: pred_embedded?},
          bindings,
@@ -735,7 +743,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %StringTrim{arguments: [value], embedded?: pred_embedded?},
          bindings,
@@ -762,7 +770,7 @@ defmodule AshSql.Expr do
 
   # Sorry :(
   # This is bad to do, but is the only reasonable way I could find.
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Fragment{arguments: arguments, embedded?: pred_embedded?},
          bindings,
@@ -822,7 +830,7 @@ defmodule AshSql.Expr do
      }, acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %BooleanExpression{op: op, left: left, right: right},
          bindings,
@@ -845,7 +853,7 @@ defmodule AshSql.Expr do
     {expr, acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Ash.Query.Function.Minus{arguments: [arg], embedded?: pred_embedded?},
          bindings,
@@ -872,7 +880,7 @@ defmodule AshSql.Expr do
   # instead of `:same` we need an `ANY COMPATIBLE` equivalent.
   @cast_operands_for [:<>]
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %mod{
            __predicate__?: _,
@@ -1072,11 +1080,11 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(query, %MapSet{} = mapset, bindings, embedded?, acc, type) do
+  defp default_dynamic_expr(query, %MapSet{} = mapset, bindings, embedded?, acc, type) do
     do_dynamic_expr(query, Enum.to_list(mapset), bindings, embedded?, acc, type)
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Ash.CiString{string: string} = expression,
          bindings,
@@ -1109,7 +1117,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Ref{
            attribute: %Ash.Query.Calculation{} = calculation,
@@ -1175,7 +1183,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Ref{
            attribute: %Ash.Query.Aggregate{
@@ -1213,7 +1221,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Ref{attribute: %Ash.Query.Aggregate{} = aggregate} = ref,
          bindings,
@@ -1350,7 +1358,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Ash.CustomExpression{expression: expr},
          bindings,
@@ -1361,7 +1369,7 @@ defmodule AshSql.Expr do
     do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Round{arguments: [num | rest], embedded?: pred_embedded?},
          bindings,
@@ -1386,7 +1394,7 @@ defmodule AshSql.Expr do
     do_dynamic_expr(query, frag, bindings, pred_embedded? || embedded?, acc)
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Type{
            arguments: [
@@ -1403,7 +1411,7 @@ defmodule AshSql.Expr do
     do_dynamic_expr(query, nested_call, bindings, embedded?, acc, type)
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Type{arguments: [arg1, arg2, constraints]},
          bindings,
@@ -1430,7 +1438,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %CompositeType{arguments: [arg1, arg2, constraints], embedded?: pred_embedded?},
          bindings,
@@ -1472,7 +1480,7 @@ defmodule AshSql.Expr do
     {query.__ash_bindings__.sql_behaviour.type_expr(frag, type), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Now{embedded?: pred_embedded?},
          bindings,
@@ -1490,7 +1498,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Today{embedded?: pred_embedded?},
          bindings,
@@ -1508,7 +1516,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Ash.Query.Parent{expr: expr},
          bindings,
@@ -1532,7 +1540,7 @@ defmodule AshSql.Expr do
     )
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Error{arguments: [exception, input]} = value,
          bindings,
@@ -1623,7 +1631,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Exists{at_path: at_path, path: [first | rest], expr: expr} = exists,
          bindings,
@@ -1777,7 +1785,7 @@ defmodule AshSql.Expr do
     {Ecto.Query.dynamic(exists(subquery)), acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Ref{
            attribute: %Ash.Resource.Attribute{
@@ -1835,7 +1843,7 @@ defmodule AshSql.Expr do
     {expr, acc}
   end
 
-  defp do_dynamic_expr(
+  defp default_dynamic_expr(
          query,
          %Ref{attribute: %Ash.Resource.Aggregate{name: name}} = ref,
          bindings,
@@ -1863,11 +1871,11 @@ defmodule AshSql.Expr do
     {expr, acc}
   end
 
-  defp do_dynamic_expr(_query, %Ash.Vector{} = value, _bindings, _embedded?, acc, _type) do
+  defp default_dynamic_expr(_query, %Ash.Vector{} = value, _bindings, _embedded?, acc, _type) do
     {value, acc}
   end
 
-  defp do_dynamic_expr(query, value, bindings, embedded?, acc, type)
+  defp default_dynamic_expr(query, value, bindings, embedded?, acc, type)
        when is_map(value) and not is_struct(value) do
     if bindings[:location] == :update do
       elements =
@@ -1926,7 +1934,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(query, other, bindings, true, acc, type) do
+  defp default_dynamic_expr(query, other, bindings, true, acc, type) do
     if other && is_atom(other) && !is_boolean(other) do
       {to_string(other), acc}
     else
@@ -1951,16 +1959,17 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(query, value, bindings, embedded?, acc, {:in, type}) when is_list(value) do
+  defp default_dynamic_expr(query, value, bindings, embedded?, acc, {:in, type})
+       when is_list(value) do
     list_expr(query, value, bindings, embedded?, acc, {:array, type})
   end
 
-  defp do_dynamic_expr(query, value, bindings, embedded?, acc, type)
+  defp default_dynamic_expr(query, value, bindings, embedded?, acc, type)
        when not is_nil(value) and is_atom(value) and not is_boolean(value) do
     do_dynamic_expr(query, to_string(value), bindings, embedded?, acc, type)
   end
 
-  defp do_dynamic_expr(query, value, bindings, false, acc, type)
+  defp default_dynamic_expr(query, value, bindings, false, acc, type)
        when type == nil or type == :any do
     if is_list(value) do
       list_expr(query, value, bindings, false, acc, type)
@@ -1969,7 +1978,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp do_dynamic_expr(query, value, bindings, false, acc, type) do
+  defp default_dynamic_expr(query, value, bindings, false, acc, type) do
     if Ash.Expr.expr?(value) do
       if is_list(value) do
         list_expr(query, value, bindings, false, acc, type)
