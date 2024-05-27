@@ -1430,6 +1430,9 @@ defmodule AshSql.Expr do
         {{:parameterized, Ash.Type.Map.EctoType, []}, %Ecto.Query.DynamicExpr{}} ->
           {expr, acc}
 
+        {{:parameterized, {Ash.Type.Map.EctoType, []}}, %Ecto.Query.DynamicExpr{}} ->
+          {expr, acc}
+
         _ ->
           {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
       end
@@ -2376,6 +2379,9 @@ defmodule AshSql.Expr do
       {true, extension} ->
         case type do
           {:parameterized, AshSql.Type.CiString, _} ->
+            require_extension!(resource, extension, context, query)
+
+          {:parameterized, {AshSql.Type.CiString, _}} ->
             require_extension!(resource, extension, context, query)
 
           :ci_string ->
