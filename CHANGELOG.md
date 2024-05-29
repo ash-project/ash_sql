@@ -5,6 +5,25 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.0](https://github.com/ash-project/ash_sql/compare/v0.1.3...v0.2.0) (2024-05-29)
+
+
+
+
+### Features:
+
+* add auto dispatch of dynamic_expr calls to behaviour module (#33)
+
+* add auto dispatch of dynamic_expr calls to behaviour module
+
+### Bug Fixes:
+
+* match on new & old parameterized types
+
+### Improvements:
+
+* support selecting atomic results into a subquery, and using those as the atomic values
+
 ## [v0.1.3](https://github.com/ash-project/ash_sql/compare/v0.1.2...v0.1.3) (2024-05-22)
 
 
