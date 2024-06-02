@@ -6,7 +6,7 @@ defmodule AshSql.Atomics do
   end
 
   def select_atomics(resource, query, atomics) do
-    Enum.reduce_while(atomics, {:ok, query, []}, fn {field, expr}, {:ok, query, set} ->
+    Enum.reduce_while(atomics, {:ok, query, []}, fn {field, expr}, {:ok, query, dynamics} ->
       attribute = Ash.Resource.Info.attribute(resource, field)
 
       type =
@@ -26,8 +26,10 @@ defmodule AshSql.Atomics do
              type
            ) do
         {dynamic, acc} ->
+          field = String.to_atom("__new_#{field}")
+
           {:cont,
-           {:ok, AshSql.Expr.merge_accumulator(query, acc), Keyword.put(set, field, dynamic)}}
+           {:ok, AshSql.Expr.merge_accumulator(query, acc), Keyword.put(dynamics, field, dynamic)}}
 
         other ->
           {:halt, other}
@@ -100,7 +102,10 @@ defmodule AshSql.Atomics do
 
     {query, dynamics} =
       Enum.reduce(atomics, {query, []}, fn {field, _expr}, {query, set} ->
-        {query, Keyword.put(set, field, Ecto.Query.dynamic([], field(as(^binding), ^field)))}
+        mapped_field = String.to_atom("__new_#{field}")
+
+        {query,
+         Keyword.put(set, field, Ecto.Query.dynamic([], field(as(^binding), ^mapped_field)))}
       end)
 
     {params, set, _, query} =
