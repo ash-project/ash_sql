@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.1](https://github.com/ash-project/ash_sql/compare/v0.2.0...v0.2.1) (2024-06-02)
+
+
+
+
+### Improvements:
+
+* select dynamics uses `__new_` prefix
+
 ## [v0.2.0](https://github.com/ash-project/ash_sql/compare/v0.1.3...v0.2.0) (2024-05-29)
 
 
