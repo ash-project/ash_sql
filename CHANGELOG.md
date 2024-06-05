@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.2](https://github.com/ash-project/ash_sql/compare/v0.2.1...v0.2.2) (2024-06-05)
+
+
+
+
+### Bug Fixes:
+
+* carry over tenant in joined queries
+
 ## [v0.2.1](https://github.com/ash-project/ash_sql/compare/v0.2.0...v0.2.1) (2024-06-02)
 
 
