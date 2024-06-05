@@ -5,6 +5,7 @@ defmodule AshSql.Atomics do
     {:ok, query}
   end
 
+  # sobelow_skip ["DOS.StringToAtom"]
   def select_atomics(resource, query, atomics) do
     Enum.reduce_while(atomics, {:ok, query, []}, fn {field, expr}, {:ok, query, dynamics} ->
       attribute = Ash.Resource.Info.attribute(resource, field)
@@ -84,6 +85,7 @@ defmodule AshSql.Atomics do
     end
   end
 
+  # sobelow_skip ["DOS.StringToAtom"]
   def query_with_atomics(
         resource,
         %{__ash_bindings__: %{atomics_in_binding: binding}} = query,

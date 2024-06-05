@@ -15,6 +15,7 @@ defmodule AshSql.MixProject do
       description: @description,
       elixir: "~> 1.13",
       start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
       deps: deps(),
       docs: docs(),
       package: package()
@@ -81,6 +82,12 @@ defmodule AshSql.MixProject do
       {:dialyxir, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:sobelow, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  defp aliases do
+    [
+      sobelow: ["sobelow --skip"]
     ]
   end
 end
