@@ -311,6 +311,7 @@ defmodule AshSql.Join do
       actor: context[:private][:actor],
       tenant: context[:private][:tenant]
     )
+    |> Ash.Query.set_tenant(Map.get(query, :__tenant__))
     |> Ash.Query.unset([:sort, :distinct, :select, :limit, :offset])
     |> hydrate_refs(context[:private][:actor])
     |> then(fn query ->
