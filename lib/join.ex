@@ -74,103 +74,57 @@ defmodule AshSql.Join do
         parent_query,
         no_inner_join?
       ) do
-    relationship_paths =
-      cond do
-        relationship_paths ->
-          relationship_paths
+    case join_parent_paths(query, filter, relationship_paths) do
+      {:ok, query} ->
+        relationship_paths =
+          relationship_paths ||
+            filter
+            |> Ash.Filter.relationship_paths()
+            |> to_joins(filter, query.__ash_bindings__.resource)
 
-        opts[:no_this?] ->
-          filter
-          |> Ash.Filter.map(fn
-            %Ash.Query.Parent{} ->
-              nil
+        Enum.reduce_while(relationship_paths, {:ok, query}, fn
+          {_join_type, []}, {:ok, query} ->
+            {:cont, {:ok, query}}
 
-            other ->
-              other
-          end)
-          |> Ash.Filter.relationship_paths()
-          |> to_joins(filter, query.__ash_bindings__.resource)
+          {join_type, [relationship | rest_rels]}, {:ok, query} ->
+            join_type =
+              if no_inner_join? do
+                :left
+              else
+                join_type
+              end
 
-        true ->
-          filter
-          |> Ash.Filter.relationship_paths()
-          |> to_joins(filter, query.__ash_bindings__.resource)
-      end
+            source = source || relationship.source
 
-    Enum.reduce_while(relationship_paths, {:ok, query}, fn
-      {_join_type, []}, {:ok, query} ->
-        {:cont, {:ok, query}}
+            current_path = path ++ [relationship]
 
-      {join_type, [relationship | rest_rels]}, {:ok, query} ->
-        join_type =
-          if no_inner_join? do
-            :left
-          else
-            join_type
-          end
+            current_join_type = join_type
 
-        source = source || relationship.source
+            look_for_join_types =
+              case join_type do
+                :left ->
+                  [:left, :inner]
 
-        current_path = path ++ [relationship]
+                :inner ->
+                  [:left, :inner]
 
-        current_join_type = join_type
+                other ->
+                  [other]
+              end
 
-        look_for_join_types =
-          case join_type do
-            :left ->
-              [:left, :inner]
+            binding =
+              get_binding(source, Enum.map(current_path, & &1.name), query, look_for_join_types)
 
-            :inner ->
-              [:left, :inner]
-
-            other ->
-              [other]
-          end
-
-        binding =
-          get_binding(source, Enum.map(current_path, & &1.name), query, look_for_join_types)
-
-        # We can't reuse joins if we're adding filters/have a separate parent binding
-        if is_nil(join_filters) && is_nil(parent_query) && binding do
-          case join_all_relationships(
-                 query,
-                 filter,
-                 opts,
-                 [{join_type, rest_rels}],
-                 current_path,
-                 source,
-                 sort?
-               ) do
-            {:ok, query} ->
-              {:cont, {:ok, query}}
-
-            {:error, error} ->
-              {:halt, {:error, error}}
-          end
-        else
-          case join_relationship(
-                 set_parent_bindings(query, parent_query),
-                 relationship,
-                 Enum.map(path, & &1.name),
-                 current_join_type,
-                 source,
-                 filter,
-                 sort?,
-                 join_filters[Enum.map(current_path, & &1.name)]
-               ) do
-            {:ok, joined_query} ->
-              joined_query_with_distinct = add_distinct(relationship, join_type, joined_query)
-
+            # We can't reuse joins if we're adding filters/have a separate parent binding
+            if is_nil(join_filters) && is_nil(parent_query) && binding do
               case join_all_relationships(
-                     joined_query_with_distinct,
+                     query,
                      filter,
                      opts,
                      [{join_type, rest_rels}],
                      current_path,
                      source,
-                     sort?,
-                     join_filters,
-                     joined_query
+                     sort?
                    ) do
                 {:ok, query} ->
                   {:cont, {:ok, query}}
@@ -178,12 +132,84 @@ defmodule AshSql.Join do
                 {:error, error} ->
                   {:halt, {:error, error}}
               end
+            else
+              case join_relationship(
+                     set_parent_bindings(query, parent_query),
+                     relationship,
+                     Enum.map(path, & &1.name),
+                     current_join_type,
+                     source,
+                     filter,
+                     sort?,
+                     join_filters[Enum.map(current_path, & &1.name)]
+                   ) do
+                {:ok, joined_query} ->
+                  joined_query_with_distinct = add_distinct(relationship, join_type, joined_query)
 
-            {:error, error} ->
-              {:halt, {:error, error}}
-          end
+                  case join_all_relationships(
+                         joined_query_with_distinct,
+                         filter,
+                         opts,
+                         [{join_type, rest_rels}],
+                         current_path,
+                         source,
+                         sort?,
+                         join_filters,
+                         joined_query
+                       ) do
+                    {:ok, query} ->
+                      {:cont, {:ok, query}}
+
+                    {:error, error} ->
+                      {:halt, {:error, error}}
+                  end
+
+                {:error, error} ->
+                  {:halt, {:error, error}}
+              end
+            end
+        end)
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp join_parent_paths(query, filter, nil) do
+    parent_exprs =
+      Ash.Filter.flat_map(filter, fn
+        %Ash.Query.Parent{expr: expr} ->
+          [expr]
+
+        _ ->
+          []
+      end)
+
+    case query.__ash_bindings__[:lateral_join_source_query] do
+      nil ->
+        {:ok, query}
+
+      lateral_join_source_query ->
+        case join_all_relationships(lateral_join_source_query, parent_exprs) do
+          {:ok, lateral_join_source_query} ->
+            {:ok,
+             put_in(query.__ash_bindings__.lateral_join_source_query, lateral_join_source_query)
+             |> Map.update!(:__ash_bindings__, fn bindings ->
+               Map.put(
+                 bindings,
+                 :parent_bindings,
+                 Map.put(lateral_join_source_query.__ash_bindings__, :parent?, true)
+               )
+             end)}
+
+          {:error, error} ->
+            {:error, error}
         end
-    end)
+    end
+  end
+
+  defp join_parent_paths(query, _filter, _relationship_paths) do
+    {:ok, query}
   end
 
   defp set_parent_bindings(query, parent_query) do
@@ -802,8 +828,8 @@ defmodule AshSql.Join do
               )
           end
 
-        AshSql.Aggregate.add_aggregates(
-          query,
+        query
+        |> AshSql.Aggregate.add_aggregates(
           used_aggregates,
           relationship.destination,
           false,

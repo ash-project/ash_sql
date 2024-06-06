@@ -1316,12 +1316,9 @@ defmodule AshSql.Expr do
       if value do
         value
       else
-        if query.__ash_bindings__[:parent?] do
-          if rewrite_to_non_parent_binding?(ref_binding, query) do
-            Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
-          else
-            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^field_name))
-          end
+        if query.__ash_bindings__[:parent?] &&
+             ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
+          Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
         else
           Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
         end
@@ -1816,12 +1813,10 @@ defmodule AshSql.Expr do
     expr =
       case bindings.sql_behaviour.parameterized_type(attr_type || expr_type, constraints) do
         nil ->
-          if query.__ash_bindings__[:parent?] do
-            if rewrite_to_non_parent_binding?(ref_binding, query) do
-              Ecto.Query.dynamic(field(as(^ref_binding), ^name))
-            else
-              Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
-            end
+          # magic atoms FTW
+          if query.__ash_bindings__[:parent?] &&
+               ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
+            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
           else
             Ecto.Query.dynamic(field(as(^ref_binding), ^name))
           end
@@ -1830,12 +1825,9 @@ defmodule AshSql.Expr do
           validate_type!(query, type, ref)
 
           ref_dynamic =
-            if query.__ash_bindings__[:parent?] do
-              if rewrite_to_non_parent_binding?(ref_binding, query) do
-                Ecto.Query.dynamic(field(as(^ref_binding), ^name))
-              else
-                Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
-              end
+            if query.__ash_bindings__[:parent?] &&
+                 ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
+              Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
             else
               Ecto.Query.dynamic(field(as(^ref_binding), ^name))
             end
@@ -1861,12 +1853,9 @@ defmodule AshSql.Expr do
     end
 
     expr =
-      if query.__ash_bindings__[:parent?] do
-        if rewrite_to_non_parent_binding?(ref_binding, query) do
-          Ecto.Query.dynamic(field(as(^ref_binding), ^name))
-        else
-          Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
-        end
+      if query.__ash_bindings__[:parent?] &&
+           ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
+        Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
       else
         Ecto.Query.dynamic(field(as(^ref_binding), ^name))
       end
@@ -2644,16 +2633,5 @@ defmodule AshSql.Expr do
 
   defp escape_contains(text) do
     "%" <> String.replace(text, ~r/([\%_])/u, "\\\\\\0") <> "%"
-  end
-
-  defp rewrite_to_non_parent_binding?(ref_binding, query) do
-    with {_, [_, last_rel]} <- query.__ash_bindings__.context[:data_layer][:lateral_join_source],
-         [maybe_join_rel] <- query.__ash_bindings__.bindings[ref_binding][:path],
-         true <- elem(last_rel, 3).name == maybe_join_rel do
-      true
-    else
-      _ ->
-        false
-    end
   end
 end

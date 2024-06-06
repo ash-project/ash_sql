@@ -100,14 +100,7 @@ defmodule AshSql.Sort do
                 relationship_path: relationship_path
               }
 
-            bindings =
-              if query.__ash_bindings__[:parent_bindings] do
-                Map.update!(query.__ash_bindings__, :parent_bindings, fn parent ->
-                  Map.put(parent, :parent_is_parent_as?, false)
-                end)
-              else
-                query.__ash_bindings__
-              end
+            bindings = query.__ash_bindings__
 
             {expr, acc} =
               AshSql.Expr.dynamic_expr(
@@ -143,14 +136,7 @@ defmodule AshSql.Sort do
             |> Ash.Filter.move_to_relationship_path(relationship_path)
             |> case do
               {:ok, expr} ->
-                bindings =
-                  if query.__ash_bindings__[:parent_bindings] do
-                    Map.update!(query.__ash_bindings__, :parent_bindings, fn parent ->
-                      Map.put(parent, :parent_is_parent_as?, false)
-                    end)
-                  else
-                    query.__ash_bindings__
-                  end
+                bindings = query.__ash_bindings__
 
                 {expr, acc} =
                   AshSql.Expr.dynamic_expr(

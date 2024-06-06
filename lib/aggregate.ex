@@ -234,7 +234,7 @@ defmodule AshSql.Aggregate do
 
                                      from(row in subquery,
                                        group_by: field(row, ^field),
-                                       select_merge: map(row, ^[field])
+                                       select_merge: %{^field => field(row, ^field)}
                                      )
 
                                      subquery =
@@ -260,7 +260,7 @@ defmodule AshSql.Aggregate do
                                    else
                                      from(row in subquery,
                                        group_by: field(row, ^field),
-                                       select_merge: map(row, ^[field]),
+                                       select_merge: %{^field => field(row, ^field)},
                                        where:
                                          field(
                                            parent_as(^source_binding),
