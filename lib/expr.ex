@@ -1869,7 +1869,7 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(query, value, bindings, embedded?, acc, type)
        when is_map(value) and not is_struct(value) do
-    if bindings[:location] == :update do
+    if bindings[:location] == :update && Ash.Expr.expr?(value) do
       elements =
         value
         |> Enum.flat_map(fn {key, list_item} ->
