@@ -1913,13 +1913,6 @@ defmodule AshSql.Expr do
     else
       {value, acc} =
         Enum.reduce(value, {%{}, acc}, fn {key, value}, {map, acc} ->
-          {value, acc} = do_dynamic_expr(query, value, bindings, embedded?, acc)
-
-          {Map.put(map, key, value), acc}
-        end)
-
-      {value, acc} =
-        Enum.reduce(value, {%{}, acc}, fn {key, value}, {map, acc} ->
           case do_dynamic_expr(query, value, bindings, embedded?, acc, type) do
             {%Ecto.Query.DynamicExpr{}, _acc} ->
               # we can't actually support dynamics here because ecto doesn't support map
