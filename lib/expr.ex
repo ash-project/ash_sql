@@ -1918,6 +1918,21 @@ defmodule AshSql.Expr do
           {Map.put(map, key, value), acc}
         end)
 
+      {value, acc} =
+        Enum.reduce(value, {%{}, acc}, fn {key, value}, {map, acc} ->
+          case do_dynamic_expr(query, value, bindings, embedded?, acc, type) do
+            {%Ecto.Query.DynamicExpr{}, _acc} ->
+              # we can't actually support dynamics here because ecto doesn't support map
+              # dynamics, so if we get back a dynamic we ignore it
+              {Map.put(map, key, value), acc}
+
+            {other, acc} ->
+              # but we need any other potential transformations that happen
+              # like the converting of uuids to binaries
+              {Map.put(map, key, other), acc}
+          end
+        end)
+
       if embedded? do
         {query.__ash_bindings__.sql_behaviour.type_expr(value, :map), acc}
       else
