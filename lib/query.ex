@@ -209,7 +209,7 @@ defmodule AshSql.Query do
         expr:
           {:merge, [],
            [
-             {:&, [], [0]},
+             merge_base,
              {:%{}, [], merging}
            ]}
       } = select ->
@@ -221,12 +221,12 @@ defmodule AshSql.Query do
         new_query =
           %{
             query
-            | select: %{select | expr: {:merge, [], [{:&, [], [0]}, {:%{}, [], new_sub_selects}]}}
+            | select: %{select | expr: {:merge, [], [merge_base, {:%{}, [], new_sub_selects}]}}
           }
 
         {calculation_merges, aggregate_merges, new_query}
 
-      _ ->
+      %Ecto.Query.SelectExpr{expr: other_expr} ->
         {%{}, %{}, query}
     end
   end
