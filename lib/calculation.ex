@@ -85,7 +85,7 @@ defmodule AshSql.Calculation do
                 AshSql.Expr.dynamic_expr(
                   query,
                   expression,
-                  query.__ash_bindings__,
+                  Map.put(query.__ash_bindings__, :location, :select),
                   false,
                   type
                 )

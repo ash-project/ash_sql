@@ -147,6 +147,9 @@ defmodule AshSql.Query do
       {:ok, query} ->
         if query.__ash_bindings__[:__order__?] && query.windows[:order] do
           if query.distinct do
+            {calculations_require_rewrite, aggregates_require_rewrite, query} =
+              rewrite_nested_selects(query)
+
             query_with_order =
               from(row in query, select_merge: %{__order__: over(row_number(), :order)})
 
@@ -161,7 +164,21 @@ defmodule AshSql.Query do
                order_by: row.__order__
              )
              |> Map.put(:limit, query.limit)
-             |> Map.put(:offset, query.offset)}
+             |> Map.put(:offset, query.offset)
+             |> AshSql.Bindings.default_bindings(
+               resource,
+               query.__ash_bindings__.sql_behaviour
+             )
+             |> Map.update!(:__ash_bindings__, fn bindings ->
+               Map.merge(
+                 bindings,
+                 %{
+                   calculations_require_rewrite: calculations_require_rewrite,
+                   aggregates_require_rewrite: aggregates_require_rewrite
+                 },
+                 fn _, v1, v2 -> Map.merge(v1, v2) end
+               )
+             end)}
           else
             order_by = %{query.windows[:order] | expr: query.windows[:order].expr[:order_by]}
 
@@ -184,5 +201,111 @@ defmodule AshSql.Query do
     else
       ash_query
     end
+  end
+
+  def rewrite_nested_selects(query) do
+    case query.select do
+      %Ecto.Query.SelectExpr{
+        expr:
+          {:merge, [],
+           [
+             {:&, [], [0]},
+             {:%{}, [], merging}
+           ]}
+      } = select ->
+        {merging, aggregate_merges} = remap_sub_select(merging, :aggregates)
+
+        {new_sub_selects, calculation_merges} =
+          remap_sub_select(merging, :calculations)
+
+        new_query =
+          %{
+            query
+            | select: %{select | expr: {:merge, [], [{:&, [], [0]}, {:%{}, [], new_sub_selects}]}}
+          }
+
+        {calculation_merges, aggregate_merges, new_query}
+
+      _ ->
+        {%{}, %{}, query}
+    end
+  end
+
+  # sobelow_skip ["DOS.StringToAtom"]
+  defp remap_sub_select(merging, sub_key) do
+    case Keyword.fetch(merging, sub_key) do
+      {:ok, {:%{}, [], nested}} ->
+        Enum.reduce(nested, {Keyword.delete(merging, sub_key), %{}}, fn {name, expr},
+                                                                        {subselect, remapping} ->
+          new_name = String.to_atom("__#{sub_key}__#{name}")
+          {Keyword.put(subselect, new_name, expr), Map.put(remapping, new_name, name)}
+        end)
+
+      :error ->
+        {merging, %{}}
+    end
+  end
+
+  def remap_mapped_fields(
+        results,
+        query,
+        calculations_require_rewrite \\ %{},
+        aggregates_require_rewrite \\ %{}
+      ) do
+    calculation_names = query.__ash_bindings__.calculation_names
+    aggregate_names = query.__ash_bindings__.aggregate_names
+
+    calculations_require_rewrite =
+      Map.merge(
+        query.__ash_bindings__[:calculations_require_rewrite] || %{},
+        calculations_require_rewrite
+      )
+
+    aggregates_require_rewrite =
+      Map.merge(
+        query.__ash_bindings__[:aggregates_require_rewrite] || %{},
+        aggregates_require_rewrite
+      )
+
+    if Enum.empty?(calculation_names) and Enum.empty?(aggregate_names) and
+         Enum.empty?(calculations_require_rewrite) and Enum.empty?(aggregates_require_rewrite) do
+      results
+    else
+      Enum.map(results, fn result ->
+        result
+        |> remap_to_nested(:calculations, calculations_require_rewrite)
+        |> remap_to_nested(:aggregates, aggregates_require_rewrite)
+        |> remap(:calculations, calculation_names)
+        |> remap(:aggregates, aggregate_names)
+      end)
+    end
+  end
+
+  defp remap_to_nested(record, _subfield, mapping) when mapping == %{} do
+    record
+  end
+
+  defp remap_to_nested(record, subfield, mapping) do
+    Map.update!(record, subfield, fn subfield_values ->
+      Enum.reduce(mapping, subfield_values, fn {source, dest}, subfield_values ->
+        subfield_values
+        |> Map.put(dest, Map.get(record, source))
+        |> Map.delete(source)
+      end)
+    end)
+  end
+
+  defp remap(record, _subfield, mapping) when mapping == %{} do
+    record
+  end
+
+  defp remap(record, subfield, mapping) do
+    Map.update!(record, subfield, fn subfield_values ->
+      Enum.reduce(mapping, subfield_values, fn {dest, source}, subfield_values ->
+        subfield_values
+        |> Map.put(dest, Map.get(subfield_values, source))
+        |> Map.delete(source)
+      end)
+    end)
   end
 end

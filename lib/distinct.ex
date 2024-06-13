@@ -98,11 +98,16 @@ defmodule AshSql.Distinct do
       sort = query.__ash_bindings__[:sort] || []
 
       distinct =
-        query.distinct ||
-          %Ecto.Query.QueryExpr{
-            expr: [],
-            params: []
-          }
+        if Code.ensure_loaded?(Ecto.Query.ByExpr) do
+          query.distinct ||
+            struct!(Ecto.Query.ByExpr, expr: [], params: [])
+        else
+          query.distinct ||
+            %Ecto.Query.QueryExpr{
+              expr: [],
+              params: []
+            }
+        end
 
       if sort == [] do
         {:ok, default_distinct_statement(query, distinct_on)}
@@ -144,10 +149,16 @@ defmodule AshSql.Distinct do
 
   defp default_distinct_statement(query, distinct_on) do
     distinct =
-      query.distinct ||
-        %Ecto.Query.QueryExpr{
-          expr: []
-        }
+      if Code.ensure_loaded?(Ecto.Query.ByExpr) do
+        query.distinct ||
+          struct!(Ecto.Query.ByExpr, expr: [], params: [])
+      else
+        query.distinct ||
+          %Ecto.Query.QueryExpr{
+            expr: [],
+            params: []
+          }
+      end
 
     {expr, params, _, query} =
       Enum.reduce(distinct_on, {[], [], Enum.count(distinct.params), query}, fn
