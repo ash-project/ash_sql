@@ -226,7 +226,7 @@ defmodule AshSql.Query do
 
         {calculation_merges, aggregate_merges, new_query}
 
-      %Ecto.Query.SelectExpr{expr: other_expr} ->
+      %Ecto.Query.SelectExpr{expr: _other_expr} ->
         {%{}, %{}, query}
     end
   end
