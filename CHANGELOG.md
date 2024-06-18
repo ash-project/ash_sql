@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.6](https://github.com/ash-project/ash_sql/compare/v0.2.5...v0.2.6) (2024-06-18)
+
+
+
+
+### Bug Fixes:
+
+* ensure we always honor `atomics_at_binding` option from data layer
+
 ## [v0.2.5](https://github.com/ash-project/ash_sql/compare/v0.2.4...v0.2.5) (2024-06-13)
 
 
