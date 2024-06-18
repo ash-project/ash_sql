@@ -93,8 +93,7 @@ defmodule AshSql.Atomics do
         atomics,
         updating_one_changes,
         existing_set
-      )
-      when updating_one_changes == %{} do
+      ) do
     {:ok, query} =
       if is_nil(filter) do
         {:ok, query}
@@ -110,10 +109,17 @@ defmodule AshSql.Atomics do
          Keyword.put(set, field, Ecto.Query.dynamic([], field(as(^binding), ^mapped_field)))}
       end)
 
+    {params, set, count} =
+      updating_one_changes
+      |> Map.to_list()
+      |> Enum.reduce({[], [], 0}, fn {key, value}, {params, set, count} ->
+        {[{value, {0, key}} | params], [{key, {:^, [], [count]}} | set], count + 1}
+      end)
+
     {params, set, _, query} =
       Enum.reduce(
         dynamics ++ existing_set,
-        {[], [], 0, query},
+        {params, set, count, query},
         fn {key, value}, {params, set, count, query} ->
           case AshSql.Expr.dynamic_expr(query, value, query.__ash_bindings__) do
             {%Ecto.Query.DynamicExpr{} = dynamic, acc} ->
