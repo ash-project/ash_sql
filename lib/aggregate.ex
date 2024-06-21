@@ -243,7 +243,7 @@ defmodule AshSql.Aggregate do
                                      {:ok, subquery} =
                                        apply(
                                          module,
-                                         query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function,
+                                         query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function(),
                                          [
                                            opts,
                                            source_binding,
