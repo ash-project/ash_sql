@@ -414,8 +414,9 @@ defmodule AshSql.Join do
       %{
         join_query
         | prefix:
-            Map.get(query, :__tenant__) || query.prefix ||
+            Map.get(query, :__tenant__) ||
               query.__ash_bindings__.sql_behaviour.schema(resource) ||
+              query.prefix ||
               query.__ash_bindings__.sql_behaviour.repo(resource, :mutate).config()[
                 :default_prefix
               ]
