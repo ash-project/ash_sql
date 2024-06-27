@@ -29,6 +29,9 @@ defmodule AshSql.Filter do
   end
 
   def add_filter_expression(query, filter) do
+    IO.inspect(query, label: "query, in add ")
+    IO.inspect(filter, label: "filter, in add")
+
     filter
     |> AshSql.Expr.split_statements(:and)
     |> Enum.reduce(query, fn filter, query ->
