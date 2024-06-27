@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.7](https://github.com/ash-project/ash_sql/compare/v0.2.6...v0.2.7) (2024-06-27)
+
+
+
+
+### Bug Fixes:
+
+* prefer resource's static prefix over current query's prefix
+
 ## [v0.2.6](https://github.com/ash-project/ash_sql/compare/v0.2.5...v0.2.6) (2024-06-18)
 
 
