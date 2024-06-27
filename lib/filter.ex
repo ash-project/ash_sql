@@ -4,6 +4,9 @@ defmodule AshSql.Filter do
   require Ecto.Query
 
   def filter(query, filter, resource, opts \\ []) do
+    IO.inspect(query, label: "query")
+    IO.inspect(filter, label: "filter")
+
     used_aggregates = Ash.Filter.used_aggregates(filter, [])
 
     query
