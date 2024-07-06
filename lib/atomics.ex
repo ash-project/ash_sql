@@ -11,10 +11,11 @@ defmodule AshSql.Atomics do
       attribute = Ash.Resource.Info.attribute(resource, field)
 
       type =
-        query.__ash_bindings__.sql_behaviour.parameterized_type(
-          attribute.type,
-          attribute.constraints
-        )
+        query.__ash_bindings__.sql_behaviour.storage_type(resource, attribute.name) ||
+          query.__ash_bindings__.sql_behaviour.parameterized_type(
+            attribute.type,
+            attribute.constraints
+          )
 
       case AshSql.Expr.dynamic_expr(
              query,
@@ -186,10 +187,11 @@ defmodule AshSql.Atomics do
         attribute = Ash.Resource.Info.attribute(resource, field)
 
         type =
-          query.__ash_bindings__.sql_behaviour.parameterized_type(
-            attribute.type,
-            attribute.constraints
-          )
+          query.__ash_bindings__.sql_behaviour.storage_type(resource, attribute.name) ||
+            query.__ash_bindings__.sql_behaviour.parameterized_type(
+              attribute.type,
+              attribute.constraints
+            )
 
         case AshSql.Expr.dynamic_expr(
                query,

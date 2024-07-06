@@ -66,8 +66,6 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp default_dynamic_expr(query, expr, bindings, embedded?, acc, type)
-
   defp default_dynamic_expr(_, {:embed, other}, _bindings, _true, acc, _type) do
     {other, acc}
   end
@@ -2280,6 +2278,8 @@ defmodule AshSql.Expr do
   end
 
   defp encode_list(query, value, bindings, embedded?, acc, type) do
+    is_map? = type in [:map, :jsonb]
+
     type =
       case type do
         {:array, type} -> type
@@ -2297,20 +2297,37 @@ defmodule AshSql.Expr do
       end)
       |> Enum.intersperse({:raw, ","})
 
-    do_dynamic_expr(
-      query,
-      %Fragment{
-        embedded?: embedded?,
-        arguments:
-          [
-            raw: "ARRAY["
-          ] ++ elements ++ [raw: "]"]
-      },
-      bindings,
-      embedded?,
-      acc,
-      type
-    )
+    if is_map? do
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: embedded?,
+          arguments:
+            [
+              raw: "array_to_json(ARRAY["
+            ] ++ elements ++ [raw: "])"]
+        },
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
+    else
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: embedded?,
+          arguments:
+            [
+              raw: "ARRAY["
+            ] ++ elements ++ [raw: "]"]
+        },
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
+    end
   end
 
   defp list_expr(query, value, bindings, embedded?, acc, type) do
