@@ -108,7 +108,7 @@ defmodule AshSql.Atomics do
       |> Enum.reduce({query, []}, fn {field, _expr}, {query, set} ->
         mapped_field = String.to_atom("__new_#{field}")
 
-        {query, set ++ {field, Ecto.Query.dynamic([], field(as(^binding), ^mapped_field))}}
+        {query, [{field, Ecto.Query.dynamic([], field(as(^binding), ^mapped_field))} | set]}
       end)
 
     {params, set, count} =
