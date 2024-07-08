@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.9](https://github.com/ash-project/ash_sql/compare/v0.2.8...v0.2.9) (2024-07-08)
+
+
+
+
+### Bug Fixes:
+
+* retain original order for atomics statements
+
 ## [v0.2.8](https://github.com/ash-project/ash_sql/compare/v0.2.7...v0.2.8) (2024-07-06)
 
 
