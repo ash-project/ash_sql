@@ -7,7 +7,9 @@ defmodule AshSql.Atomics do
 
   # sobelow_skip ["DOS.StringToAtom"]
   def select_atomics(resource, query, atomics) do
-    Enum.reduce_while(atomics, {:ok, query, []}, fn {field, expr}, {:ok, query, dynamics} ->
+    atomics
+    |> Enum.reverse()
+    |> Enum.reduce_while({:ok, query, []}, fn {field, expr}, {:ok, query, dynamics} ->
       attribute = Ash.Resource.Info.attribute(resource, field)
 
       type =
@@ -31,7 +33,7 @@ defmodule AshSql.Atomics do
           field = String.to_atom("__new_#{field}")
 
           {:cont,
-           {:ok, AshSql.Expr.merge_accumulator(query, acc), Keyword.put(dynamics, field, dynamic)}}
+           {:ok, AshSql.Expr.merge_accumulator(query, acc), dynamics ++ [{field, dynamic}]}}
 
         other ->
           {:halt, other}
@@ -39,7 +41,6 @@ defmodule AshSql.Atomics do
     end)
     |> case do
       {:ok, query, dynamics} ->
-        dynamics = Enum.reverse(dynamics)
         query = Ecto.Query.exclude(query, :select)
 
         {params, selects, _, query} =
