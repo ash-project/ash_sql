@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.10](https://github.com/ash-project/ash_sql/compare/v0.2.9...v0.2.10) (2024-07-08)
+
+
+
+
+### Bug Fixes:
+
+* ensure selected atomics are also reversed
+
 ## [v0.2.9](https://github.com/ash-project/ash_sql/compare/v0.2.8...v0.2.9) (2024-07-08)
 
 
