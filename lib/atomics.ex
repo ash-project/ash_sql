@@ -103,18 +103,19 @@ defmodule AshSql.Atomics do
       end
 
     {query, dynamics} =
-      Enum.reduce(atomics, {query, []}, fn {field, _expr}, {query, set} ->
+      atomics
+      |> Enum.reverse()
+      |> Enum.reduce({query, []}, fn {field, _expr}, {query, set} ->
         mapped_field = String.to_atom("__new_#{field}")
 
-        {query,
-         Keyword.put(set, field, Ecto.Query.dynamic([], field(as(^binding), ^mapped_field)))}
+        {query, set ++ {field, Ecto.Query.dynamic([], field(as(^binding), ^mapped_field))}}
       end)
 
     {params, set, count} =
       updating_one_changes
       |> Map.to_list()
       |> Enum.reduce({[], [], 0}, fn {key, value}, {params, set, count} ->
-        {[{value, {0, key}} | params], [{key, {:^, [], [count]}} | set], count + 1}
+        {set ++ [{value, {0, key}} | params], [{key, {:^, [], [count]}}], count + 1}
       end)
 
     {params, set, _, query} =
@@ -148,6 +149,7 @@ defmodule AshSql.Atomics do
           end
         end
       )
+
 
     case set do
       [] ->
@@ -183,7 +185,9 @@ defmodule AshSql.Atomics do
       end
 
     atomics_result =
-      Enum.reduce_while(atomics, {:ok, query, []}, fn {field, expr}, {:ok, query, set} ->
+      atomics
+      |> Enum.reverse()
+      |> Enum.reduce_while({:ok, query, []}, fn {field, expr}, {:ok, query, set} ->
         attribute = Ash.Resource.Info.attribute(resource, field)
 
         type =
