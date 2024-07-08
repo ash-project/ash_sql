@@ -39,6 +39,7 @@ defmodule AshSql.Atomics do
     end)
     |> case do
       {:ok, query, dynamics} ->
+        dynamics = Enum.reverse(dynamics)
         query = Ecto.Query.exclude(query, :select)
 
         {params, selects, _, query} =
@@ -149,7 +150,6 @@ defmodule AshSql.Atomics do
           end
         end
       )
-
 
     case set do
       [] ->
