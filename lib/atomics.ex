@@ -42,10 +42,11 @@ defmodule AshSql.Atomics do
     |> case do
       {:ok, query, dynamics} ->
         query = Ecto.Query.exclude(query, :select)
+
         pkey_dynamics =
           resource
           |> Ash.Resource.Info.primary_key()
-          |>  Enum.map(fn key ->
+          |> Enum.map(fn key ->
             {key, Ecto.Query.dynamic([row], field(row, ^key))}
           end)
 
