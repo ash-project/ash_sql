@@ -1592,7 +1592,7 @@ defmodule AshSql.Expr do
               ] ++
                 frag_parts
           },
-          bindings,
+          Map.delete(bindings, :updating_field),
           embedded?,
           acc
         )
@@ -1606,20 +1606,13 @@ defmodule AshSql.Expr do
       # its weird, but there isn't any other way that I can tell :)
       validate_type!(query, type, value)
 
-      field_ref =
-        case bindings[:updating_field] do
-          nil ->
-            nil
-
-          ref ->
-            Ecto.Query.dynamic([row], field(row, ^ref))
-        end
-
       dynamic =
-        query.__ash_bindings__.sql_behaviour.type_expr(field_ref, type)
+        query.__ash_bindings__.sql_behaviour.type_expr(nil, type)
 
       {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
     else
+      # This doesn't actually work, need to figure this out. Not all errors inside of an expression
+      # that updates a field are returning the same type.
       if bindings[:updating_field] do
         field_ref = Ecto.Query.dynamic([row], field(row, ^bindings[:updating_field]))
         {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^field_ref)), acc}
