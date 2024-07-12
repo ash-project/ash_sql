@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.12](https://github.com/ash-project/ash_sql/compare/v0.2.11...v0.2.12) (2024-07-12)
+
+
+
+
+### Bug Fixes:
+
+* properly handle nested `nil` filters in boolean statements
+
 ## [v0.2.11](https://github.com/ash-project/ash_sql/compare/v0.2.10...v0.2.11) (2024-07-11)
 
 
