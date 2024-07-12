@@ -23,8 +23,7 @@ defmodule AshSql.Atomics do
              query,
              expr,
              Map.merge(query.__ash_bindings__, %{
-               location: :update,
-               updating_field: attribute.name
+               location: :update
              }),
              false,
              type
@@ -211,8 +210,7 @@ defmodule AshSql.Atomics do
                query,
                expr,
                Map.merge(query.__ash_bindings__, %{
-                 location: :update,
-                 updating_field: attribute.name
+                 location: :update
                }),
                false,
                type

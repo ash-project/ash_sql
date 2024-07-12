@@ -1592,7 +1592,7 @@ defmodule AshSql.Expr do
               ] ++
                 frag_parts
           },
-          Map.delete(bindings, :updating_field),
+          bindings,
           embedded?,
           acc
         )
@@ -1611,14 +1611,7 @@ defmodule AshSql.Expr do
 
       {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
     else
-      # This doesn't actually work, need to figure this out. Not all errors inside of an expression
-      # that updates a field are returning the same type.
-      if bindings[:updating_field] do
-        field_ref = Ecto.Query.dynamic([row], field(row, ^bindings[:updating_field]))
-        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^field_ref)), acc}
-      else
-        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
-      end
+      {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
     end
   end
 
