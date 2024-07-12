@@ -1600,20 +1600,29 @@ defmodule AshSql.Expr do
         {Jason.encode!(%{exception: inspect(exception), input: Map.new(input)}), acc}
       end
 
-    if bindings[:updating_field] do
-      field_ref = Ecto.Query.dynamic([row], field(row, ^bindings[:updating_field]))
-      {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^field_ref)), acc}
+    if type do
+      # This is a type hint, if we're raising an error, we tell it what the value
+      # type *would* be in this expression so that we can return a "NULL" of that type
+      # its weird, but there isn't any other way that I can tell :)
+      validate_type!(query, type, value)
+
+      field_ref =
+        case bindings[:updating_field] do
+          nil ->
+            nil
+
+          ref ->
+            Ecto.Query.dynamic([row], field(row, ^ref))
+        end
+
+      dynamic =
+        query.__ash_bindings__.sql_behaviour.type_expr(field_ref, type)
+
+      {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
     else
-      if type do
-        # This is a type hint, if we're raising an error, we tell it what the value
-        # type *would* be in this expression so that we can return a "NULL" of that type
-        # its weird, but there isn't any other way that I can tell :)
-        validate_type!(query, type, value)
-
-        dynamic =
-          query.__ash_bindings__.sql_behaviour.type_expr(nil, type)
-
-        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
+      if bindings[:updating_field] do
+        field_ref = Ecto.Query.dynamic([row], field(row, ^bindings[:updating_field]))
+        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^field_ref)), acc}
       else
         {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
       end
