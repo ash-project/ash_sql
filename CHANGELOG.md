@@ -5,6 +5,14 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.13](https://github.com/ash-project/ash_sql/compare/v0.2.12...v0.2.13) (2024-07-12)
+
+
+
+### Bug Fixes:
+
+* use expression type for atomic updates
+
 ## [v0.2.12](https://github.com/ash-project/ash_sql/compare/v0.2.11...v0.2.12) (2024-07-12)
 
 
