@@ -25,19 +25,24 @@ defmodule AshSql.Filter do
     end
   end
 
+  # def add_filter_expression(query, nil), do: query
+
   def add_filter_expression(query, filter) do
     filter
     |> AshSql.Expr.split_statements(:and)
     |> Enum.reduce(query, fn filter, query ->
       {dynamic, acc} = AshSql.Expr.dynamic_expr(query, filter, query.__ash_bindings__)
 
-      if is_nil(dynamic) do
-        query
-      else
-        query
-        |> Ecto.Query.where([], ^dynamic)
-        |> AshSql.Expr.merge_accumulator(acc)
-      end
+      dynamic =
+        if is_nil(dynamic) do
+          false
+        else
+          dynamic
+        end
+
+      query
+      |> Ecto.Query.where([], ^dynamic)
+      |> AshSql.Expr.merge_accumulator(acc)
     end)
   end
 end
