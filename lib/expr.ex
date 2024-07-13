@@ -1606,8 +1606,7 @@ defmodule AshSql.Expr do
       # its weird, but there isn't any other way that I can tell :)
       validate_type!(query, type, value)
 
-      dynamic =
-        query.__ash_bindings__.sql_behaviour.type_expr(nil, type)
+      dynamic = Ecto.Query.dynamic(type(fragment("NULL"), ^type))
 
       {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
     else
