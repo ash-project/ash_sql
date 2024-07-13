@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.15](https://github.com/ash-project/ash_sql/compare/v0.2.14...v0.2.15) (2024-07-13)
+
+
+
+
+### Bug Fixes:
+
+* use original field for type signal when selecting atomics
+
 ## [v0.2.14](https://github.com/ash-project/ash_sql/compare/v0.2.13...v0.2.14) (2024-07-13)
 
 
