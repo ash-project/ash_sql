@@ -29,10 +29,10 @@ defmodule AshSql.Atomics do
              type
            ) do
         {dynamic, acc} ->
-          field = String.to_atom("__new_#{field}")
+          new_field = String.to_atom("__new_#{field}")
 
           {:cont,
-           {:ok, AshSql.Expr.merge_accumulator(query, acc), dynamics ++ [{field, dynamic}]}}
+           {:ok, AshSql.Expr.merge_accumulator(query, acc), dynamics ++ [{new_field, {dynamic, field}}]}}
 
         other ->
           {:halt, other}
@@ -46,7 +46,7 @@ defmodule AshSql.Atomics do
           resource
           |> Ash.Resource.Info.primary_key()
           |> Enum.map(fn key ->
-            {key, Ecto.Query.dynamic([row], field(row, ^key))}
+            {key, {Ecto.Query.dynamic([row], field(row, ^key)), key}}
           end)
 
         dynamics = Keyword.merge(dynamics, pkey_dynamics)
@@ -55,7 +55,7 @@ defmodule AshSql.Atomics do
           Enum.reduce(
             dynamics,
             {[], [], 0, query},
-            fn {key, value}, {params, select, count, query} ->
+            fn {key, {value, original_field}}, {params, select, count, query} ->
               case AshSql.Expr.dynamic_expr(query, value, query.__ash_bindings__) do
                 {%Ecto.Query.DynamicExpr{} = dynamic, acc} ->
                   result =
@@ -77,7 +77,7 @@ defmodule AshSql.Atomics do
                    AshSql.Expr.merge_accumulator(query, acc)}
 
                 {other, acc} ->
-                  {[{other, {0, key}} | params], [{key, {:^, [], [count]}} | select], count + 1,
+                  {[{other, {0, original_field}} | params], [{key, {:^, [], [count]}} | select], count + 1,
                    AshSql.Expr.merge_accumulator(query, acc)}
               end
             end
