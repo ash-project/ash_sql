@@ -7,6 +7,8 @@ defmodule AshSql.Atomics do
 
   # sobelow_skip ["DOS.StringToAtom"]
   def select_atomics(resource, query, atomics) do
+    atomics = type_atomics(query.__ash_bindings__.sql_behaviour, resource, atomics)
+
     atomics
     |> Enum.reverse()
     |> Enum.reduce_while({:ok, query, []}, fn {field, expr}, {:ok, query, dynamics} ->
@@ -32,7 +34,8 @@ defmodule AshSql.Atomics do
           new_field = String.to_atom("__new_#{field}")
 
           {:cont,
-           {:ok, AshSql.Expr.merge_accumulator(query, acc), dynamics ++ [{new_field, {dynamic, field}}]}}
+           {:ok, AshSql.Expr.merge_accumulator(query, acc),
+            dynamics ++ [{new_field, {dynamic, field}}]}}
 
         other ->
           {:halt, other}
@@ -77,8 +80,8 @@ defmodule AshSql.Atomics do
                    AshSql.Expr.merge_accumulator(query, acc)}
 
                 {other, acc} ->
-                  {[{other, {0, original_field}} | params], [{key, {:^, [], [count]}} | select], count + 1,
-                   AshSql.Expr.merge_accumulator(query, acc)}
+                  {[{other, {0, original_field}} | params], [{key, {:^, [], [count]}} | select],
+                   count + 1, AshSql.Expr.merge_accumulator(query, acc)}
               end
             end
           )
@@ -186,6 +189,8 @@ defmodule AshSql.Atomics do
         updating_one_changes,
         existing_set
       ) do
+    atomics = type_atomics(query.__ash_bindings__.sql_behaviour, resource, atomics)
+
     {:ok, query} =
       if is_nil(filter) do
         {:ok, query}
@@ -284,5 +289,22 @@ defmodule AshSql.Atomics do
       {:error, error} ->
         {:error, error}
     end
+  end
+
+  defp type_atomics(sql_behaviour, resource, atomics) do
+    Enum.map(atomics, fn {key, expr} ->
+      attribute = Ash.Resource.Info.attribute(resource, key)
+
+      expr =
+        case sql_behaviour.storage_type(resource, attribute.name) do
+          nil ->
+            %Ash.Query.Function.Type{arguments: [expr, attribute.type, attribute.constraints]}
+
+          _ ->
+            expr
+        end
+
+      {key, expr}
+    end)
   end
 end
