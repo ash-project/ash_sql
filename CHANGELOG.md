@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.14](https://github.com/ash-project/ash_sql/compare/v0.2.13...v0.2.14) (2024-07-13)
+
+
+
+
+### Improvements:
+
+* use explicit `NULL` fragment in error type hints
+
 ## [v0.2.13](https://github.com/ash-project/ash_sql/compare/v0.2.12...v0.2.13) (2024-07-12)
 
 
