@@ -25,6 +25,7 @@ defmodule AshSql.Implementation do
   @callback ilike?() :: boolean()
 
   @callback determine_types(module, list(term)) :: list(term)
+  @callback determine_types(module, list(term), returns :: term) :: list(term)
 
   @callback list_aggregate(Ash.Resource.t()) :: String.t() | nil
 
@@ -37,6 +38,8 @@ defmodule AshSql.Implementation do
   @callback require_extension_for_citext() :: {true, String.t()} | false
   @callback strpos_function() :: String.t()
   @callback type_expr(expr :: term, type :: term) :: term
+
+  @optional_callbacks determine_types: 3
 
   defmacro __using__(_) do
     quote do

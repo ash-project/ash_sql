@@ -466,33 +466,26 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    [condition_type, when_true_type, when_false_type] =
-      case bindings.sql_behaviour.determine_types(If, [condition, when_true, when_false]) do
-        [condition_type, when_true] ->
-          [condition_type, when_true, nil]
+      {[condition_type, when_true_type, when_false_type], type} =
+        case determine_types(bindings.sql_behaviour, If, [condition, when_true, when_false], type) do
+          {[condition_type, when_true], type} ->
+            {[condition_type, when_true, when_true], type}
 
-        [condition_type, when_true, when_false] ->
-          [condition_type, when_true, when_false]
+          {[condition_type, when_true, when_false], type} ->
+            {[condition_type, when_true, when_false], type}
 
-        {[condition_type, when_true], _} ->
-          [condition_type, when_true, nil]
+          {[condition_type, nil, nil], type} ->
+            {[condition_type, type, type], type}
 
-        {[condition_type, when_true, when_false], _} ->
-          [condition_type, when_true, when_false]
-      end
-      |> case do
-        [condition_type, nil, nil] ->
-          [condition_type, type, type]
+          {[condition_type, when_true, nil], type} ->
+            {[condition_type, when_true, type], type}
 
-        [condition_type, when_true, nil] ->
-          [condition_type, when_true, type]
+          {[condition_type, nil, when_false], type} ->
+            {[condition_type, type, when_false], type}
 
-        [condition_type, nil, when_false] ->
-          [condition_type, type, when_false]
-
-        [condition_type, when_true, when_false] ->
-          [condition_type, when_true, when_false]
-      end
+          {[condition_type, when_true, when_false], type} ->
+            {[condition_type, when_true, when_false], type}
+        end
 
     when_true_type = when_true_type || when_false_type || type
     when_false_type = when_false_type || when_true_type || type
@@ -865,11 +858,7 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    [determined_type] =
-      case bindings.sql_behaviour.determine_types(Ash.Query.Function.Minus, [arg]) do
-        {v, _} -> v
-        v -> v
-      end
+    {[determined_type], type} = determine_types(bindings.sql_behaviour, Ash.Query.Function.Minus, [arg], type)
 
     {expr, acc} =
       do_dynamic_expr(
@@ -902,13 +891,7 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    [left_type, right_type] =
-      mod
-      |> bindings.sql_behaviour.determine_types([left, right])
-      |> case do
-        {v, _} -> v
-        v -> v
-      end
+    {[left_type, right_type], type} = determine_types(bindings.sql_behaviour, mod, [left, right], type)
 
     {left_expr, acc} =
       if left_type && operator in @cast_operands_for do
@@ -2082,33 +2065,27 @@ defmodule AshSql.Expr do
          type,
          list_acc
        ) do
-    [condition_type, when_true_type, when_false_type] =
-      case bindings.sql_behaviour.determine_types(If, [condition, when_true, when_false]) do
-        [condition_type, when_true] ->
-          [condition_type, when_true, nil]
+    {[condition_type, when_true_type, when_false_type], type} =
+      case determine_types(bindings.sql_behaviour, If, [condition, when_true, when_false], type) do
+        {[condition_type, when_true], type} ->
+          {[condition_type, when_true, when_true], type}
 
-        [condition_type, when_true, when_false] ->
-          [condition_type, when_true, when_false]
+        {[condition_type, when_true, when_false], type} ->
+          {[condition_type, when_true, when_false], type}
 
-        {[condition_type, when_true], _} ->
-          [condition_type, when_true, nil]
+        {[condition_type, nil, nil], type} ->
+          {[condition_type, type, type], type}
 
-        {[condition_type, when_true, when_false], _} ->
-          [condition_type, when_true, when_false]
+        {[condition_type, when_true, nil], type} ->
+          {[condition_type, when_true, type], type}
+
+        {[condition_type, nil, when_false], type} ->
+          {[condition_type, type, when_false], type}
+
+        {[condition_type, when_true, when_false], type} ->
+          {[condition_type, when_true, when_false], type}
       end
-      |> case do
-        [condition_type, nil, nil] ->
-          [condition_type, type, type]
 
-        [condition_type, when_true, nil] ->
-          [condition_type, when_true, type]
-
-        [condition_type, nil, when_false] ->
-          [condition_type, type, when_false]
-
-        [condition_type, when_true, when_false] ->
-          [condition_type, when_true, when_false]
-      end
 
     {condition, acc} =
       do_dynamic_expr(
@@ -2413,6 +2390,12 @@ defmodule AshSql.Expr do
           {:parameterized, {AshSql.Type.CiString, _}} ->
             require_extension!(resource, extension, context, query)
 
+          {:parameterized, {AshPostgres.Type.CiStringWrapper.EctoType, _}} ->
+            require_extension!(resource, extension, context, query)
+
+          {:parameterized, AshPostgres.Type.CiStringWrapper.EctoType, _} ->
+            require_extension!(resource, extension, context, query)
+
           :ci_string ->
             require_extension!(resource, extension, context, query)
 
@@ -2676,5 +2659,15 @@ defmodule AshSql.Expr do
 
   defp escape_contains(text) do
     "%" <> String.replace(text, ~r/([\%_])/u, "\\\\\\0") <> "%"
+  end
+
+  defp determine_types(sql_behaviour, mod, args, returns) do
+    {types, new_returns} =
+      if function_exported?(sql_behaviour, :determine_types, 3) do
+        sql_behaviour.determine_types(mod, args, returns)
+      else
+        sql_behaviour.determine_types(mod, args)
+      end
+    {types, new_returns || returns}
   end
 end
