@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.17](https://github.com/ash-project/ash_sql/compare/v0.2.16...v0.2.17) (2024-07-14)
+
+
+
+
+### Improvements:
+
+* use `determine_types/3` in callback
+
 ## [v0.2.16](https://github.com/ash-project/ash_sql/compare/v0.2.15...v0.2.16) (2024-07-14)
 
 
