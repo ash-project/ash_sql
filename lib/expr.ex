@@ -473,6 +473,12 @@ defmodule AshSql.Expr do
 
         [condition_type, when_true, when_false] ->
           [condition_type, when_true, when_false]
+
+        {[condition_type, when_true], _} ->
+          [condition_type, when_true, nil]
+
+        {[condition_type, when_true, when_false], _} ->
+          [condition_type, when_true, when_false]
       end
       |> case do
         [condition_type, nil, nil] ->
@@ -859,7 +865,11 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    [determined_type] = bindings.sql_behaviour.determine_types(Ash.Query.Function.Minus, [arg])
+    [determined_type] =
+      case bindings.sql_behaviour.determine_types(Ash.Query.Function.Minus, [arg]) do
+        {v, _} -> v
+        v -> v
+      end
 
     {expr, acc} =
       do_dynamic_expr(
@@ -895,6 +905,10 @@ defmodule AshSql.Expr do
     [left_type, right_type] =
       mod
       |> bindings.sql_behaviour.determine_types([left, right])
+      |> case do
+        {v, _} -> v
+        v -> v
+      end
 
     {left_expr, acc} =
       if left_type && operator in @cast_operands_for do
@@ -2075,6 +2089,12 @@ defmodule AshSql.Expr do
 
         [condition_type, when_true, when_false] ->
           [condition_type, when_true, when_false]
+
+        {[condition_type, when_true], _} ->
+          [condition_type, when_true, nil]
+
+        {[condition_type, when_true, when_false], _} ->
+          [condition_type, when_true, when_false]
       end
       |> case do
         [condition_type, nil, nil] ->
@@ -2097,7 +2117,7 @@ defmodule AshSql.Expr do
         bindings,
         pred_embedded? || embedded?,
         acc,
-        condition_type
+        condition_type || type
       )
 
     {when_true, acc} =
@@ -2107,7 +2127,7 @@ defmodule AshSql.Expr do
         bindings,
         pred_embedded? || embedded?,
         acc,
-        when_true_type
+        when_true_type || type
       )
 
     extract_cases(
@@ -2116,7 +2136,7 @@ defmodule AshSql.Expr do
       bindings,
       embedded?,
       acc,
-      when_false_type,
+      when_false_type || type,
       [{condition, when_true} | list_acc]
     )
   end
