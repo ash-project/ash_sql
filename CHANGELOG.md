@@ -5,6 +5,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.16](https://github.com/ash-project/ash_sql/compare/v0.2.15...v0.2.16) (2024-07-14)
+
+
+
+
+### Bug Fixes:
+
+* cast atomics when creating expressions
+
+### Improvements:
+
+* support latest format for type determination type
+
 ## [v0.2.15](https://github.com/ash-project/ash_sql/compare/v0.2.14...v0.2.15) (2024-07-13)
 
 
