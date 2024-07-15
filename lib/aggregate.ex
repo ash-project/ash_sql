@@ -517,9 +517,8 @@ defmodule AshSql.Aggregate do
     Enum.reduce_while(aggregates, {:ok, []}, fn
       %Ash.Query.Aggregate{} = aggregate, {:ok, aggregates} ->
         aggregate =
-          aggregate
-          |> Map.put(:load, aggregate.name)
-          |> Ash.Actions.Read.add_calc_context(
+           Ash.Actions.Read.add_calc_context(
+            aggregate,
             private_context[:actor],
             private_context[:authorize?],
             private_context[:tenant],
