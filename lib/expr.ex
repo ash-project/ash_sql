@@ -2665,9 +2665,15 @@ defmodule AshSql.Expr do
   defp determine_types(sql_behaviour, mod, args, returns) do
     {types, new_returns} =
       if function_exported?(sql_behaviour, :determine_types, 3) do
-        sql_behaviour.determine_types(mod, args, returns)
+        case sql_behaviour.determine_types(mod, args, returns) do
+          {types, returns} -> {types, returns}
+          types -> {types, nil}
+        end
       else
-        sql_behaviour.determine_types(mod, args)
+        case sql_behaviour.determine_types(mod, args) do
+          {types, returns} -> {types, returns}
+          types -> {types, nil}
+        end
       end
 
     {types, new_returns || returns}
