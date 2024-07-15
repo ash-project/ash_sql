@@ -25,7 +25,7 @@ defmodule AshSql.Implementation do
   @callback ilike?() :: boolean()
 
   @callback determine_types(module, list(term)) :: list(term)
-  @callback determine_types(module, list(term), returns :: term) :: list(term)
+  @callback determine_types(module, list(term), returns :: term) :: {list(term), term} | list(term)
 
   @callback list_aggregate(Ash.Resource.t()) :: String.t() | nil
 
