@@ -2,8 +2,9 @@ defmodule AshSql.Query do
   @moduledoc false
   import Ecto.Query, only: [subquery: 1, from: 2]
 
-  def resource_to_query(resource, implementation) do
+  def resource_to_query(resource, implementation, domain \\ nil) do
     from(row in {implementation.table(resource) || "", resource}, [])
+    |> Map.put(:__ash_domain__, domain)
   end
 
   def set_context(resource, data_layer_query, sql_behaviour, context) do
@@ -96,11 +97,14 @@ defmodule AshSql.Query do
         {:error, error}
 
       {:ok, data_layer_query} ->
+        {domain, data_layer_query} = Map.pop(data_layer_query, :__ash_domain__)
+
         case context[:data_layer][:lateral_join_source] do
           {_, _} ->
             data_layer_query =
               data_layer_query
               |> Map.update!(:__ash_bindings__, &Map.put(&1, :lateral_join?, true))
+              |> Map.update!(:__ash_bindings__, &Map.put(&1, :domain, domain))
 
             {:ok, data_layer_query}
 
@@ -108,6 +112,7 @@ defmodule AshSql.Query do
             ash_bindings =
               data_layer_query.__ash_bindings__
               |> Map.put(:lateral_join?, false)
+              |> Map.put(:domain, domain)
 
             {:ok, %{data_layer_query | __ash_bindings__: ash_bindings}}
         end

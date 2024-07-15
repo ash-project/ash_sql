@@ -20,7 +20,7 @@ defmodule AshSql.Aggregate do
   def add_aggregates(query, [], _, _, _, _), do: {:ok, query}
 
   def add_aggregates(query, aggregates, resource, select?, source_binding, root_data) do
-    case resource_aggregates_to_aggregates(resource, aggregates) do
+    case resource_aggregates_to_aggregates(resource, query, aggregates) do
       {:ok, aggregates} ->
         tenant =
           case Enum.at(aggregates, 0) do
@@ -511,9 +511,22 @@ defmodule AshSql.Aggregate do
      }, query.__ash_bindings__.current_aggregate_name}
   end
 
-  defp resource_aggregates_to_aggregates(resource, aggregates) do
+  defp resource_aggregates_to_aggregates(resource, query, aggregates) do
+    private_context = query.__ash_bindings__.context[:private]
+
     Enum.reduce_while(aggregates, {:ok, []}, fn
       %Ash.Query.Aggregate{} = aggregate, {:ok, aggregates} ->
+        aggregate =
+          aggregate
+          |> Map.put(:load, aggregate.name)
+          |> Ash.Actions.Read.add_calc_context(
+            private_context[:actor],
+            private_context[:authorize?],
+            private_context[:tenant],
+            private_context[:tracer],
+            query.__ash_bindings__[:domain]
+          )
+
         {:cont, {:ok, [aggregate | aggregates]}}
 
       aggregate, {:ok, aggregates} ->
@@ -557,7 +570,17 @@ defmodule AshSql.Aggregate do
         end
         |> case do
           {:ok, aggregate} ->
-            aggregate = Map.put(aggregate, :load, aggregate.name)
+            aggregate =
+              aggregate
+              |> Map.put(:load, aggregate.name)
+              |> Ash.Actions.Read.add_calc_context(
+                private_context[:actor],
+                private_context[:authorize?],
+                private_context[:tenant],
+                private_context[:tracer],
+                query.__ash_bindings__[:domain]
+              )
+
             {:cont, {:ok, [aggregate | aggregates]}}
 
           {:error, error} ->
