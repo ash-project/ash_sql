@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.21](https://github.com/ash-project/ash_sql/compare/v0.2.20...v0.2.21) (2024-07-16)
+
+
+
+
+### Bug Fixes:
+
+* move `FILTER` outside of `array_agg` aggregation
+
+* properly honor `include_nil?` option on sorted first aggregates
+
 ## [v0.2.20](https://github.com/ash-project/ash_sql/compare/v0.2.19...v0.2.20) (2024-07-15)
 
 
