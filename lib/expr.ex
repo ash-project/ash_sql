@@ -1324,13 +1324,6 @@ defmodule AshSql.Expr do
     type = bindings.sql_behaviour.parameterized_type(aggregate.type, aggregate.constraints)
     validate_type!(query, type, ref)
 
-    type =
-      if type && aggregate.kind == :list do
-        {:array, type}
-      else
-        type
-      end
-
     coalesced =
       if is_nil(aggregate.default_value) do
         expr
@@ -1851,7 +1844,7 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(query, value, bindings, embedded?, acc, type)
        when is_map(value) and not is_struct(value) do
-    if bindings[:location] == :update && Ash.Expr.expr?(value) do
+    if bindings[:location] in [:update, :aggregate] && Ash.Expr.expr?(value) do
       elements =
         value
         |> Enum.flat_map(fn {key, list_item} ->

@@ -1403,7 +1403,26 @@ defmodule AshSql.Aggregate do
         first_relationship
       )
 
-    {field, acc} = AshSql.Expr.dynamic_expr(query, ref, query.__ash_bindings__, false)
+    {field, acc} = AshSql.Expr.dynamic_expr(query, ref, Map.put(query.__ash_bindings__, :location, :aggregate), false)
+
+    related =
+      Ash.Resource.Info.related(
+        query.__ash_bindings__.resource,
+        relationship_path
+      )
+
+    # field =
+    #   with {type, constraints} <- get_type(related, aggregate.field),
+    #        type when not is_nil(type) <-
+    #          query.__ash_bindings__.sql_behaviour.parameterized_type(
+    #            type,
+    #            constraints
+    #          ) do
+    #     Ecto.Query.dynamic([], type(^field, ^type))
+    #   else
+    #     _ ->
+    #       field
+    #   end
 
     has_sort? = has_sort?(aggregate.query)
 
@@ -1420,10 +1439,7 @@ defmodule AshSql.Aggregate do
           AshSql.Sort.sort(
             query,
             sort,
-            Ash.Resource.Info.related(
-              query.__ash_bindings__.resource,
-              relationship_path
-            ),
+            related,
             relationship_path,
             binding,
             :return
@@ -1442,18 +1458,18 @@ defmodule AshSql.Aggregate do
           if aggregate.include_nil? do
             {:ok, expr} =
               Ash.Query.Function.Fragment.casted_new(
-                [
-                  "array_agg(#{distinct}? ORDER BY #{question_marks} FILTER (WHERE ? IS NOT NULL))",
-                  field
-                ] ++
-                  sort_expr ++ [field]
+                ["array_agg(#{distinct}? ORDER BY #{question_marks})", field] ++ sort_expr
               )
 
             expr
           else
             {:ok, expr} =
               Ash.Query.Function.Fragment.casted_new(
-                ["array_agg(#{distinct}? ORDER BY #{question_marks})", field] ++ sort_expr
+                [
+                  "array_agg(#{distinct}? ORDER BY #{question_marks}) FILTER (WHERE ? IS NOT NULL)",
+                  field
+                ] ++
+                  sort_expr ++ [field]
               )
 
             expr
@@ -1758,4 +1774,17 @@ defmodule AshSql.Aggregate do
       aggregate.field
     end
   end
+
+
+        if field do
+          related = Ash.Resource.Info.related(resource, relationship_path)
+          {field_type, constraints} = get_type(related, field)
+          Ash.Query.Aggregate.kind_to_type(kind, field_type, constraints)
+        else
+          Ash.Query.Aggregate.kind_to_type(kind, nil, nil)
+        end
+
+      %{type: type, constraints: constraints} ->
+        {type, constraints}
+    end
 end
