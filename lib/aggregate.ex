@@ -747,9 +747,15 @@ defmodule AshSql.Aggregate do
                 aggregate.context
               )
 
+            expression =
+              Ash.Filter.move_to_relationship_path(
+                expression,
+                relationship_path
+              )
+
             {:ok, expression} =
               Ash.Filter.hydrate_refs(expression, %{
-                resource: related,
+                resource: agg_query.__ash_bindings__.resource,
                 public?: false
               })
 
@@ -757,7 +763,7 @@ defmodule AshSql.Aggregate do
               AshSql.Calculation.add_calculations(
                 agg_query,
                 [{new_calc, expression}],
-                related,
+                agg_query.__ash_bindings__.resource,
                 0,
                 false
               )
@@ -779,9 +785,15 @@ defmodule AshSql.Aggregate do
                 context.source_context
               )
 
+            expression =
+              Ash.Filter.move_to_relationship_path(
+                expression,
+                relationship_path
+              )
+
             {:ok, expression} =
               Ash.Filter.hydrate_refs(expression, %{
-                resource: related,
+                resource: agg_query.__ash_bindings__.resource,
                 public?: false
               })
 
@@ -789,7 +801,7 @@ defmodule AshSql.Aggregate do
               AshSql.Calculation.add_calculations(
                 agg_query,
                 [{calc, expression}],
-                related,
+                agg_query.__ash_bindings__.resource,
                 0,
                 false
               )
