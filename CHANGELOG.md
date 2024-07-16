@@ -5,6 +5,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.22](https://github.com/ash-project/ash_sql/compare/v0.2.21...v0.2.22) (2024-07-16)
+
+
+
+
+### Bug Fixes:
+
+* properly adjust calculation expressions before adding to query
+
+* properly traverse nested maps in non-select contexts
+
+* pass correct resource down when adding calculation fields
+
 ## [v0.2.21](https://github.com/ash-project/ash_sql/compare/v0.2.20...v0.2.21) (2024-07-16)
 
 
