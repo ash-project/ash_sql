@@ -1277,8 +1277,7 @@ defmodule AshSql.Aggregate do
 
           {:ok, expr} =
             Ash.Query.Function.Fragment.casted_new(
-              ["#{array_agg}(? ORDER BY #{question_marks} FILTER (WHERE ? IS NOT NULL))", field] ++
-                sort_expr ++ [field]
+              ["#{array_agg}(? ORDER BY #{question_marks})", field] ++ sort_expr
             )
 
           {sort_expr, acc} =
@@ -1293,7 +1292,8 @@ defmodule AshSql.Aggregate do
 
           {:ok, expr} =
             Ash.Query.Function.Fragment.casted_new(
-              ["#{array_agg}(? ORDER BY #{question_marks})", field] ++ sort_expr
+              ["#{array_agg}(? ORDER BY #{question_marks} FILTER (WHERE ? IS NOT NULL))", field] ++
+                sort_expr ++ [field]
             )
 
           {sort_expr, acc} =
