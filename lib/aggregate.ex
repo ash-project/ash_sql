@@ -517,7 +517,7 @@ defmodule AshSql.Aggregate do
     Enum.reduce_while(aggregates, {:ok, []}, fn
       %Ash.Query.Aggregate{} = aggregate, {:ok, aggregates} ->
         aggregate =
-           Ash.Actions.Read.add_calc_context(
+          Ash.Actions.Read.add_calc_context(
             aggregate,
             private_context[:actor],
             private_context[:authorize?],
@@ -757,7 +757,7 @@ defmodule AshSql.Aggregate do
               AshSql.Calculation.add_calculations(
                 agg_query,
                 [{new_calc, expression}],
-                agg_query.__ash_bindings__.resource,
+                related,
                 0,
                 false
               )
@@ -789,7 +789,7 @@ defmodule AshSql.Aggregate do
               AshSql.Calculation.add_calculations(
                 agg_query,
                 [{calc, expression}],
-                agg_query.__ash_bindings__.resource,
+                related,
                 0,
                 false
               )
@@ -801,7 +801,7 @@ defmodule AshSql.Aggregate do
         end
 
       if has_filter?(aggregate.query) && is_single? do
-        {:cont, AshSql.Filter.filter(agg_query, filter, agg_query.__ash_bindings__.resource)}
+        {:cont, AshSql.Filter.filter(agg_query, filter, related)}
       else
         {:cont, {:ok, agg_query}}
       end
