@@ -1292,7 +1292,7 @@ defmodule AshSql.Aggregate do
 
           {:ok, expr} =
             Ash.Query.Function.Fragment.casted_new(
-              ["#{array_agg}(? ORDER BY #{question_marks} FILTER (WHERE ? IS NOT NULL))", field] ++
+              ["#{array_agg}(? ORDER BY #{question_marks}) FILTER (WHERE ? IS NOT NULL)", field] ++
                 sort_expr ++ [field]
             )
 
