@@ -1774,17 +1774,4 @@ defmodule AshSql.Aggregate do
       aggregate.field
     end
   end
-
-
-        if field do
-          related = Ash.Resource.Info.related(resource, relationship_path)
-          {field_type, constraints} = get_type(related, field)
-          Ash.Query.Aggregate.kind_to_type(kind, field_type, constraints)
-        else
-          Ash.Query.Aggregate.kind_to_type(kind, nil, nil)
-        end
-
-      %{type: type, constraints: constraints} ->
-        {type, constraints}
-    end
 end
