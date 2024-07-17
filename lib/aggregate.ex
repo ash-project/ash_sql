@@ -1403,26 +1403,19 @@ defmodule AshSql.Aggregate do
         first_relationship
       )
 
-    {field, acc} = AshSql.Expr.dynamic_expr(query, ref, Map.put(query.__ash_bindings__, :location, :aggregate), false)
+    {field, acc} =
+      AshSql.Expr.dynamic_expr(
+        query,
+        ref,
+        Map.put(query.__ash_bindings__, :location, :aggregate),
+        false
+      )
 
     related =
       Ash.Resource.Info.related(
         query.__ash_bindings__.resource,
         relationship_path
       )
-
-    # field =
-    #   with {type, constraints} <- get_type(related, aggregate.field),
-    #        type when not is_nil(type) <-
-    #          query.__ash_bindings__.sql_behaviour.parameterized_type(
-    #            type,
-    #            constraints
-    #          ) do
-    #     Ecto.Query.dynamic([], type(^field, ^type))
-    #   else
-    #     _ ->
-    #       field
-    #   end
 
     has_sort? = has_sort?(aggregate.query)
 

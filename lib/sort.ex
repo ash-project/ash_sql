@@ -51,9 +51,8 @@ defmodule AshSql.Sort do
                      Ash.Query.build(aggregate_query,
                        filter: aggregate.filter,
                        sort: aggregate.sort
-                     ),
-                   {:ok, agg} <-
-                     Ash.Query.Aggregate.new(
+                     ) do
+                case Ash.Query.Aggregate.new(
                        resource,
                        aggregate.name,
                        aggregate.kind,
@@ -76,10 +75,14 @@ defmodule AshSql.Sort do
                            ).name,
                        authorize?: aggregate.authorize?
                      ) do
-                {agg, val}
+                  {:ok, agg} ->
+                    {agg, val}
+
+                  {:error, error} ->
+                    raise Ash.Error.to_ash_error(error)
+                end
               else
                 %{errors: errors} -> raise Ash.Error.to_ash_error(errors)
-                {:error, error} -> raise Ash.Error.to_ash_error(error)
               end
 
             _ ->
