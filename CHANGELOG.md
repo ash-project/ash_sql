@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.23](https://github.com/ash-project/ash_sql/compare/v0.2.22...v0.2.23) (2024-07-17)
+
+
+
+
+### Bug Fixes:
+
+* fix build
+
+* properly expand resource calculation/aggregates in fields
+
 ## [v0.2.22](https://github.com/ash-project/ash_sql/compare/v0.2.21...v0.2.22) (2024-07-16)
 
 
