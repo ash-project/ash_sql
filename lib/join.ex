@@ -134,7 +134,7 @@ defmodule AshSql.Join do
               end
             else
               case join_relationship(
-                     set_parent_bindings(query, parent_query),
+                     query,
                      relationship,
                      Enum.map(path, & &1.name),
                      current_join_type,
@@ -155,7 +155,13 @@ defmodule AshSql.Join do
                          source,
                          sort?,
                          join_filters,
-                         joined_query
+                         Map.update!(joined_query, :__ash_bindings__, fn ash_bindings ->
+                           Map.put(
+                             ash_bindings,
+                             :refs_at_path,
+                             Enum.map(path, & &1.name) ++ [relationship.name]
+                           )
+                         end)
                        ) do
                     {:ok, query} ->
                       {:cont, {:ok, query}}
@@ -210,14 +216,6 @@ defmodule AshSql.Join do
 
   defp join_parent_paths(query, _filter, _relationship_paths) do
     {:ok, query}
-  end
-
-  defp set_parent_bindings(query, parent_query) do
-    if parent_query do
-      AshSql.Expr.set_parent_path(query, parent_query, false)
-    else
-      query
-    end
   end
 
   defp to_joins(paths, filter, resource) do
@@ -352,7 +350,10 @@ defmodule AshSql.Join do
       %{valid?: true} = related_query ->
         Ash.Query.data_layer_query(
           Ash.Query.set_context(related_query, %{
-            data_layer: %{parent_bindings: query.__ash_bindings__}
+            data_layer: %{
+              parent_bindings:
+                Map.put(query.__ash_bindings__, :refs_at_path, List.wrap(opts[:refs_at_path]))
+            }
           })
         )
         |> case do
@@ -504,7 +505,7 @@ defmodule AshSql.Join do
 
   defp add_distinct(relationship, _join_type, joined_query) do
     if !joined_query.__ash_bindings__.in_group? &&
-         relationship.cardinality == :many &&
+         (relationship.cardinality == :many || Map.get(relationship, :from_many?)) &&
          !joined_query.distinct do
       pkey = Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
 
@@ -540,7 +541,11 @@ defmodule AshSql.Join do
     used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
 
     with {:ok, relationship_destination} <-
-           related_subquery(relationship, query, sort?: sort?, apply_filter?: apply_filter) do
+           related_subquery(relationship, query,
+             sort?: sort?,
+             apply_filter?: apply_filter,
+             refs_at_path: path
+           ) do
       binding_kinds =
         case kind do
           :left ->
@@ -628,7 +633,11 @@ defmodule AshSql.Join do
 
     with {:ok, relationship_through} <- related_subquery(join_relationship, query),
          {:ok, relationship_destination} <-
-           related_subquery(relationship, query, sort?: sort?, apply_filter?: apply_filter) do
+           related_subquery(relationship, query,
+             sort?: sort?,
+             apply_filter?: apply_filter,
+             refs_at_path: path
+           ) do
       {relationship_destination, dest_acc} =
         maybe_apply_filter(relationship_destination, query, query.__ash_bindings__, apply_filter)
 
@@ -738,6 +747,7 @@ defmodule AshSql.Join do
     case related_subquery(relationship, query,
            sort?: sort?,
            apply_filter: apply_filter,
+           refs_at_path: path,
            on_parent_expr: fn subquery ->
              if Map.get(relationship, :no_attributes?) do
                subquery

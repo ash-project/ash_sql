@@ -2434,6 +2434,8 @@ defmodule AshSql.Expr do
          %{attribute: %Ash.Query.Aggregate{name: name}, relationship_path: relationship_path},
          bindings
        ) do
+    relationship_path = List.wrap(bindings[:refs_at_path]) ++ relationship_path
+
     Enum.find_value(bindings.bindings, fn {binding, data} ->
       data.type == :aggregate &&
         data.path == relationship_path &&
@@ -2456,6 +2458,8 @@ defmodule AshSql.Expr do
          },
          bindings
        ) do
+    relationship_path = List.wrap(bindings[:refs_at_path]) ++ relationship_path
+
     Enum.find_value(bindings.bindings, fn {binding, data} ->
       data.type == :aggregate &&
         data.path == relationship_path &&
@@ -2464,12 +2468,14 @@ defmodule AshSql.Expr do
   end
 
   defp ref_binding(%{attribute: %Ash.Resource.Attribute{}} = ref, bindings) do
+    relationship_path = List.wrap(bindings[:refs_at_path]) ++ ref.relationship_path
+
     Enum.find_value(bindings.bindings, fn {binding, data} ->
       data.type in [:inner, :left, :root] &&
         Ash.SatSolver.synonymous_relationship_paths?(
           bindings.resource,
           data.path,
-          ref.relationship_path
+          relationship_path
         ) && binding
     end)
   end
