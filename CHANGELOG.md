@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.24](https://github.com/ash-project/ash_sql/compare/v0.2.23...v0.2.24) (2024-07-17)
+
+
+
+
+### Bug Fixes:
+
+* properly determine `parent_as` bindings for nested joins
+
 ## [v0.2.23](https://github.com/ash-project/ash_sql/compare/v0.2.22...v0.2.23) (2024-07-17)
 
 
