@@ -54,33 +54,35 @@ defmodule AshSql.Atomics do
 
         dynamics = Keyword.merge(dynamics, pkey_dynamics)
 
-        {params, selects, _, query} =
+        {params, selects, subqueries, _, query} =
           Enum.reduce(
             dynamics,
-            {[], [], 0, query},
-            fn {key, {value, original_field}}, {params, select, count, query} ->
+            {[], [], [], 0, query},
+            fn {key, {value, original_field}}, {params, select, subqueries, count, query} ->
               case AshSql.Expr.dynamic_expr(query, value, query.__ash_bindings__) do
                 {%Ecto.Query.DynamicExpr{} = dynamic, acc} ->
                   result =
                     Ecto.Query.Builder.Dynamic.partially_expand(
-                      :select,
                       query,
                       dynamic,
                       params,
+                      subqueries,
+                      %{},
                       count
                     )
 
                   expr = elem(result, 0)
                   new_params = elem(result, 1)
+                  new_subqueries = elem(result, 2)
 
                   new_count =
                     result |> Tuple.to_list() |> List.last()
 
-                  {new_params, [{key, expr} | select], new_count,
+                  {new_params, [{key, expr} | select], new_subqueries, new_count,
                    AshSql.Expr.merge_accumulator(query, acc)}
 
                 {other, acc} ->
-                  {[{other, {0, original_field}} | params], [{key, {:^, [], [count]}} | select],
+                  {[{other, {0, original_field}} | params], [{key, {:^, [], [count]}} | select], subqueries,
                    count + 1, AshSql.Expr.merge_accumulator(query, acc)}
               end
             end
@@ -89,6 +91,7 @@ defmodule AshSql.Atomics do
         query =
           Map.put(query, :select, %Ecto.Query.SelectExpr{
             expr: {:%{}, [], Enum.reverse(selects)},
+            subqueries: subqueries,
             params: Enum.reverse(params)
           })
 
@@ -140,7 +143,7 @@ defmodule AshSql.Atomics do
             {%Ecto.Query.DynamicExpr{} = dynamic, acc} ->
               result =
                 Ecto.Query.Builder.Dynamic.partially_expand(
-                  :select,
+                  :update,
                   query,
                   dynamic,
                   params,
