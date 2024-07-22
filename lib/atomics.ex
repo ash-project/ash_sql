@@ -82,8 +82,8 @@ defmodule AshSql.Atomics do
                    AshSql.Expr.merge_accumulator(query, acc)}
 
                 {other, acc} ->
-                  {[{other, {0, original_field}} | params], [{key, {:^, [], [count]}} | select], subqueries,
-                   count + 1, AshSql.Expr.merge_accumulator(query, acc)}
+                  {[{other, {0, original_field}} | params], [{key, {:^, [], [count]}} | select],
+                   subqueries, count + 1, AshSql.Expr.merge_accumulator(query, acc)}
               end
             end
           )
