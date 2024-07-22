@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.25](https://github.com/ash-project/ash_sql/compare/v0.2.24...v0.2.25) (2024-07-22)
+
+
+
+
+### Bug Fixes:
+
+* track subqueries while selecting atomics
+
 ## [v0.2.24](https://github.com/ash-project/ash_sql/compare/v0.2.23...v0.2.24) (2024-07-17)
 
 
