@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.26](https://github.com/ash-project/ash_sql/compare/v0.2.25...v0.2.26) (2024-07-23)
+
+
+
+
+### Bug Fixes:
+
+* don't accidentally mix updates/params when building changes
+
 ## [v0.2.25](https://github.com/ash-project/ash_sql/compare/v0.2.24...v0.2.25) (2024-07-22)
 
 
