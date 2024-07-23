@@ -131,7 +131,7 @@ defmodule AshSql.Atomics do
       updating_one_changes
       |> Map.to_list()
       |> Enum.reduce({[], [], 0}, fn {key, value}, {params, set, count} ->
-        {set ++ [{value, {0, key}} | params], [{key, {:^, [], [count]}}], count + 1}
+        {[{value, {0, key}} | params], [{key, {:^, [], [count]}} | set], count + 1}
       end)
 
     {params, set, _, query} =
