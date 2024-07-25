@@ -897,20 +897,14 @@ defmodule AshSql.Expr do
 
     {left_expr, acc} =
       if left_type && operator in @cast_operands_for do
-        {left_expr, acc} =
-          do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc)
-
-        {query.__ash_bindings__.sql_behaviour.type_expr(left_expr, left_type), acc}
+        maybe_type_expr(query, left, bindings, pred_embedded? || embedded?, acc, left_type)
       else
         do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc, left_type)
       end
 
     {right_expr, acc} =
       if right_type && operator in @cast_operands_for do
-        {right_expr, acc} =
-          do_dynamic_expr(query, right, bindings, pred_embedded? || embedded?, acc)
-
-        {query.__ash_bindings__.sql_behaviour.type_expr(right_expr, right_type), acc}
+        maybe_type_expr(query, right, bindings, pred_embedded? || embedded?, acc, right_type)
       else
         do_dynamic_expr(query, right, bindings, pred_embedded? || embedded?, acc, right_type)
       end
@@ -1478,9 +1472,16 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
+    expr =
+    if type do
+      DateTime.utc_now()
+    else
+      %Ash.Query.Function.Type{arguments: [DateTime.utc_now(), type || :utc_datetime_usec, []]}
+    end
+
     do_dynamic_expr(
       query,
-      %Ash.Query.Function.Type{arguments: [DateTime.utc_now(), type || :datetime, []]},
+      expr,
       bindings,
       embedded? || pred_embedded?,
       acc,
@@ -2672,5 +2673,48 @@ defmodule AshSql.Expr do
       end
 
     {types, new_returns || returns}
+  end
+
+  defp maybe_type_expr(query, expr, bindings, embedded?, acc, type) do
+    if type do
+      case expr do
+        %Ash.Query.Function.Type{arguments: [arg1, arg2, constraints]} ->
+          arg2 = Ash.Type.get_type(arg2)
+          arg1 = maybe_uuid_to_binary(arg2, arg1, arg1)
+          nested_type = bindings.sql_behaviour.parameterized_type(arg2, constraints)
+
+          if nested_type do
+            {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, nested_type)
+
+            {expr, acc} =
+              case {nested_type, expr} do
+                {{:parameterized, Ash.Type.Map.EctoType, []}, %Ecto.Query.DynamicExpr{}} ->
+                  {expr, acc}
+
+                {{:parameterized, {Ash.Type.Map.EctoType, []}}, %Ecto.Query.DynamicExpr{}} ->
+                  {expr, acc}
+
+                _ ->
+                  {query.__ash_bindings__.sql_behaviour.type_expr(expr, nested_type), acc}
+              end
+
+            if nested_type == type do
+              {expr, acc}
+            else
+              {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
+            end
+          else
+            {expr, acc} =
+              do_dynamic_expr(query, arg1, bindings, embedded?, acc, nested_type)
+
+            {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
+          end
+
+        other ->
+          {query.__ash_bindings__.sql_behaviour.type_expr(other, type), acc}
+      end
+    else
+      do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
+    end
   end
 end
