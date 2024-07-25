@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.27](https://github.com/ash-project/ash_sql/compare/v0.2.26...v0.2.27) (2024-07-25)
+
+
+
+
+### Improvements:
+
+* avoid a bunch of double casting of operands
+
 ## [v0.2.26](https://github.com/ash-project/ash_sql/compare/v0.2.25...v0.2.26) (2024-07-23)
 
 
