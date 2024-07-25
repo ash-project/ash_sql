@@ -1472,16 +1472,9 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    expr =
-    if type do
-      DateTime.utc_now()
-    else
-      %Ash.Query.Function.Type{arguments: [DateTime.utc_now(), type || :utc_datetime_usec, []]}
-    end
-
     do_dynamic_expr(
       query,
-      expr,
+      DateTime.utc_now(),
       bindings,
       embedded? || pred_embedded?,
       acc,
