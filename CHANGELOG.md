@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.28](https://github.com/ash-project/ash_sql/compare/v0.2.27...v0.2.28) (2024-07-27)
+
+
+
+
+### Bug Fixes:
+
+* properly cast typed expressions
+
+* don't ever case datetime to timestamp
+
 ## [v0.2.27](https://github.com/ash-project/ash_sql/compare/v0.2.26...v0.2.27) (2024-07-25)
 
 
