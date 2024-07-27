@@ -2704,7 +2704,8 @@ defmodule AshSql.Expr do
           end
 
         other ->
-          {query.__ash_bindings__.sql_behaviour.type_expr(other, type), acc}
+          {expr, acc} = do_dynamic_expr(query, other, bindings, embedded?, acc, type)
+          {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
       end
     else
       do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
