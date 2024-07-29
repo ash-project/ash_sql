@@ -39,7 +39,7 @@ defmodule AshSql.AggregateQuery do
               |> Ecto.Query.exclude(:order_by)
               |> Map.put(:windows, [])
 
-            from(row in subquery(query), as: ^0, select: %{})
+            from(row in subquery(query), as: ^query.__ash_bindings__.root_binding, select: %{})
           else
             query
             |> Ecto.Query.exclude(:select)
@@ -101,7 +101,7 @@ defmodule AshSql.AggregateQuery do
               |> Ecto.Query.exclude(:order_by)
               |> Map.put(:windows, [])
 
-            from(row in subquery(filtered), as: ^0, select: %{})
+            from(row in subquery(filtered), as: ^query.__ash_bindings__.root_binding, select: %{})
           else
             filtered
             |> Ecto.Query.exclude(:select)
@@ -137,12 +137,15 @@ defmodule AshSql.AggregateQuery do
                 if dynamic do
                   Ecto.Query.dynamic(
                     [row],
-                    ^dynamic and field(parent_as(^0), ^key) == field(row, ^key)
+                    ^dynamic and
+                      field(parent_as(^query.__ash_bindings__.root_binding), ^key) ==
+                        field(row, ^key)
                   )
                 else
                   Ecto.Query.dynamic(
                     [row],
-                    field(parent_as(^0), ^key) == field(row, ^key)
+                    field(parent_as(^query.__ash_bindings__.root_binding), ^key) ==
+                      field(row, ^key)
                   )
                 end
               end)
@@ -150,7 +153,10 @@ defmodule AshSql.AggregateQuery do
             in_query =
               from(row in in_query, where: ^dynamic)
 
-            from(row in query.from.source, as: ^0, where: exists(in_query))
+            from(row in query.from.source,
+              as: ^query.__ash_bindings__.root_binding,
+              where: exists(in_query)
+            )
           else
             filtered
           end
@@ -163,7 +169,7 @@ defmodule AshSql.AggregateQuery do
               |> Ecto.Query.exclude(:order_by)
               |> Map.put(:windows, [])
 
-            from(row in subquery(filtered), as: ^0, select: %{})
+            from(row in subquery(filtered), as: ^query.__ash_bindings__.root_binding, select: %{})
           else
             filtered
             |> Ecto.Query.exclude(:select)

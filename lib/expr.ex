@@ -1659,6 +1659,7 @@ defmodule AshSql.Expr do
         filter: filter,
         filter_subquery?: true,
         sort?: Map.get(first_relationship, :from_many?),
+        start_bindings_at: query.__ash_bindings__.current + 1,
         parent_resources: [
           query.__ash_bindings__.resource
           | query.__ash_bindings__[:parent_resources] || []
@@ -1691,7 +1692,7 @@ defmodule AshSql.Expr do
                   [
                     opts,
                     source_binding,
-                    0,
+                    query.__ash_bindings__.current + 1,
                     subquery
                   ]
                 )
@@ -2424,10 +2425,11 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp ref_binding(
-         %{attribute: %Ash.Query.Aggregate{name: name}, relationship_path: relationship_path},
-         bindings
-       ) do
+  @doc false
+  def ref_binding(
+        %{attribute: %Ash.Query.Aggregate{name: name}, relationship_path: relationship_path},
+        bindings
+      ) do
     relationship_path = List.wrap(bindings[:refs_at_path]) ++ relationship_path
 
     Enum.find_value(bindings.bindings, fn {binding, data} ->
@@ -2445,13 +2447,13 @@ defmodule AshSql.Expr do
       end)
   end
 
-  defp ref_binding(
-         %{
-           attribute: %Ash.Resource.Aggregate{name: name},
-           relationship_path: relationship_path
-         },
-         bindings
-       ) do
+  def ref_binding(
+        %{
+          attribute: %Ash.Resource.Aggregate{name: name},
+          relationship_path: relationship_path
+        },
+        bindings
+      ) do
     relationship_path = List.wrap(bindings[:refs_at_path]) ++ relationship_path
 
     Enum.find_value(bindings.bindings, fn {binding, data} ->
@@ -2461,7 +2463,7 @@ defmodule AshSql.Expr do
     end)
   end
 
-  defp ref_binding(%{attribute: %Ash.Resource.Attribute{}} = ref, bindings) do
+  def ref_binding(%{attribute: %Ash.Resource.Attribute{}} = ref, bindings) do
     relationship_path = List.wrap(bindings[:refs_at_path]) ++ ref.relationship_path
 
     Enum.find_value(bindings.bindings, fn {binding, data} ->

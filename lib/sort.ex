@@ -441,7 +441,7 @@ defmodule AshSql.Sort do
   end
 
   def apply_sort(query, sort, resource, type) do
-    AshSql.Sort.sort(query, sort, resource, [], 0, type)
+    AshSql.Sort.sort(query, sort, resource, [], query.__ash_bindings__.root_binding, type)
   end
 
   defp set_sort_applied(query) do

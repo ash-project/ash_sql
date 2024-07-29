@@ -44,6 +44,7 @@ defmodule AshSql.Bindings do
       aggregate_names: %{},
       calculation_names: %{},
       context: context,
+      root_binding: start_bindings,
       bindings: %{start_bindings => %{path: [], type: :root, source: resource}}
     })
   end

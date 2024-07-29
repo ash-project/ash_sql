@@ -267,7 +267,7 @@ defmodule AshSql.Aggregate do
                                            ^first_relationship.source_attribute
                                          ) ==
                                            field(
-                                             as(^0),
+                                             as(^query.__ash_bindings__.root_binding),
                                              ^first_relationship.destination_attribute
                                            )
                                      )
@@ -1268,7 +1268,7 @@ defmodule AshSql.Aggregate do
           if has_sort? do
             {aggregate.query.sort, binding}
           else
-            {List.wrap(first_relationship.sort), 0}
+            {List.wrap(first_relationship.sort), query.__ash_bindings__.root_binding}
           end
 
         {:ok, sort_expr, query} =

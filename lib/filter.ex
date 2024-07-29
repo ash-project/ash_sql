@@ -11,7 +11,12 @@ defmodule AshSql.Filter do
     |> case do
       {:ok, query} ->
         query
-        |> AshSql.Aggregate.add_aggregates(used_aggregates, resource, false, 0)
+        |> AshSql.Aggregate.add_aggregates(
+          used_aggregates,
+          resource,
+          false,
+          query.__ash_bindings__.root_binding
+        )
         |> case do
           {:ok, query} ->
             {:ok, add_filter_expression(query, filter)}
