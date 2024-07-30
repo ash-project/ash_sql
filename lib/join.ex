@@ -275,7 +275,7 @@ defmodule AshSql.Join do
 
       query = on_subquery.(query)
 
-      query = limit_from_many(query, relationship, filter, filter_subquery?)
+      query = limit_from_many(query, relationship, filter, filter_subquery?, opts)
 
       query =
         if opts[:return_subquery?] do
@@ -392,7 +392,8 @@ defmodule AshSql.Join do
          query,
          %{from_many?: true, destination: destination},
          filter,
-         filter_subquery?
+         filter_subquery?,
+         opts
        ) do
     if filter_subquery? do
       query =
@@ -407,13 +408,27 @@ defmodule AshSql.Join do
 
       {:ok, query} = AshSql.Filter.filter(query, filter, query.__ash_bindings__.resource)
 
-      query
+      if opts[:select_star?] do
+        from row in Ecto.Query.exclude(query, :select), select: 1
+      else
+        query
+      end
     else
-      from(row in query, limit: 1)
+      if opts[:select_star?] do
+        from row in Ecto.Query.exclude(query, :select), select: 1
+      else
+        query
+      end
     end
   end
 
-  defp limit_from_many(query, _, _, _), do: query
+  defp limit_from_many(query, _, _, _, opts) do
+    if opts[:select_star?] do
+      from row in Ecto.Query.exclude(query, :select), select: 1
+    else
+      query
+    end
+  end
 
   defp set_has_parent_expr_context(query, relationship) do
     has_parent_expr? =
