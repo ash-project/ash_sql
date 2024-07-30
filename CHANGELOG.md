@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.29](https://github.com/ash-project/ash_sql/compare/v0.2.28...v0.2.29) (2024-07-30)
+
+
+
+
+### Bug Fixes:
+
+* properly scope `exists` queries & joins with `from_many?` joins
+
 ## [v0.2.28](https://github.com/ash-project/ash_sql/compare/v0.2.27...v0.2.28) (2024-07-27)
 
 
