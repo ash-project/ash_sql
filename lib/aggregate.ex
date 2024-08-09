@@ -134,10 +134,22 @@ defmodule AshSql.Aggregate do
                       Map.get(aggregate.query, :filter)
                     end
 
+                  root_data_path =
+                    case root_data do
+                      {_, path} ->
+                        path
+
+                      _ ->
+                        []
+                    end
+
                   {exists, acc} =
                     AshSql.Expr.dynamic_expr(
                       query,
-                      %Ash.Query.Exists{path: aggregate.relationship_path, expr: expr},
+                      %Ash.Query.Exists{
+                        path: root_data_path ++ aggregate.relationship_path,
+                        expr: expr
+                      },
                       query.__ash_bindings__
                     )
 
@@ -366,7 +378,11 @@ defmodule AshSql.Aggregate do
 
         case result do
           {:ok, query, dynamics} ->
-            {:ok, add_aggregate_selects(query, dynamics)}
+            if select? do
+              {:ok, add_aggregate_selects(query, dynamics)}
+            else
+              {:ok, query}
+            end
 
           {:error, error} ->
             {:error, error}

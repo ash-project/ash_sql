@@ -1611,6 +1611,15 @@ defmodule AshSql.Expr do
     resource = Ash.Resource.Info.related(bindings.resource, at_path)
     first_relationship = Ash.Resource.Info.relationship(resource, first)
 
+    unless first_relationship do
+      raise Ash.Error.Framework.AssumptionFailed,
+        message: """
+        Unknown relationship #{inspect(bindings.resource)}.#{first}
+
+        in exists expression: `#{inspect(exists)}`
+        """
+    end
+
     filter = Ash.Filter.move_to_relationship_path(expr, rest)
 
     filter =

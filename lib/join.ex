@@ -409,13 +409,13 @@ defmodule AshSql.Join do
       {:ok, query} = AshSql.Filter.filter(query, filter, query.__ash_bindings__.resource)
 
       if opts[:select_star?] do
-        from row in Ecto.Query.exclude(query, :select), select: 1
+        from(row in Ecto.Query.exclude(query, :select), select: 1)
       else
         query
       end
     else
       if opts[:select_star?] do
-        from row in Ecto.Query.exclude(query, :select), select: 1
+        from(row in Ecto.Query.exclude(query, :select), select: 1)
       else
         query
       end
@@ -424,7 +424,7 @@ defmodule AshSql.Join do
 
   defp limit_from_many(query, _, _, _, opts) do
     if opts[:select_star?] do
-      from row in Ecto.Query.exclude(query, :select), select: 1
+      from(row in Ecto.Query.exclude(query, :select), select: 1)
     else
       query
     end
