@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.30](https://github.com/ash-project/ash_sql/compare/v0.2.29...v0.2.30) (2024-08-09)
+
+
+
+
+### Bug Fixes:
+
+* properly handle nested exists aggregates
+
+* select `1` in `exists` queries
+
 ## [v0.2.29](https://github.com/ash-project/ash_sql/compare/v0.2.28...v0.2.29) (2024-07-30)
 
 
