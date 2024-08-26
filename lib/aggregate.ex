@@ -172,6 +172,7 @@ defmodule AshSql.Aggregate do
                            first_relationship,
                            query,
                            on_subquery: fn subquery ->
+                             base_binding = subquery.__ash_bindings__.root_binding
                              current_binding = subquery.__ash_bindings__.current
 
                              subquery =
@@ -279,7 +280,7 @@ defmodule AshSql.Aggregate do
                                            ^first_relationship.source_attribute
                                          ) ==
                                            field(
-                                             as(^query.__ash_bindings__.root_binding),
+                                             as(^base_binding),
                                              ^first_relationship.destination_attribute
                                            )
                                      )

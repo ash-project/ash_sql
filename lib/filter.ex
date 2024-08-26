@@ -30,8 +30,6 @@ defmodule AshSql.Filter do
     end
   end
 
-  # def add_filter_expression(query, nil), do: query
-
   def add_filter_expression(query, filter) do
     filter
     |> AshSql.Expr.split_statements(:and)
