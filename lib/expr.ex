@@ -1670,6 +1670,7 @@ defmodule AshSql.Expr do
         sort?: Map.get(first_relationship, :from_many?),
         start_bindings_at: query.__ash_bindings__.current + 1,
         select_star?: !Map.get(first_relationship, :manual),
+        in_group?: true,
         parent_resources: [
           query.__ash_bindings__.resource
           | query.__ash_bindings__[:parent_resources] || []

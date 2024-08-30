@@ -324,6 +324,7 @@ defmodule AshSql.Join do
     relationship.destination
     |> Ash.Query.new()
     |> Ash.Query.set_context(context)
+    |> Ash.Query.set_context(%{data_layer: %{in_group?: !!opts[:in_group?]}})
     |> Ash.Query.set_context(%{
       data_layer: %{table: nil, start_bindings_at: opts[:start_bindings_at] || 0}
     })
@@ -535,7 +536,8 @@ defmodule AshSql.Join do
   def get_binding(_, _, _, _), do: nil
 
   defp add_distinct(relationship, _join_type, joined_query) do
-    if !joined_query.__ash_bindings__.in_group? &&
+    if !(joined_query.__ash_bindings__.in_group? ||
+           joined_query.__ash_bindings__.context[:data_layer][:in_group?]) &&
          (relationship.cardinality == :many || Map.get(relationship, :from_many?)) &&
          !joined_query.distinct do
       pkey = Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)

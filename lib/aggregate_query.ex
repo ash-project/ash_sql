@@ -153,6 +153,8 @@ defmodule AshSql.AggregateQuery do
             in_query =
               from(row in in_query, where: ^dynamic)
 
+            in_query = Ecto.Query.exclude(in_query, :distinct)
+
             from(row in query.from.source,
               as: ^query.__ash_bindings__.root_binding,
               where: exists(in_query)
