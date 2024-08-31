@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.32](https://github.com/ash-project/ash_sql/compare/v0.2.31...v0.2.32) (2024-08-31)
+
+
+
+
+### Bug Fixes:
+
+* properly handle deeply nested maps in bulk updates
+
+* don't use distinct inside of an exists
+
 ## [v0.2.31](https://github.com/ash-project/ash_sql/compare/v0.2.30...v0.2.31) (2024-08-26)
 
 
