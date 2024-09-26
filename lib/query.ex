@@ -208,6 +208,7 @@ defmodule AshSql.Query do
     end
   end
 
+  # sobelow_skip ["DOS.StringToAtom"]
   def rewrite_nested_selects(query) do
     case query.select do
       %Ecto.Query.SelectExpr{
@@ -215,39 +216,47 @@ defmodule AshSql.Query do
           {:merge, [],
            [
              merge_base,
-             {:%{}, [], merging}
+             {:%{}, [], current_merging}
            ]}
       } = select ->
-        {merging, aggregate_merges} = remap_sub_select(merging, :aggregates)
+        # as we flatten these, they must all remain in the same relative order
+        # I'm actually not sure why this is required by ecto, but it is :)
+        merging =
+          Enum.flat_map(current_merging, fn
+            {type, {:%{}, _, type_exprs}} when type in [:calculations, :aggregates] ->
+              Enum.map(type_exprs, fn {name, expr} ->
+                {String.to_atom("__#{type}__#{name}"), expr}
+              end)
 
-        {new_sub_selects, calculation_merges} =
-          remap_sub_select(merging, :calculations)
+            {type, other} ->
+              [{type, other}]
+          end)
 
-        new_query =
-          %{
-            query
-            | select: %{select | expr: {:merge, [], [merge_base, {:%{}, [], new_sub_selects}]}}
-          }
+        aggregate_merges =
+          current_merging
+          |> Keyword.get(:aggregates, {:%{}, [], []})
+          |> elem(2)
+          |> Map.new(fn {name, _expr} ->
+            {String.to_existing_atom("__aggregates__#{name}"), name}
+          end)
+
+        calculation_merges =
+          current_merging
+          |> Keyword.get(:calculations, {:%{}, [], []})
+          |> elem(2)
+          |> Map.new(fn {name, _expr} ->
+            {String.to_existing_atom("__calculations__#{name}"), name}
+          end)
+
+        new_query = %{
+          query
+          | select: %{select | expr: {:merge, [], [merge_base, {:%{}, [], merging}]}}
+        }
 
         {calculation_merges, aggregate_merges, new_query}
 
       %Ecto.Query.SelectExpr{expr: _other_expr} ->
         {%{}, %{}, query}
-    end
-  end
-
-  # sobelow_skip ["DOS.StringToAtom"]
-  defp remap_sub_select(merging, sub_key) do
-    case Keyword.fetch(merging, sub_key) do
-      {:ok, {:%{}, [], nested}} ->
-        Enum.reduce(nested, {Keyword.delete(merging, sub_key), %{}}, fn {name, expr},
-                                                                        {subselect, remapping} ->
-          new_name = String.to_atom("__#{sub_key}__#{name}")
-          {Keyword.put(subselect, new_name, expr), Map.put(remapping, new_name, name)}
-        end)
-
-      :error ->
-        {merging, %{}}
     end
   end
 
