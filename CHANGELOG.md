@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.33](https://github.com/ash-project/ash_sql/compare/v0.2.32...v0.2.33) (2024-09-26)
+
+
+
+
+### Bug Fixes:
+
+* don't reorder selects when modifying for subquery presence
+
 ## [v0.2.25](https://github.com/ash-project/ash_sql/compare/v0.2.24...v0.2.25) (2024-07-22)
 
 
