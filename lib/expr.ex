@@ -1946,6 +1946,10 @@ defmodule AshSql.Expr do
     do_dynamic_expr(query, to_string(value), bindings, embedded?, acc, type)
   end
 
+  defp default_dynamic_expr(_, nil, _, _, acc, _) do
+    {Ecto.Query.dynamic(fragment("NULL")), acc}
+  end
+
   defp default_dynamic_expr(query, value, bindings, false, acc, type)
        when type == nil or type == :any do
     if is_list(value) do
