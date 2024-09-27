@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.34](https://github.com/ash-project/ash_sql/compare/v0.2.33...v0.2.34) (2024-09-27)
+
+
+
+
+### Bug Fixes:
+
+* use `NULL` for cases where we get `nil` values. We actually want `nil` here.
+
 ## [v0.2.33](https://github.com/ash-project/ash_sql/compare/v0.2.32...v0.2.33) (2024-09-26)
 
 
