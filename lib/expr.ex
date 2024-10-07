@@ -360,9 +360,9 @@ defmodule AshSql.Expr do
         %Fragment{
           embedded?: pred_embedded?,
           arguments: [
-            raw: "SELECT COUNT(*) FROM unnest(",
+            raw: "(SELECT COUNT(*) FROM unnest(",
             expr: list,
-            raw: ") AS item WHERE item IS TRUE"
+            raw: ") AS item WHERE item IS TRUE)"
           ]
         },
         bindings,
@@ -376,9 +376,9 @@ defmodule AshSql.Expr do
         %Fragment{
           embedded?: pred_embedded?,
           arguments: [
-            raw: "SELECT COUNT(*) FROM unnest(",
+            raw: "(SELECT COUNT(*) FROM unnest(",
             expr: list,
-            raw: ") AS item WHERE item IS NULL"
+            raw: ") AS item WHERE item IS NULL)"
           ]
         },
         bindings,
@@ -537,7 +537,7 @@ defmodule AshSql.Expr do
         embedded?: pred_embedded?,
         arguments:
           [
-            raw: "CASE WHEN ",
+            raw: "(CASE WHEN ",
             casted_expr: condition,
             raw: " THEN ",
             casted_expr: when_true
@@ -546,7 +546,7 @@ defmodule AshSql.Expr do
             [
               raw: " ELSE ",
               casted_expr: when_false,
-              raw: " END"
+              raw: " END)"
             ]
       },
       bindings,
@@ -778,10 +778,10 @@ defmodule AshSql.Expr do
     arguments =
       case arguments do
         [{:raw, raw} | rest] ->
-          [{:raw, "(#{raw}"} | rest]
+          [{:raw, raw} | rest]
 
         arguments ->
-          [{:raw, "("} | arguments]
+          [{:raw, ""} | arguments]
       end
 
     arguments =
@@ -790,10 +790,10 @@ defmodule AshSql.Expr do
           arguments
 
         {:raw, _} ->
-          List.update_at(arguments, -1, fn {:raw, raw} -> {:raw, "#{raw})"} end)
+          arguments
 
         _ ->
-          arguments ++ [{:raw, ")"}]
+          arguments ++ [{:raw, ""}]
       end
 
     {params, fragment_data, _, acc} =
@@ -955,9 +955,11 @@ defmodule AshSql.Expr do
           %Fragment{
             embedded?: pred_embedded?,
             arguments: [
+              raw: "(",
               casted_expr: left_expr,
               raw: " || ",
-              casted_expr: right_expr
+              casted_expr: right_expr,
+              raw: ")"
             ]
           },
           bindings,
@@ -998,7 +1000,7 @@ defmodule AshSql.Expr do
             %Ash.Query.Function.Fragment{
               embedded?: pred_embedded?,
               arguments: [
-                raw: "CASE WHEN (",
+                raw: "(CASE WHEN (",
                 casted_expr: left_expr,
                 raw: " = FALSE OR ",
                 casted_expr: left_expr,
@@ -1006,7 +1008,7 @@ defmodule AshSql.Expr do
                 casted_expr: right_expr,
                 raw: " ELSE ",
                 casted_expr: left_expr,
-                raw: "END"
+                raw: "END)"
               ]
             },
             bindings,
@@ -1048,7 +1050,7 @@ defmodule AshSql.Expr do
             %Fragment{
               embedded?: pred_embedded?,
               arguments: [
-                raw: "CASE WHEN (",
+                raw: "(CASE WHEN (",
                 casted_expr: left_expr,
                 raw: " = FALSE OR ",
                 casted_expr: left_expr,
@@ -1056,7 +1058,7 @@ defmodule AshSql.Expr do
                 casted_expr: left_expr,
                 raw: " ELSE ",
                 casted_expr: right_expr,
-                raw: "END"
+                raw: "END)"
               ]
             },
             bindings,
@@ -1089,7 +1091,7 @@ defmodule AshSql.Expr do
 
         do_dynamic_expr(
           query,
-          %Ash.Query.Function.Fragment{arguments: [raw: "", expr: string, raw: "::citext"]},
+          %Ash.Query.Function.Fragment{arguments: [raw: "(", expr: string, raw: "::citext)"]},
           bindings,
           embedded?,
           acc,

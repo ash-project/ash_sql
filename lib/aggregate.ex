@@ -1140,10 +1140,10 @@ defmodule AshSql.Aggregate do
       type when is_atom(type) ->
         case Ash.Resource.Info.field(related, aggregate.field).type do
           {:array, _} ->
-            false
+            true
 
           _ ->
-            true
+            false
         end
 
       _ ->
@@ -1279,7 +1279,7 @@ defmodule AshSql.Aggregate do
     array_agg =
       query.__ash_bindings__.sql_behaviour.list_aggregate(aggregate.resource)
 
-    {sorted, query} =
+    {sorted, include_nil_filter_field, query} =
       if has_sort? || first_relationship.sort not in [nil, []] do
         {sort, binding} =
           if has_sort? do
@@ -1315,15 +1315,34 @@ defmodule AshSql.Aggregate do
           query =
             AshSql.Bindings.merge_expr_accumulator(query, acc)
 
-          {sort_expr, query}
+          {sort_expr, nil, query}
         else
           question_marks = Enum.map(sort_expr, fn _ -> " ? " end)
 
-          {:ok, expr} =
-            Ash.Query.Function.Fragment.casted_new(
-              ["#{array_agg}(? ORDER BY #{question_marks}) FILTER (WHERE ? IS NOT NULL)", field] ++
-                sort_expr ++ [field]
-            )
+          {expr, include_nil_filter_field} =
+            if has_filter?(aggregate.query) and !is_single? do
+              {:ok, expr} =
+                Ash.Query.Function.Fragment.casted_new(
+                  [
+                    "#{array_agg}(? ORDER BY #{question_marks})",
+                    field
+                  ] ++
+                    sort_expr
+                )
+
+              {expr, field}
+            else
+              {:ok, expr} =
+                Ash.Query.Function.Fragment.casted_new(
+                  [
+                    "#{array_agg}(? ORDER BY #{question_marks}) FILTER (WHERE ? IS NOT NULL)",
+                    field
+                  ] ++
+                    sort_expr ++ [field]
+                )
+
+              {expr, nil}
+            end
 
           {sort_expr, acc} =
             AshSql.Expr.dynamic_expr(query, expr, query.__ash_bindings__, false)
@@ -1331,7 +1350,7 @@ defmodule AshSql.Aggregate do
           query =
             AshSql.Bindings.merge_expr_accumulator(query, acc)
 
-          {sort_expr, query}
+          {sort_expr, include_nil_filter_field, query}
         end
       else
         case array_agg do
@@ -1339,18 +1358,25 @@ defmodule AshSql.Aggregate do
             {Ecto.Query.dynamic(
                [row],
                fragment("array_agg(?)", ^field)
-             ), query}
+             ), nil, query}
 
           "any_value" ->
             {Ecto.Query.dynamic(
                [row],
                fragment("any_value(?)", ^field)
-             ), query}
+             ), nil, query}
         end
       end
 
     {query, filtered} =
-      filter_field(sorted, query, aggregate, relationship_path, is_single?)
+      filter_field(
+        sorted,
+        include_nil_filter_field,
+        query,
+        aggregate,
+        relationship_path,
+        is_single?
+      )
 
     value =
       if array_agg == "array_agg" do
@@ -1436,7 +1462,7 @@ defmodule AshSql.Aggregate do
 
     has_sort? = has_sort?(aggregate.query)
 
-    {sorted, query} =
+    {sorted, include_nil_filter_field, query} =
       if has_sort? || (first_relationship && first_relationship.sort not in [nil, []]) do
         {sort, binding} =
           if has_sort? do
@@ -1464,25 +1490,38 @@ defmodule AshSql.Aggregate do
             ""
           end
 
-        expr =
+        {expr, include_nil_filter_field} =
           if aggregate.include_nil? do
             {:ok, expr} =
               Ash.Query.Function.Fragment.casted_new(
                 ["array_agg(#{distinct}? ORDER BY #{question_marks})", field] ++ sort_expr
               )
 
-            expr
+            {expr, nil}
           else
-            {:ok, expr} =
-              Ash.Query.Function.Fragment.casted_new(
-                [
-                  "array_agg(#{distinct}? ORDER BY #{question_marks}) FILTER (WHERE ? IS NOT NULL)",
-                  field
-                ] ++
-                  sort_expr ++ [field]
-              )
+            if has_filter?(aggregate.query) and !is_single? do
+              {:ok, expr} =
+                Ash.Query.Function.Fragment.casted_new(
+                  [
+                    "array_agg(#{distinct}? ORDER BY #{question_marks})",
+                    field
+                  ] ++
+                    sort_expr ++ [field]
+                )
 
-            expr
+              {expr, field}
+            else
+              {:ok, expr} =
+                Ash.Query.Function.Fragment.casted_new(
+                  [
+                    "array_agg(#{distinct}? ORDER BY #{question_marks}) FILTER (WHERE ? IS NOT NULL)",
+                    field
+                  ] ++
+                    sort_expr ++ [field]
+                )
+
+              {expr, nil}
+            end
           end
 
         {expr, acc} =
@@ -1491,23 +1530,30 @@ defmodule AshSql.Aggregate do
         query =
           AshSql.Bindings.merge_expr_accumulator(query, acc)
 
-        {expr, query}
+        {expr, include_nil_filter_field, query}
       else
         if Map.get(aggregate, :uniq?) do
           {Ecto.Query.dynamic(
              [row],
              fragment("array_agg(DISTINCT ?)", ^field)
-           ), query}
+           ), nil, query}
         else
           {Ecto.Query.dynamic(
              [row],
              fragment("array_agg(?)", ^field)
-           ), query}
+           ), nil, query}
         end
       end
 
     {query, filtered} =
-      filter_field(sorted, query, aggregate, relationship_path, is_single?)
+      filter_field(
+        sorted,
+        include_nil_filter_field,
+        query,
+        aggregate,
+        relationship_path,
+        is_single?
+      )
 
     with_default =
       if aggregate.default_value do
@@ -1608,7 +1654,7 @@ defmodule AshSql.Aggregate do
           module.dynamic(opts, binding)
       end
 
-    {query, filtered} = filter_field(field, query, aggregate, relationship_path, is_single?)
+    {query, filtered} = filter_field(field, nil, query, aggregate, relationship_path, is_single?)
 
     with_default =
       if aggregate.default_value do
@@ -1634,11 +1680,22 @@ defmodule AshSql.Aggregate do
     select_or_merge(query, aggregate.name, cast)
   end
 
-  defp filter_field(field, query, _aggregate, _relationship_path, true) do
-    {query, field}
+  defp filter_field(field, include_nil_filter_field, query, _aggregate, _relationship_path, true) do
+    if include_nil_filter_field do
+      {query, Ecto.Query.dynamic(filter(^field, not is_nil(^include_nil_filter_field)))}
+    else
+      {query, field}
+    end
   end
 
-  defp filter_field(field, query, aggregate, relationship_path, _is_single?) do
+  defp filter_field(
+         field,
+         include_nil_filter_field,
+         query,
+         aggregate,
+         relationship_path,
+         _is_single?
+       ) do
     if has_filter?(aggregate.query) do
       filter =
         Ash.Filter.move_to_relationship_path(
@@ -1686,10 +1743,19 @@ defmodule AshSql.Aggregate do
           )
         )
 
-      {AshSql.Bindings.merge_expr_accumulator(query, acc),
-       Ecto.Query.dynamic(filter(^field, ^expr))}
+      if include_nil_filter_field do
+        {AshSql.Bindings.merge_expr_accumulator(query, acc),
+         Ecto.Query.dynamic(filter(^field, ^expr and not is_nil(^include_nil_filter_field)))}
+      else
+        {AshSql.Bindings.merge_expr_accumulator(query, acc),
+         Ecto.Query.dynamic(filter(^field, ^expr))}
+      end
     else
-      {query, field}
+      if include_nil_filter_field do
+        {query, Ecto.Query.dynamic(filter(^field, not is_nil(^include_nil_filter_field)))}
+      else
+        {query, field}
+      end
     end
   end
 
