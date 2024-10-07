@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.35](https://github.com/ash-project/ash_sql/compare/v0.2.34...v0.2.35) (2024-10-07)
+
+
+
+
+### Bug Fixes:
+
+* properly group aggregates together
+
+* don't attempt to add multiple filter statements to a single aggregate
+
 ## [v0.2.34](https://github.com/ash-project/ash_sql/compare/v0.2.33...v0.2.34) (2024-09-27)
 
 
