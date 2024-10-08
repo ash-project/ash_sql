@@ -1311,9 +1311,17 @@ defmodule AshSql.Expr do
       else
         if query.__ash_bindings__[:parent?] &&
              ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
-          Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
+          if bindings[:parent?] do
+            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^field_name))
+          else
+            Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
+          end
         else
-          Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
+          if bindings[:parent?] do
+            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^field_name))
+          else
+            Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
+          end
         end
       end
 
