@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.36](https://github.com/ash-project/ash_sql/compare/v0.2.35...v0.2.36) (2024-10-08)
+
+
+
+
+### Bug Fixes:
+
+* properly handle parent bindings in aggregate references
+
 ## [v0.2.35](https://github.com/ash-project/ash_sql/compare/v0.2.34...v0.2.35) (2024-10-07)
 
 
