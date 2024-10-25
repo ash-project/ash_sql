@@ -1633,10 +1633,10 @@ defmodule AshSql.Aggregate do
           cond do
             Map.get(aggregate, :uniq?) ->
               Ecto.Query.dynamic([row], count(^field, :distinct))
-            Ash.Resource.Info.field(resource, Ash.Query.Ref.name(ref)).allow_nil? ->
-              Ecto.Query.dynamic([row], count(^field))
-            true ->
+            match?(%{attribute: %{allow_nil?: false}}, ref) ->
               Ecto.Query.dynamic([row], count())
+            true ->
+              Ecto.Query.dynamic([row], count(^field))
           end
 
         :sum ->
