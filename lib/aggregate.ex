@@ -1630,10 +1630,13 @@ defmodule AshSql.Aggregate do
     field =
       case kind do
         :count ->
-          if Map.get(aggregate, :uniq?) do
-            Ecto.Query.dynamic([row], count(^field, :distinct))
-          else
-            Ecto.Query.dynamic([row], count(^field))
+          cond do
+            Map.get(aggregate, :uniq?) ->
+              Ecto.Query.dynamic([row], count(^field, :distinct))
+            match?(%{attribute: %{allow_nil?: false}}, ref) ->
+              Ecto.Query.dynamic([row], count())
+            true ->
+              Ecto.Query.dynamic([row], count(^field))
           end
 
         :sum ->
