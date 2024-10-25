@@ -1633,7 +1633,7 @@ defmodule AshSql.Aggregate do
           if Map.get(aggregate, :uniq?) do
             Ecto.Query.dynamic([row], count(^field, :distinct))
           else
-            Ecto.Query.dynamic([row], count(^field))
+            Ecto.Query.dynamic([row], count())
           end
 
         :sum ->
