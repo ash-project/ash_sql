@@ -1633,8 +1633,10 @@ defmodule AshSql.Aggregate do
           cond do
             Map.get(aggregate, :uniq?) ->
               Ecto.Query.dynamic([row], count(^field, :distinct))
+
             match?(%{attribute: %{allow_nil?: false}}, ref) ->
               Ecto.Query.dynamic([row], count())
+
             true ->
               Ecto.Query.dynamic([row], count(^field))
           end
