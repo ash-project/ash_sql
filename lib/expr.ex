@@ -2632,6 +2632,13 @@ defmodule AshSql.Expr do
 
   @doc false
   def split_statements(nil, _op), do: []
+
+  def split_statements([left, right | rest], op) do
+    split_statements([%BooleanExpression{op: :and, left: left, right: right} | rest], op)
+  end
+
+  def split_statements([last], op), do: split_statements(last, op)
+
   def split_statements(other, op), do: do_split_statements(other, op)
 
   def do_split_statements(%Ash.Filter{expression: expression}, op) do
