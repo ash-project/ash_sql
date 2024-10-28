@@ -578,11 +578,8 @@ defmodule AshSql.Aggregate do
             authorize?: aggregate.authorize?
           )
         else
-          %{valid?: false, errors: errors} ->
+          %{errors: errors} ->
             {:error, errors}
-
-          {:error, error} ->
-            {:error, error}
         end
         |> case do
           {:ok, aggregate} ->
