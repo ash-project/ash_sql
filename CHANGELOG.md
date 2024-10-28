@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.37](https://github.com/ash-project/ash_sql/compare/v0.2.36...v0.2.37) (2024-10-28)
+
+
+
+
+### Bug Fixes:
+
+* properly determine join style for parent expressions
+
+* count: use asterisk if not distinct by field is given (#72)
+
 ## [v0.2.36](https://github.com/ash-project/ash_sql/compare/v0.2.35...v0.2.36) (2024-10-08)
 
 
