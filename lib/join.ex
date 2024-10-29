@@ -181,29 +181,30 @@ defmodule AshSql.Join do
     end
   end
 
+  defp parent_expr(filter) do
+    filter
+    |> Ash.Filter.map(fn
+      %Ash.Query.Parent{expr: expr} ->
+        {:halt, expr}
+
+      %Ash.Query.Ref{} ->
+        nil
+
+      %Ash.Query.Exists{} ->
+        nil
+
+      other ->
+        other
+    end)
+  end
+
   defp join_parent_paths(query, filter, nil) do
-    parent_exprs =
-      filter
-      |> Ash.Filter.map(fn
-        %Ash.Query.Parent{expr: expr} ->
-          {:halt, expr}
-
-        %Ash.Query.Ref{} ->
-          nil
-
-        %Ash.Query.Exists{} ->
-          nil
-
-        other ->
-          other
-      end)
-
     case query.__ash_bindings__[:lateral_join_source_query] do
       nil ->
         {:ok, query}
 
       lateral_join_source_query ->
-        case join_all_relationships(lateral_join_source_query, parent_exprs) do
+        case join_all_relationships(lateral_join_source_query, parent_expr(filter)) do
           {:ok, lateral_join_source_query} ->
             {:ok,
              put_in(query.__ash_bindings__.lateral_join_source_query, lateral_join_source_query)
@@ -749,7 +750,8 @@ defmodule AshSql.Join do
       })
       |> AshSql.Bindings.add_binding(binding_data)
 
-    with {:ok, relationship_through} <- related_subquery(join_relationship, query),
+    with {:ok, query} <- join_all_relationships(query, parent_expr(relationship.filter)),
+         {:ok, relationship_through} <- related_subquery(join_relationship, query),
          {:ok, relationship_destination} <-
            related_subquery(relationship, query,
              sort?: sort?,
@@ -870,136 +872,151 @@ defmodule AshSql.Join do
         end
       )
 
-    case related_subquery(relationship, query,
-           sort?: sort?,
-           apply_filter: apply_filter,
-           refs_at_path: path,
-           filter_subquery?: true,
-           sort?: Map.get(relationship, :from_many?),
-           on_subquery: fn subquery ->
-             if !Map.get(relationship, :from_many?) || Map.get(relationship, :no_attributes?) do
-               subquery
-             else
-               source_ref =
-                 AshSql.Expr.ref_binding(
-                   %Ref{
-                     attribute:
-                       Ash.Resource.Info.attribute(
-                         query.__ash_bindings__.resource,
-                         relationship.source_attribute
-                       ),
-                     resource: query.__ash_bindings__.resource,
-                     relationship_path: []
-                   },
-                   query.__ash_bindings__
-                 )
+    # TODO: We should not double process this filter
+    destination_filter =
+      relationship.destination
+      |> Ash.Query.do_filter(relationship.filter, parent_stack: [query.__ash_bindings__.resource])
+      |> Map.get(:filter)
 
-               Ecto.Query.from(destination in subquery,
-                 where:
-                   field(parent_as(^source_ref), ^relationship.source_attribute) ==
-                     field(destination, ^relationship.destination_attribute)
-               )
-             end
-           end,
-           on_parent_expr: fn subquery ->
-             if Map.get(relationship, :no_attributes?) do
-               subquery
-             else
-               from(row in subquery,
-                 where:
-                   field(parent_as(^current_binding), ^relationship.source_attribute) ==
-                     field(
-                       row,
-                       ^relationship.destination_attribute
-                     )
-               )
-             end
-           end
+    case join_all_relationships(
+           query,
+           parent_expr(destination_filter)
          ) do
+      {:ok, query} ->
+        case related_subquery(relationship, query,
+               sort?: sort?,
+               apply_filter: apply_filter,
+               refs_at_path: path,
+               filter_subquery?: true,
+               sort?: Map.get(relationship, :from_many?),
+               on_subquery: fn subquery ->
+                 if !Map.get(relationship, :from_many?) || Map.get(relationship, :no_attributes?) do
+                   subquery
+                 else
+                   source_ref =
+                     AshSql.Expr.ref_binding(
+                       %Ref{
+                         attribute:
+                           Ash.Resource.Info.attribute(
+                             query.__ash_bindings__.resource,
+                             relationship.source_attribute
+                           ),
+                         resource: query.__ash_bindings__.resource,
+                         relationship_path: []
+                       },
+                       query.__ash_bindings__
+                     )
+
+                   Ecto.Query.from(destination in subquery,
+                     where:
+                       field(parent_as(^source_ref), ^relationship.source_attribute) ==
+                         field(destination, ^relationship.destination_attribute)
+                   )
+                 end
+               end,
+               on_parent_expr: fn subquery ->
+                 if Map.get(relationship, :no_attributes?) do
+                   subquery
+                 else
+                   from(row in subquery,
+                     where:
+                       field(parent_as(^current_binding), ^relationship.source_attribute) ==
+                         field(
+                           row,
+                           ^relationship.destination_attribute
+                         )
+                   )
+                 end
+               end
+             ) do
+          {:error, error} ->
+            {:error, error}
+
+          {:ok, relationship_destination} ->
+            query =
+              case {kind, Map.get(relationship, :no_attributes?, false),
+                    relationship_destination.__ash_bindings__.context[:data_layer][
+                      :has_parent_expr?
+                    ] || Map.get(relationship, :from_many?, false)} do
+                {:inner, true, false} ->
+                  from(_ in query,
+                    join: destination in ^relationship_destination,
+                    as: ^initial_ash_bindings.current,
+                    on: true
+                  )
+
+                {:inner, true, true} ->
+                  from(_ in query,
+                    inner_lateral_join: destination in ^relationship_destination,
+                    as: ^initial_ash_bindings.current,
+                    on: true
+                  )
+
+                {:inner, false, false} ->
+                  from(_ in query,
+                    join: destination in ^relationship_destination,
+                    as: ^initial_ash_bindings.current,
+                    on:
+                      field(as(^current_binding), ^relationship.source_attribute) ==
+                        field(
+                          destination,
+                          ^relationship.destination_attribute
+                        )
+                  )
+
+                {:inner, false, true} ->
+                  from(_ in query,
+                    inner_lateral_join: destination in ^relationship_destination,
+                    as: ^initial_ash_bindings.current,
+                    on: true
+                  )
+
+                {:left, true, false} ->
+                  from(_ in query,
+                    left_join: destination in ^relationship_destination,
+                    as: ^initial_ash_bindings.current,
+                    on: true
+                  )
+
+                {:left, true, true} ->
+                  from(_ in query,
+                    left_lateral_join: destination in ^relationship_destination,
+                    as: ^initial_ash_bindings.current,
+                    on: true
+                  )
+
+                {:left, false, false} ->
+                  from(_ in query,
+                    left_join: destination in ^relationship_destination,
+                    as: ^initial_ash_bindings.current,
+                    on:
+                      field(as(^current_binding), ^relationship.source_attribute) ==
+                        field(
+                          destination,
+                          ^relationship.destination_attribute
+                        )
+                  )
+
+                {:left, false, true} ->
+                  from(_ in query,
+                    left_lateral_join: destination in ^relationship_destination,
+                    as: ^initial_ash_bindings.current,
+                    on: true
+                  )
+              end
+
+            query
+            |> AshSql.Aggregate.add_aggregates(
+              used_aggregates,
+              relationship.destination,
+              false,
+              initial_ash_bindings.current,
+              {query.__ash_bindings__.resource, full_path}
+            )
+        end
+
       {:error, error} ->
         {:error, error}
-
-      {:ok, relationship_destination} ->
-        query =
-          case {kind, Map.get(relationship, :no_attributes?, false),
-                relationship_destination.__ash_bindings__.context[:data_layer][
-                  :has_parent_expr?
-                ] || Map.get(relationship, :from_many?, false)} do
-            {:inner, true, false} ->
-              from(_ in query,
-                join: destination in ^relationship_destination,
-                as: ^initial_ash_bindings.current,
-                on: true
-              )
-
-            {:inner, true, true} ->
-              from(_ in query,
-                inner_lateral_join: destination in ^relationship_destination,
-                as: ^initial_ash_bindings.current,
-                on: true
-              )
-
-            {:inner, false, false} ->
-              from(_ in query,
-                join: destination in ^relationship_destination,
-                as: ^initial_ash_bindings.current,
-                on:
-                  field(as(^current_binding), ^relationship.source_attribute) ==
-                    field(
-                      destination,
-                      ^relationship.destination_attribute
-                    )
-              )
-
-            {:inner, false, true} ->
-              from(_ in query,
-                inner_lateral_join: destination in ^relationship_destination,
-                as: ^initial_ash_bindings.current,
-                on: true
-              )
-
-            {:left, true, false} ->
-              from(_ in query,
-                left_join: destination in ^relationship_destination,
-                as: ^initial_ash_bindings.current,
-                on: true
-              )
-
-            {:left, true, true} ->
-              from(_ in query,
-                left_lateral_join: destination in ^relationship_destination,
-                as: ^initial_ash_bindings.current,
-                on: true
-              )
-
-            {:left, false, false} ->
-              from(_ in query,
-                left_join: destination in ^relationship_destination,
-                as: ^initial_ash_bindings.current,
-                on:
-                  field(as(^current_binding), ^relationship.source_attribute) ==
-                    field(
-                      destination,
-                      ^relationship.destination_attribute
-                    )
-              )
-
-            {:left, false, true} ->
-              from(_ in query,
-                left_lateral_join: destination in ^relationship_destination,
-                as: ^initial_ash_bindings.current,
-                on: true
-              )
-          end
-
-        query
-        |> AshSql.Aggregate.add_aggregates(
-          used_aggregates,
-          relationship.destination,
-          false,
-          initial_ash_bindings.current,
-          {query.__ash_bindings__.resource, full_path}
-        )
     end
   end
 
