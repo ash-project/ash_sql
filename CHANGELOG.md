@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.38](https://github.com/ash-project/ash_sql/compare/v0.2.37...v0.2.38) (2024-10-29)
+
+
+
+
+### Bug Fixes:
+
+* ensure we join on parent expressions when joining filtered relationships
+
 ## [v0.2.37](https://github.com/ash-project/ash_sql/compare/v0.2.36...v0.2.37) (2024-10-28)
 
 
