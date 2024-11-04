@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.39](https://github.com/ash-project/ash_sql/compare/v0.2.38...v0.2.39) (2024-11-04)
+
+
+
+
+### Bug Fixes:
+
+* properly reference `from_many?` source binding while joining
+
 ## [v0.2.38](https://github.com/ash-project/ash_sql/compare/v0.2.37...v0.2.38) (2024-10-29)
 
 
