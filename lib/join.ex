@@ -226,80 +226,6 @@ defmodule AshSql.Join do
     {:ok, query}
   end
 
-  # def remove_parent(%__MODULE__{expression: expression} = filter) do
-  #   %{filter | expression: remove_parent(expression)}
-  # end
-
-  # defp remove_parent(expression, func) do
-  #   case expression do
-  #     value when is_tuple(value) ->
-  #       value
-  #       |> Tuple.to_list()
-  #       |> map(func)
-  #       |> List.to_tuple()
-
-  #     value when is_list(value) ->
-  #       Enum.map(value, &map(&1, func))
-
-  #     %MapSet{} = value ->
-  #       MapSet.new(value, &map(&1, func))
-
-  #     %BooleanExpression{left: left, right: right} = expr ->
-  #       %{expr | left: map(left, func), right: map(right, func)}
-
-  #     %Not{expression: not_expr} = expr ->
-  #       %{expr | expression: map(not_expr, func)}
-
-  #     %Ash.Query.Parent{} = this ->
-  #       # you have to map over the internals of this yourself
-  #       func.(this)
-
-  #     %Ash.CustomExpression{expression: expression, simple_expression: simple_expression} =
-  #         custom_expression ->
-  #       %{
-  #         custom_expression
-  #         | expression: map(expression, func),
-  #           simple_expression: map(simple_expression, func)
-  #       }
-
-  #     %Ash.Query.Exists{} = expr ->
-  #       # you have to map over the internals of exists yourself
-  #       func.(expr)
-
-  #     %Ash.Query.Call{args: args} = op ->
-  #       %{op | args: map(args, func)}
-
-  #     %{__operator__?: true, left: left, right: right} = op ->
-  #       %{op | left: map(left, func), right: map(right, func)}
-
-  #     %{__function__?: true, arguments: arguments} = function ->
-  #       %{
-  #         function
-  #         | arguments:
-  #             Enum.map(arguments, fn
-  #               {key, arg} when is_atom(key) ->
-  #                 {key, map(arg, func)}
-
-  #               arg ->
-  #                 map(arg, func)
-  #             end)
-  #       }
-
-  #     %Ash.Query.Ref{} = expr ->
-  #       # you have to map over the internals of exists yourself
-  #       func.(expr)
-
-  #     value when is_map(value) ->
-  #       value
-  #       |> Map.to_list()
-  #       |> map(func)
-  #       |> Map.new()
-
-  #     other ->
-  #       func.(other)
-  #   end
-  # end
-
   defp to_joins(paths, filter, resource) do
     paths
     |> Enum.reject(&(&1 == []))
@@ -902,7 +828,7 @@ defmodule AshSql.Join do
                              relationship.source_attribute
                            ),
                          resource: query.__ash_bindings__.resource,
-                         relationship_path: []
+                         relationship_path: path
                        },
                        query.__ash_bindings__
                      )
