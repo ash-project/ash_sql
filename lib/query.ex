@@ -172,7 +172,8 @@ defmodule AshSql.Query do
              |> Map.put(:offset, query.offset)
              |> AshSql.Bindings.default_bindings(
                resource,
-               query.__ash_bindings__.sql_behaviour
+               query.__ash_bindings__.sql_behaviour,
+               query.__ash_bindings__.context
              )
              |> Map.update!(:__ash_bindings__, fn bindings ->
                Map.merge(
