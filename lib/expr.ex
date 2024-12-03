@@ -1123,13 +1123,6 @@ defmodule AshSql.Expr do
        ) do
     calculation = %{calculation | load: calculation.name}
 
-    type =
-      bindings.sql_behaviour.parameterized_type(
-        calculation.type,
-        Map.get(calculation, :constraints, [])
-      )
-
-    validate_type!(query, type, type_expr)
     resource = Ash.Resource.Info.related(bindings.resource, relationship_path)
 
     case Ash.Filter.hydrate_refs(
@@ -1164,7 +1157,7 @@ defmodule AshSql.Expr do
           bindings,
           embedded?,
           acc,
-          type
+          {calculation.type, Map.get(calculation, :constraints, [])}
         )
 
       {:error, error} ->
