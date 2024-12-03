@@ -346,10 +346,16 @@ defmodule AshSql.Join do
       end
     end)
     |> Ash.Query.do_filter(opts[:apply_filter], parent_stack: parent_resources)
-    |> Ash.Query.for_read(read_action, %{},
-      actor: context[:private][:actor],
-      tenant: context[:private][:tenant]
-    )
+    |> then(fn query ->
+      if query.__validated_for_action__ == read_action do
+        query
+      else
+        Ash.Query.for_read(query, read_action, %{},
+          actor: context[:private][:actor],
+          tenant: context[:private][:tenant]
+        )
+      end
+    end)
     |> Ash.Query.set_tenant(Map.get(query, :__tenant__))
     |> Ash.Query.unset([:sort, :distinct, :select, :limit, :offset])
     |> hydrate_refs(context[:private][:actor])

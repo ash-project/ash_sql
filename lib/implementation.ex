@@ -59,6 +59,13 @@ defmodule AshSql.Implementation do
       def storage_type(_, _), do: nil
 
       def type_expr(expr, type) do
+        type =
+          if Ash.Type.ash_type?(type) do
+            parameterized_type(type, [])
+          else
+            type
+          end
+
         Ecto.Query.dynamic(type(^expr, ^type))
       end
 

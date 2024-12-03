@@ -1739,10 +1739,7 @@ defmodule AshSql.Aggregate do
           filter,
           query.__ash_bindings__,
           false,
-          query.__ash_bindings__.sql_behaviour.parameterized_type(
-            aggregate.type,
-            aggregate.constraints
-          )
+          {aggregate.type, aggregate.constraints}
         )
 
       if include_nil_filter_field do

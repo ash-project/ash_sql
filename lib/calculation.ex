@@ -63,12 +63,6 @@ defmodule AshSql.Calculation do
 
           {dynamics, query} =
             Enum.reduce(calculations, {[], query}, fn {calculation, expression}, {list, query} ->
-              type =
-                query.__ash_bindings__.sql_behaviour.parameterized_type(
-                  calculation.type,
-                  Map.get(calculation, :constraints, [])
-                )
-
               expression =
                 Ash.Actions.Read.add_calc_context_to_filter(
                   expression,
@@ -85,7 +79,13 @@ defmodule AshSql.Calculation do
                   expression,
                   Map.put(query.__ash_bindings__, :location, :select),
                   false,
-                  type
+                  {calculation.type, Map.get(calculation, :constraints, [])}
+                )
+
+              type =
+                query.__ash_bindings__.sql_behaviour.parameterized_type(
+                  calculation.type,
+                  Map.get(calculation, :constraints, [])
                 )
 
               expr =

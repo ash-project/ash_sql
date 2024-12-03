@@ -1415,7 +1415,7 @@ defmodule AshSql.Expr do
     type = bindings.sql_behaviour.parameterized_type(arg2, constraints)
 
     if type do
-      {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, type)
+      {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, arg2)
 
       case {type, expr} do
         {{:parameterized, Ash.Type.Map.EctoType, []}, %Ecto.Query.DynamicExpr{}} ->
@@ -1428,7 +1428,7 @@ defmodule AshSql.Expr do
           {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
       end
     else
-      do_dynamic_expr(query, arg1, bindings, embedded?, acc, type)
+      do_dynamic_expr(query, arg1, bindings, embedded?, acc, arg2)
     end
   end
 
@@ -1601,6 +1601,8 @@ defmodule AshSql.Expr do
       # type *would* be in this expression so that we can return a "NULL" of that type
       # its weird, but there isn't any other way that I can tell :)
       validate_type!(query, type, value)
+
+      type = bindings.sql_behaviour.parameterized_type(type, [])
 
       dynamic = Ecto.Query.dynamic(type(fragment("NULL"), ^type))
 
@@ -1989,6 +1991,7 @@ defmodule AshSql.Expr do
       case maybe_sanitize_list(query, value, bindings, true, acc, type) do
         {^value, acc} ->
           if type do
+            type = bindings.sql_behaviour.parameterized_type(type, [])
             validate_type!(query, type, value)
 
             {query.__ash_bindings__.sql_behaviour.type_expr(value, type), acc}
@@ -2701,7 +2704,7 @@ defmodule AshSql.Expr do
           nested_type = bindings.sql_behaviour.parameterized_type(arg2, constraints)
 
           if nested_type do
-            {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, nested_type)
+            {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, arg2)
 
             {expr, acc} =
               case {nested_type, expr} do
@@ -2718,17 +2721,20 @@ defmodule AshSql.Expr do
             if nested_type == type do
               {expr, acc}
             else
+              type = bindings.sql_behaviour.parameterized_type(type, [])
               {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
             end
           else
             {expr, acc} =
-              do_dynamic_expr(query, arg1, bindings, embedded?, acc, nested_type)
+              do_dynamic_expr(query, arg1, bindings, embedded?, acc, type)
 
+            type = bindings.sql_behaviour.parameterized_type(type, [])
             {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
           end
 
         other ->
           {expr, acc} = do_dynamic_expr(query, other, bindings, embedded?, acc, type)
+          type = bindings.sql_behaviour.parameterized_type(type, [])
           {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
       end
     else
