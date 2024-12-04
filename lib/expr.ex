@@ -1115,7 +1115,7 @@ defmodule AshSql.Expr do
          %Ref{
            attribute: %Ash.Query.Calculation{} = calculation,
            relationship_path: relationship_path
-         } = type_expr,
+         },
          bindings,
          embedded?,
          acc,
