@@ -15,6 +15,16 @@ defmodule AshSql.Bindings do
     %{query | __ash_bindings__: new_ash_bindings}
   end
 
+  def explicitly_set_binding(query, data, to) do
+    %{
+      query
+      | __ash_bindings__: %{
+          query.__ash_bindings__
+          | bindings: Map.put(query.__ash_bindings__.bindings, to, data)
+        }
+    }
+  end
+
   def merge_expr_accumulator(query, acc) do
     update_in(
       query.__ash_bindings__.expression_accumulator,

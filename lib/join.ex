@@ -334,7 +334,10 @@ defmodule AshSql.Join do
     |> Ash.Query.set_context(context)
     |> Ash.Query.set_context(%{data_layer: %{in_group?: !!opts[:in_group?]}})
     |> Ash.Query.set_context(%{
-      data_layer: %{table: nil, start_bindings_at: opts[:start_bindings_at] || 0}
+      data_layer: %{
+        table: nil,
+        start_bindings_at: opts[:start_bindings_at] || 0
+      }
     })
     |> Ash.Query.set_context(relationship.context)
     |> Ash.Query.do_filter(relationship.filter, parent_stack: parent_resources)
