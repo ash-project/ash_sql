@@ -413,6 +413,15 @@ defmodule AshSql.Aggregate do
     )
   end
 
+  defp set_in_group(other, query, resource) do
+    from(row in other, as: ^0)
+    |> AshSql.Bindings.default_bindings(resource, query.__ash_bindings__.sql_behaviour)
+    |> Map.update!(
+      :__ash_bindings__,
+      &Map.put(&1, :in_group?, true)
+    )
+  end
+
   defp different_queries?(nil, nil), do: false
   defp different_queries?(nil, _), do: true
   defp different_queries?(_, nil), do: true
