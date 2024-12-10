@@ -327,7 +327,7 @@ defmodule AshSql.Join do
       relationship.read_action ||
         Ash.Resource.Info.primary_action!(relationship.destination, :read).name
 
-    context = query.__ash_bindings__.context
+    context = Map.delete(query.__ash_bindings__.context, :data_layer)
 
     relationship.destination
     |> Ash.Query.new()
@@ -663,105 +663,123 @@ defmodule AshSql.Join do
          sort?,
          apply_filter
        ) do
-    join_relationship =
-      Ash.Resource.Info.relationship(relationship.source, relationship.join_relationship)
+    if Ash.Actions.Read.Relationships.has_parent_expr?(relationship) do
+      join_many_to_many_with_parent_expr(
+        query,
+        relationship,
+        path,
+        kind,
+        source,
+        filter,
+        sort?,
+        apply_filter
+      )
+    else
+      join_relationship =
+        Ash.Resource.Info.relationship(relationship.source, relationship.join_relationship)
 
-    join_path = path ++ [join_relationship.name]
+      join_path = path ++ [join_relationship.name]
 
-    full_path = path ++ [relationship.name]
+      full_path = path ++ [relationship.name]
 
-    initial_ash_bindings = query.__ash_bindings__
+      initial_ash_bindings = query.__ash_bindings__
 
-    binding_data = %{type: kind, path: full_path, source: source}
+      binding_data = %{type: kind, path: full_path, source: source}
 
-    used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
-
-    query =
-      query
-      |> AshSql.Bindings.add_binding(%{
-        path: join_path,
-        type: :left,
-        source: source
-      })
-      |> AshSql.Bindings.add_binding(binding_data)
-
-    with {:ok, query} <- join_all_relationships(query, parent_expr(relationship.filter)),
-         {:ok, relationship_through} <- related_subquery(join_relationship, query),
-         {:ok, relationship_destination} <-
-           related_subquery(relationship, query,
-             sort?: sort?,
-             apply_filter?: apply_filter,
-             refs_at_path: path
-           ) do
-      {relationship_destination, dest_acc} =
-        maybe_apply_filter(relationship_destination, query, query.__ash_bindings__, apply_filter)
+      used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
 
       query =
         query
-        |> AshSql.Bindings.merge_expr_accumulator(dest_acc)
+        |> AshSql.Bindings.add_binding(%{
+          path: join_path,
+          type: :left,
+          source: source
+        })
+        |> AshSql.Bindings.add_binding(binding_data)
 
-      binding_kinds =
-        case kind do
-          :left ->
-            [:left, :inner]
+      with {:ok, query} <- join_all_relationships(query, parent_expr(relationship.filter)),
+           {:ok, relationship_through} <- related_subquery(join_relationship, query),
+           {:ok, relationship_destination} <-
+             related_subquery(relationship, query,
+               sort?: sort?,
+               apply_filter?: apply_filter,
+               refs_at_path: path
+             ) do
+        {relationship_destination, dest_acc} =
+          maybe_apply_filter(
+            relationship_destination,
+            query,
+            query.__ash_bindings__,
+            apply_filter
+          )
 
-          :inner ->
-            [:left, :inner]
+        query =
+          query
+          |> AshSql.Bindings.merge_expr_accumulator(dest_acc)
 
-          other ->
-            [other]
-        end
+        binding_kinds =
+          case kind do
+            :left ->
+              [:left, :inner]
 
-      current_binding =
-        Enum.find_value(
-          initial_ash_bindings.bindings,
-          initial_ash_bindings.root_binding,
-          fn {binding, data} ->
-            if data.type in binding_kinds && data.path == path do
-              binding
-            end
+            :inner ->
+              [:left, :inner]
+
+            other ->
+              [other]
           end
+
+        current_binding =
+          Enum.find_value(
+            initial_ash_bindings.bindings,
+            initial_ash_bindings.root_binding,
+            fn {binding, data} ->
+              if data.type in binding_kinds && data.path == path do
+                binding
+              end
+            end
+          )
+
+        query =
+          case kind do
+            :inner ->
+              from(_ in query,
+                join: through in ^relationship_through,
+                as: ^initial_ash_bindings.current,
+                on:
+                  field(as(^current_binding), ^relationship.source_attribute) ==
+                    field(through, ^relationship.source_attribute_on_join_resource),
+                join: destination in ^relationship_destination,
+                as: ^(initial_ash_bindings.current + 1),
+                on:
+                  field(destination, ^relationship.destination_attribute) ==
+                    field(through, ^relationship.destination_attribute_on_join_resource)
+              )
+
+            _ ->
+              from(_ in query,
+                left_join: through in ^relationship_through,
+                as: ^initial_ash_bindings.current,
+                on:
+                  field(as(^current_binding), ^relationship.source_attribute) ==
+                    field(through, ^relationship.source_attribute_on_join_resource),
+                left_join: destination in ^relationship_destination,
+                as: ^(initial_ash_bindings.current + 1),
+                on:
+                  field(destination, ^relationship.destination_attribute) ==
+                    field(through, ^relationship.destination_attribute_on_join_resource)
+              )
+          end
+
+        AshSql.Aggregate.add_aggregates(
+          query,
+          used_aggregates,
+          relationship.destination,
+          false,
+          initial_ash_bindings.current,
+          {query.__ash_bindings__.resource, full_path}
         )
-
-      query =
-        case kind do
-          :inner ->
-            from(_ in query,
-              join: through in ^relationship_through,
-              as: ^initial_ash_bindings.current,
-              on:
-                field(as(^current_binding), ^relationship.source_attribute) ==
-                  field(through, ^relationship.source_attribute_on_join_resource),
-              join: destination in ^relationship_destination,
-              as: ^(initial_ash_bindings.current + 1),
-              on:
-                field(destination, ^relationship.destination_attribute) ==
-                  field(through, ^relationship.destination_attribute_on_join_resource)
-            )
-
-          _ ->
-            from(_ in query,
-              left_join: through in ^relationship_through,
-              as: ^initial_ash_bindings.current,
-              on:
-                field(as(^current_binding), ^relationship.source_attribute) ==
-                  field(through, ^relationship.source_attribute_on_join_resource),
-              left_join: destination in ^relationship_destination,
-              as: ^(initial_ash_bindings.current + 1),
-              on:
-                field(destination, ^relationship.destination_attribute) ==
-                  field(through, ^relationship.destination_attribute_on_join_resource)
-            )
-        end
-
-      AshSql.Aggregate.add_aggregates(
-        query,
-        used_aggregates,
-        relationship.destination,
-        false,
-        initial_ash_bindings.current,
-        {query.__ash_bindings__.resource, full_path}
-      )
+      end
     end
   end
 
@@ -952,6 +970,146 @@ defmodule AshSql.Join do
 
       {:error, error} ->
         {:error, error}
+    end
+  end
+
+  defp join_many_to_many_with_parent_expr(
+         query,
+         relationship,
+         path,
+         kind,
+         source,
+         filter,
+         sort?,
+         apply_filter
+       ) do
+    join_relationship =
+      Ash.Resource.Info.relationship(relationship.source, relationship.join_relationship)
+
+    join_path = path ++ [join_relationship.name]
+
+    full_path = path ++ [relationship.name]
+
+    initial_ash_bindings = query.__ash_bindings__
+
+    binding_data = %{type: kind, path: full_path, source: source}
+
+    used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
+
+    binding_kinds =
+      case kind do
+        :left ->
+          [:left, :inner]
+
+        :inner ->
+          [:left, :inner]
+
+        other ->
+          [other]
+      end
+
+    current_binding =
+      Enum.find_value(
+        initial_ash_bindings.bindings,
+        initial_ash_bindings.root_binding,
+        fn {binding, data} ->
+          if data.type in binding_kinds && data.path == path do
+            binding
+          end
+        end
+      )
+
+    query_with_bindings =
+      AshSql.Bindings.add_binding(query, %{
+        path: join_path,
+        type: :left,
+        source: source
+      })
+
+    query_with_bindings =
+      put_in(
+        query_with_bindings.__ash_bindings__[:lateral_join_bindings],
+        query.__ash_bindings__.current
+      )
+
+    Ash.Actions.Read.Relationships.has_parent_expr?(relationship) |> IO.inspect()
+
+    with {:ok, query} <- join_all_relationships(query, parent_expr(relationship.filter)),
+         {:ok, relationship_through} <- related_subquery(join_relationship, query),
+         {:ok, relationship_destination} <-
+           related_subquery(relationship, query_with_bindings,
+             sort?: sort?,
+             apply_filter?: apply_filter,
+             on_subquery: fn subquery ->
+               case kind do
+                 :inner ->
+                   from(destination in subquery,
+                     join: through in ^relationship_through,
+                     as: ^initial_ash_bindings.current,
+                     on:
+                       field(through, ^relationship.destination_attribute_on_join_resource) ==
+                         field(destination, ^relationship.destination_attribute),
+                     on:
+                       field(parent_as(^current_binding), ^relationship.source_attribute) ==
+                         field(through, ^relationship.source_attribute_on_join_resource)
+                   )
+
+                 _ ->
+                   from(destination in subquery,
+                     left_join: through in ^relationship_through,
+                     as: ^initial_ash_bindings.current,
+                     on:
+                       field(through, ^relationship.destination_attribute_on_join_resource) ==
+                         field(destination, ^relationship.destination_attribute),
+                     on:
+                       field(parent_as(^current_binding), ^relationship.source_attribute) ==
+                         field(through, ^relationship.source_attribute_on_join_resource)
+                   )
+               end
+             end,
+             refs_at_path: path
+           ) do
+      {relationship_destination, dest_acc} =
+        maybe_apply_filter(
+          relationship_destination,
+          query,
+          query.__ash_bindings__,
+          apply_filter
+        )
+
+      query =
+        query
+        |> AshSql.Bindings.merge_expr_accumulator(dest_acc)
+
+      query =
+        case kind do
+          :inner ->
+            from(row in query,
+              inner_lateral_join: destination in ^relationship_destination,
+              on: true,
+              as: ^initial_ash_bindings.current
+            )
+
+          :left ->
+            from(row in query,
+              left_lateral_join: destination in ^relationship_destination,
+              on: true,
+              as: ^initial_ash_bindings.current
+            )
+        end
+
+      query =
+        query
+        |> AshSql.Bindings.add_binding(binding_data)
+
+      AshSql.Aggregate.add_aggregates(
+        query,
+        used_aggregates,
+        relationship.destination,
+        false,
+        initial_ash_bindings.current,
+        {query.__ash_bindings__.resource, full_path}
+      )
     end
   end
 
