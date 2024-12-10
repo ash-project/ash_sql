@@ -1032,8 +1032,6 @@ defmodule AshSql.Join do
         query.__ash_bindings__.current
       )
 
-    Ash.Actions.Read.Relationships.has_parent_expr?(relationship) |> IO.inspect()
-
     with {:ok, query} <- join_all_relationships(query, parent_expr(relationship.filter)),
          {:ok, relationship_through} <- related_subquery(join_relationship, query),
          {:ok, relationship_destination} <-
