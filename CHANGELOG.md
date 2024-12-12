@@ -5,6 +5,21 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.41](https://github.com/ash-project/ash_sql/compare/v0.2.40...v0.2.41) (2024-12-12)
+
+
+
+
+### Bug Fixes:
+
+* apply attribute multitenancy on joined resources
+
+* use lateral join for parent_expr many to many joins
+
+* ensure join binding is available for join resource in exists
+
+* add missing pattern for setting group context
+
 ## [v0.2.40](https://github.com/ash-project/ash_sql/compare/v0.2.39...v0.2.40) (2024-12-06)
 
 
