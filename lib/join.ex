@@ -2,6 +2,8 @@ defmodule AshSql.Join do
   @moduledoc false
   import Ecto.Query, only: [from: 2, subquery: 1]
 
+  require Ash.Query
+
   alias Ash.Query.{Not, Ref}
 
   @known_inner_join_operators [
@@ -329,6 +331,8 @@ defmodule AshSql.Join do
 
     context = Map.delete(query.__ash_bindings__.context, :data_layer)
 
+    tenant = query.__ash_bindings__.context[:private][:tenant]
+
     relationship.destination
     |> Ash.Query.new()
     |> Ash.Query.set_context(context)
@@ -359,8 +363,8 @@ defmodule AshSql.Join do
         )
       end
     end)
-    |> Ash.Query.set_tenant(Map.get(query, :__tenant__))
     |> Ash.Query.unset([:sort, :distinct, :select, :limit, :offset])
+    |> handle_attribute_multitenancy(tenant)
     |> hydrate_refs(context[:private][:actor])
     |> then(fn query ->
       if sort? do
@@ -393,6 +397,25 @@ defmodule AshSql.Join do
 
       %{errors: errors} ->
         {:error, errors}
+    end
+  end
+
+  defp handle_attribute_multitenancy(query, tenant) do
+    if tenant && Ash.Resource.Info.multitenancy_strategy(query.resource) == :attribute do
+      multitenancy_attribute = Ash.Resource.Info.multitenancy_attribute(query.resource)
+
+      if multitenancy_attribute do
+        {m, f, a} = Ash.Resource.Info.multitenancy_parse_attribute(query.resource)
+        attribute_value = apply(m, f, [query.to_tenant | a])
+
+        query
+        |> Ash.Query.set_tenant(tenant)
+        |> Ash.Query.filter(^Ash.Expr.ref(multitenancy_attribute) == ^attribute_value)
+      else
+        query
+      end
+    else
+      query
     end
   end
 
