@@ -167,10 +167,32 @@ defmodule AshSql.Aggregate do
                         []
                     end
 
+                  tmp_query =
+                    if first_relationship.type == :many_to_many do
+                      put_in(query.__ash_bindings__[:lateral_join_bindings], [0])
+                      |> AshSql.Bindings.explicitly_set_binding(
+                        %{
+                          type: :left,
+                          path: [first_relationship.join_relationship]
+                        },
+                        0
+                      )
+                    else
+                      query
+                    end
+
+                  start_bindings_at =
+                    if first_relationship.type == :many_to_many do
+                      1
+                    else
+                      0
+                    end
+
                   with {:ok, subquery} <-
                          AshSql.Join.related_subquery(
                            first_relationship,
-                           query,
+                           tmp_query,
+                           start_bindings_at: start_bindings_at,
                            on_subquery: fn subquery ->
                              base_binding = subquery.__ash_bindings__.root_binding
                              current_binding = subquery.__ash_bindings__.current
@@ -202,7 +224,7 @@ defmodule AshSql.Aggregate do
                                    subquery =
                                      from(sub in subquery,
                                        join: through in ^through,
-                                       as: ^current_binding,
+                                       as: ^0,
                                        on:
                                          field(
                                            through,
@@ -230,9 +252,6 @@ defmodule AshSql.Aggregate do
                                              ^first_relationship.source_attribute_on_join_resource
                                            )
                                      )
-                                     |> Map.update!(:__ash_bindings__, fn bindings ->
-                                       Map.update!(bindings, :current, &(&1 + 1))
-                                     end)
 
                                    AshSql.Join.set_join_prefix(
                                      subquery,
