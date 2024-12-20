@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.42](https://github.com/ash-project/ash_sql/compare/v0.2.41...v0.2.42) (2024-12-20)
+
+
+
+
+### Bug Fixes:
+
+* properly bind many to many relationships in aggregates
+
 ## [v0.2.41](https://github.com/ash-project/ash_sql/compare/v0.2.40...v0.2.41) (2024-12-12)
 
 
