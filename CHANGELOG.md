@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.43](https://github.com/ash-project/ash_sql/compare/v0.2.42...v0.2.43) (2024-12-26)
+
+
+
+
+### Bug Fixes:
+
+* return `{:empty, query}` on empty atomic changes
+
 ## [v0.2.42](https://github.com/ash-project/ash_sql/compare/v0.2.41...v0.2.42) (2024-12-20)
 
 
