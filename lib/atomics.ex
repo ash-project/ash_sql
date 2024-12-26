@@ -168,7 +168,7 @@ defmodule AshSql.Atomics do
 
     case set do
       [] ->
-        :empty
+        {:empty, query}
 
       set ->
         {:ok,
@@ -275,7 +275,7 @@ defmodule AshSql.Atomics do
 
         case set do
           [] ->
-            :empty
+            {:empty, query}
 
           set ->
             {:ok,
