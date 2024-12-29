@@ -270,7 +270,13 @@ defmodule AshSql.Sort do
                     end
 
                   default_value =
-                    aggregate.default || Ash.Query.Aggregate.default_value(aggregate.kind)
+                    if is_function(aggregate.default) do
+                      aggregate.default.()
+                    else
+                      aggregate.default
+                    end
+
+                  default_value = default_value || Ash.Query.Aggregate.default_value(aggregate.kind)
 
                   if is_nil(default_value) do
                     Ecto.Query.dynamic(field(as(^binding), ^sort))
