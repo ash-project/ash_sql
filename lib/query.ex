@@ -1,6 +1,7 @@
 defmodule AshSql.Query do
   @moduledoc false
   import Ecto.Query, only: [subquery: 1, from: 2]
+  require Ash.Expr
 
   def resource_to_query(resource, implementation, domain \\ nil) do
     from(row in {implementation.table(resource) || "", resource}, [])
@@ -35,7 +36,7 @@ defmodule AshSql.Query do
 
     data_layer_query =
       case context[:data_layer][:lateral_join_source] do
-        {_data, path} ->
+        {data, path} ->
           lateral_join_source_query = path |> List.first() |> elem(0)
 
           lateral_join_source_query.resource
@@ -44,6 +45,7 @@ defmodule AshSql.Query do
           })
           |> Ash.Query.set_tenant(lateral_join_source_query.tenant)
           |> set_lateral_join_prefix(data_layer_query)
+          |> filter_for_records(data)
           |> case do
             %{valid?: true} = query ->
               Ash.Query.data_layer_query(query)
@@ -117,6 +119,38 @@ defmodule AshSql.Query do
             {:ok, %{data_layer_query | __ash_bindings__: ash_bindings}}
         end
     end
+  end
+
+  defp filter_for_records(query, records) do
+    keys =
+      case Ash.Resource.Info.primary_key(query.resource) do
+        [] ->
+          case Ash.Resource.Info.identities(query.resource) do
+            %{keys: keys} -> keys
+            _ -> []
+          end
+
+        pkey ->
+          pkey
+      end
+
+    expr =
+      case keys do
+        [] ->
+          raise "Cannot use lateral joins with a resource that has no primary key and no identities"
+
+        keys ->
+          Enum.reduce(records, Ash.Expr.expr(false), fn record, filter_expr ->
+            all_keys_match_expr =
+              Enum.reduce(keys, Ash.Expr.expr(true), fn key, key_expr ->
+                Ash.Expr.expr(^key_expr and ^Ash.Expr.ref(key) == ^Map.get(record, key))
+              end)
+
+            Ash.Expr.expr(^filter_expr or ^all_keys_match_expr)
+          end)
+      end
+
+    Ash.Query.do_filter(query, expr)
   end
 
   def return_query(%{__ash_bindings__: %{lateral_join?: true}} = query, resource) do
