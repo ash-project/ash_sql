@@ -5,6 +5,21 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.44](https://github.com/ash-project/ash_sql/compare/v0.2.43...v0.2.44) (2025-01-06)
+
+
+
+
+### Bug Fixes:
+
+* filter query by source record ids when lateral joining
+
+* use `normalize` for string length
+
+* use right value for resource aggregate default in sort (#85)
+
+* handle resource aggregate with function default in sort (#84)
+
 ## [v0.2.43](https://github.com/ash-project/ash_sql/compare/v0.2.42...v0.2.43) (2024-12-26)
 
 
