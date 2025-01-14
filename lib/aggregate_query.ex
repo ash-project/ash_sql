@@ -183,9 +183,22 @@ defmodule AshSql.AggregateQuery do
         first_relationship =
           Ash.Resource.Info.relationship(resource, agg.relationship_path |> Enum.at(0))
 
+        filtered = AshSql.Bindings.default_bindings(filtered, resource, implementation)
+
+        ref =
+          AshSql.Aggregate.aggregate_field_ref(
+            agg,
+            Ash.Resource.Info.related(resource, agg.relationship_path),
+            agg.relationship_path,
+            filtered,
+            first_relationship
+          )
+
+        {:ok, filtered} = AshSql.Join.join_all_relationships(filtered, ref)
+
         query =
           AshSql.Aggregate.add_subquery_aggregate_select(
-            AshSql.Bindings.default_bindings(filtered, resource, implementation),
+            filtered,
             agg.relationship_path |> Enum.drop(1),
             %{agg | query: %{agg.query | filter: nil}},
             resource,
