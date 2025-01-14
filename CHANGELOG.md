@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.45](https://github.com/ash-project/ash_sql/compare/v0.2.44...v0.2.45) (2025-01-14)
+
+
+
+
+### Bug Fixes:
+
+* ensure that referenced fields are joined in agg queries
+
 ## [v0.2.44](https://github.com/ash-project/ash_sql/compare/v0.2.43...v0.2.44) (2025-01-06)
 
 
