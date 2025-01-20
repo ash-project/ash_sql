@@ -143,7 +143,13 @@ defmodule AshSql.Query do
           Enum.reduce(records, Ash.Expr.expr(false), fn record, filter_expr ->
             all_keys_match_expr =
               Enum.reduce(keys, Ash.Expr.expr(true), fn key, key_expr ->
-                Ash.Expr.expr(^key_expr and ^Ash.Expr.ref(key) == ^Map.get(record, key))
+                case Map.get(record, key) do
+                  nil ->
+                    Ash.Expr.expr(^key_expr and is_nil(^Ash.Expr.ref(key)))
+
+                  non_nil ->
+                    Ash.Expr.expr(^key_expr and ^Ash.Expr.ref(key) == ^non_nil)
+                end
               end)
 
             Ash.Expr.expr(^filter_expr or ^all_keys_match_expr)
