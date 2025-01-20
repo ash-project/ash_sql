@@ -1810,8 +1810,13 @@ defmodule AshSql.Expr do
         constraints
       end
 
+    type =
+      if !bindings[:no_cast?] do
+        bindings.sql_behaviour.parameterized_type(attr_type || expr_type, constraints)
+      end
+
     expr =
-      case bindings.sql_behaviour.parameterized_type(attr_type || expr_type, constraints) do
+      case type do
         nil ->
           # magic atoms FTW
           if query.__ash_bindings__[:parent?] &&
