@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.46](https://github.com/ash-project/ash_sql/compare/v0.2.45...v0.2.46) (2025-01-20)
+
+
+
+
+### Improvements:
+
+* support `no_cast?` in bindings while expr parsing
+
 ## [v0.2.45](https://github.com/ash-project/ash_sql/compare/v0.2.44...v0.2.45) (2025-01-14)
 
 
