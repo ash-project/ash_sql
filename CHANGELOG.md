@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.47](https://github.com/ash-project/ash_sql/compare/v0.2.46...v0.2.47) (2025-01-22)
+
+
+
+
+### Bug Fixes:
+
+* properly fetch source query for many to many rels
+
 ## [v0.2.46](https://github.com/ash-project/ash_sql/compare/v0.2.45...v0.2.46) (2025-01-20)
 
 
