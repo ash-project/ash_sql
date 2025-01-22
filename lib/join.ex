@@ -388,7 +388,7 @@ defmodule AshSql.Join do
           {:ok, ecto_query} ->
             {:ok,
              ecto_query
-             |> set_join_prefix(query, relationship.destination)
+             |> set_join_prefix(query, Map.get(relationship, :through, relationship.destination))
              |> Ecto.Query.exclude(:select)}
 
           {:error, error} ->
@@ -483,26 +483,22 @@ defmodule AshSql.Join do
   end
 
   def set_join_prefix(join_query, query, resource) do
+    %{join_query | prefix: join_prefix(join_query, query, resource)}
+  end
+
+  defp join_prefix(base_query, query, resource) do
     if Ash.Resource.Info.multitenancy_strategy(resource) == :context do
-      %{
-        join_query
-        | prefix:
-            Map.get(query, :__tenant__) ||
-              query.__ash_bindings__.sql_behaviour.schema(resource) ||
-              query.prefix ||
-              query.__ash_bindings__.sql_behaviour.repo(resource, :mutate).config()[
-                :default_prefix
-              ]
-      }
+      query.__ash_bindings__.sql_behaviour.schema(resource) ||
+        Map.get(base_query, :__tenant__) ||
+        base_query.prefix ||
+        query.__ash_bindings__.sql_behaviour.repo(resource, :mutate).config()[
+          :default_prefix
+        ]
     else
-      %{
-        join_query
-        | prefix:
-            query.__ash_bindings__.sql_behaviour.schema(resource) ||
-              query.__ash_bindings__.sql_behaviour.repo(resource, :mutate).config()[
-                :default_prefix
-              ]
-      }
+      query.__ash_bindings__.sql_behaviour.schema(resource) ||
+        query.__ash_bindings__.sql_behaviour.repo(resource, :mutate).config()[
+          :default_prefix
+        ]
     end
   end
 
