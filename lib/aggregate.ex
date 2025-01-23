@@ -169,13 +169,15 @@ defmodule AshSql.Aggregate do
 
                   tmp_query =
                     if first_relationship.type == :many_to_many do
-                      put_in(query.__ash_bindings__[:lateral_join_bindings], [0])
+                      put_in(query.__ash_bindings__[:lateral_join_bindings], [
+                        query.__ash_bindings__.current
+                      ])
                       |> AshSql.Bindings.explicitly_set_binding(
                         %{
                           type: :left,
                           path: [first_relationship.join_relationship]
                         },
-                        0
+                        query.__ash_bindings__.current
                       )
                     else
                       query
@@ -183,9 +185,9 @@ defmodule AshSql.Aggregate do
 
                   start_bindings_at =
                     if first_relationship.type == :many_to_many do
-                      1
+                      query.__ash_bindings__.current + 1
                     else
-                      0
+                      query.__ash_bindings__.current
                     end
 
                   with {:ok, subquery} <-
@@ -224,7 +226,7 @@ defmodule AshSql.Aggregate do
                                    subquery =
                                      from(sub in subquery,
                                        join: through in ^through,
-                                       as: ^0,
+                                       as: ^query.__ash_bindings__.current,
                                        on:
                                          field(
                                            through,
@@ -347,7 +349,7 @@ defmodule AshSql.Aggregate do
                                  relationship_path,
                                  aggregates,
                                  is_single?,
-                                 source_binding
+                                 subquery.__ash_bindings__.root_binding
                                )
 
                              select_all_aggregates(
@@ -727,7 +729,7 @@ defmodule AshSql.Aggregate do
          relationship_path,
          aggregates,
          is_single?,
-         _source_binding
+         source_binding
        ) do
     Enum.reduce_while(aggregates, {:ok, agg_query}, fn aggregate, {:ok, agg_query} ->
       filter =
@@ -756,7 +758,7 @@ defmodule AshSql.Aggregate do
         case field do
           %Ash.Query.Aggregate{} = aggregate ->
             {:ok, agg_query} =
-              add_aggregates(agg_query, [aggregate], related, false, 0, {
+              add_aggregates(agg_query, [aggregate], related, false, source_binding, {
                 first_relationship.destination,
                 [first_relationship.name]
               })
@@ -765,7 +767,7 @@ defmodule AshSql.Aggregate do
 
           %Ash.Resource.Aggregate{} = aggregate ->
             {:ok, agg_query} =
-              add_aggregates(agg_query, [aggregate], related, false, 0, {
+              add_aggregates(agg_query, [aggregate], related, false, source_binding, {
                 first_relationship.destination,
                 [first_relationship.name]
               })
@@ -806,7 +808,7 @@ defmodule AshSql.Aggregate do
                 agg_query,
                 [{new_calc, expression}],
                 agg_query.__ash_bindings__.resource,
-                0,
+                source_binding,
                 false
               )
 
@@ -844,7 +846,7 @@ defmodule AshSql.Aggregate do
                 agg_query,
                 [{calc, expression}],
                 agg_query.__ash_bindings__.resource,
-                0,
+                source_binding,
                 false
               )
 
@@ -1493,7 +1495,7 @@ defmodule AshSql.Aggregate do
           if has_sort? do
             {aggregate.query.sort, binding}
           else
-            {List.wrap(first_relationship.sort), 0}
+            {List.wrap(first_relationship.sort), query.__ash_bindings__.root_binding}
           end
 
         {:ok, sort_expr, query} =
@@ -1758,7 +1760,7 @@ defmodule AshSql.Aggregate do
           used_aggregates,
           query.__ash_bindings__.resource,
           false,
-          0
+          query.__ash_bindings__.root_binding
         )
 
       {expr, acc} =
