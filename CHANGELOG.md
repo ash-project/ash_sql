@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.48](https://github.com/ash-project/ash_sql/compare/v0.2.47...v0.2.48) (2025-01-23)
+
+
+
+
+### Bug Fixes:
+
+* handle nested many to many binding overlaps
+
 ## [v0.2.47](https://github.com/ash-project/ash_sql/compare/v0.2.46...v0.2.47) (2025-01-22)
 
 
