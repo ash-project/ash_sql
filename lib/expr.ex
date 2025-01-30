@@ -22,6 +22,7 @@ defmodule AshSql.Expr do
     Length,
     Now,
     Round,
+    StartOfDay,
     StringDowncase,
     StringJoin,
     StringLength,
@@ -145,6 +146,76 @@ defmodule AshSql.Expr do
     {Ecto.Query.dynamic(
        fragment("(?)", datetime_add(^DateTime.utc_now(), ^left * -1, ^to_string(right)))
      ), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StartOfDay{arguments: [value], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    case value do
+      %DateTime{} = value ->
+        dynamic_expr(
+          query,
+          DateTime.new!(DateTime.to_date(value), Time.new!(0, 0, 0)),
+          bindings,
+          pred_embedded? || embedded?,
+          type,
+          acc
+        )
+
+      %Date{} = value ->
+        dynamic_expr(
+          query,
+          DateTime.new!(value, Time.new!(0, 0, 0)),
+          bindings,
+          pred_embedded? || embedded?,
+          type,
+          acc
+        )
+
+      value ->
+        {value, acc} = dynamic_expr(query, value, bindings, pred_embedded? || embedded?, nil, acc)
+
+        {Ecto.Query.dynamic(fragment("date_trunc('day'::text, ?::timestamp)", ^value)), acc}
+    end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StartOfDay{arguments: [value, time_zone], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    case value do
+      %DateTime{} = value ->
+        new_datetime =
+          value
+          |> DateTime.to_date()
+          |> DateTime.new!(Time.new!(0, 0, 0), time_zone)
+
+        dynamic_expr(query, new_datetime, bindings, pred_embedded? || embedded?, type, acc)
+
+      %Date{} = value ->
+        new_datetime = DateTime.new!(value, Time.new!(0, 0, 0), time_zone)
+        dynamic_expr(query, new_datetime, bindings, pred_embedded? || embedded?, type, acc)
+
+      value ->
+        {value, acc} = dynamic_expr(query, value, bindings, pred_embedded? || embedded?, nil, acc)
+
+        {Ecto.Query.dynamic(
+           fragment(
+             "(date_trunc('day'::text, ?::timestamp AT TIME ZONE ?) AT TIME ZONE 'UTC')",
+             ^value,
+             ^time_zone
+           )
+         ), acc}
+    end
   end
 
   defp default_dynamic_expr(
