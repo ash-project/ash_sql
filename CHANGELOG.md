@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.50](https://github.com/ash-project/ash_sql/compare/v0.2.49...v0.2.50) (2025-01-31)
+
+
+
+
+### Bug Fixes:
+
+* properly handle database time zones in `start_of_day/1-2`
+
 ## [v0.2.49](https://github.com/ash-project/ash_sql/compare/v0.2.48...v0.2.49) (2025-01-30)
 
 
