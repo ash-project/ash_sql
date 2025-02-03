@@ -77,7 +77,7 @@ defmodule AshSql.AggregateQuery do
               repo.one(query, AshSql.repo_opts(repo, implementation, nil, nil, resource))
           end
 
-        {:ok, add_single_aggs(result, resource, original_query, cant_group, implementation)}
+        {:ok, add_single_aggs(result, resource, query, cant_group, implementation)}
     end
   end
 
