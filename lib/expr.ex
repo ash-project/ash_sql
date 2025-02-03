@@ -1669,9 +1669,13 @@ defmodule AshSql.Expr do
 
       type = bindings.sql_behaviour.parameterized_type(type, [])
 
-      dynamic = Ecto.Query.dynamic(type(fragment("NULL"), ^type))
+      if type do
+        dynamic = Ecto.Query.dynamic(type(fragment("NULL"), ^type))
 
-      {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
+        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
+      else
+        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
+      end
     else
       {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
     end
@@ -2076,9 +2080,14 @@ defmodule AshSql.Expr do
         {^value, acc} ->
           if type do
             type = bindings.sql_behaviour.parameterized_type(type, [])
-            validate_type!(query, type, value)
 
-            {query.__ash_bindings__.sql_behaviour.type_expr(value, type), acc}
+            if type do
+              validate_type!(query, type, value)
+
+              {query.__ash_bindings__.sql_behaviour.type_expr(value, type), acc}
+            else
+              {value, acc}
+            end
           else
             {value, acc}
           end
@@ -2813,13 +2822,23 @@ defmodule AshSql.Expr do
               do_dynamic_expr(query, arg1, bindings, embedded?, acc, type)
 
             type = bindings.sql_behaviour.parameterized_type(type, [])
-            {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
+
+            if type do
+              {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
+            else
+              {expr, acc}
+            end
           end
 
         other ->
           {expr, acc} = do_dynamic_expr(query, other, bindings, embedded?, acc, type)
           type = bindings.sql_behaviour.parameterized_type(type, [])
-          {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
+
+          if type do
+            {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
+          else
+            {expr, acc}
+          end
       end
     else
       do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
