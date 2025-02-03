@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.51](https://github.com/ash-project/ash_sql/compare/v0.2.50...v0.2.51) (2025-02-03)
+
+
+
+
+### Bug Fixes:
+
+* don't attempt to cast to `nil`
+
+* Use modified query instead of original when calling add_single_aggs (#94)
+
 ## [v0.2.50](https://github.com/ash-project/ash_sql/compare/v0.2.49...v0.2.50) (2025-01-31)
 
 
