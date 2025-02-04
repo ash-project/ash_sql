@@ -47,8 +47,9 @@ defmodule AshSql.AggregateQuery do
             |> Map.put(:windows, [])
             |> Ecto.Query.select(%{})
           end
+          |> Map.put(:__ash_bindings__, query.__ash_bindings__)
 
-        query =
+        group_query =
           Enum.reduce(
             can_group,
             query,
@@ -74,7 +75,7 @@ defmodule AshSql.AggregateQuery do
 
             _ ->
               repo = AshSql.dynamic_repo(resource, implementation, query)
-              repo.one(query, AshSql.repo_opts(repo, implementation, nil, nil, resource))
+              repo.one(group_query, AshSql.repo_opts(repo, implementation, nil, nil, resource))
           end
 
         {:ok, add_single_aggs(result, resource, query, cant_group, implementation)}
