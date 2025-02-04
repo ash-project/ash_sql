@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.52](https://github.com/ash-project/ash_sql/compare/v0.2.51...v0.2.52) (2025-02-04)
+
+
+
+
+### Bug Fixes:
+
+* ensure single agg query has bindings
+
 ## [v0.2.51](https://github.com/ash-project/ash_sql/compare/v0.2.50...v0.2.51) (2025-02-03)
 
 
