@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.53](https://github.com/ash-project/ash_sql/compare/v0.2.52...v0.2.53) (2025-02-05)
+
+
+
+
+### Bug Fixes:
+
+* simplify lateral join source
+
 ## [v0.2.52](https://github.com/ash-project/ash_sql/compare/v0.2.51...v0.2.52) (2025-02-04)
 
 
