@@ -48,7 +48,28 @@ defmodule AshSql.Query do
           |> filter_for_records(data)
           |> case do
             %{valid?: true} = query ->
-              Ash.Query.data_layer_query(query)
+              relationship = path |> List.first() |> elem(3)
+
+              {:ok, expr} =
+                Ash.Filter.hydrate_refs(relationship.filter, %{
+                  resource: relationship.destination,
+                  parent_stack: [relationship.source]
+                })
+
+              parent_expr = AshSql.Join.parent_expr(expr)
+
+              used_aggregates =
+                Ash.Filter.used_aggregates(parent_expr, [])
+
+              with {:ok, query} <- Ash.Query.data_layer_query(query) do
+                AshSql.Aggregate.add_aggregates(
+                  query,
+                  used_aggregates,
+                  relationship.source,
+                  false,
+                  query.__ash_bindings__.root_binding
+                )
+              end
 
             query ->
               {:error, query}

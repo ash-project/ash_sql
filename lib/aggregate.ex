@@ -98,6 +98,29 @@ defmodule AshSql.Aggregate do
                     first_relationship
                 end
 
+              parent_expr =
+                first_relationship.filter
+                |> Ash.Filter.hydrate_refs(%{
+                  resource: first_relationship.destination,
+                  parent_stack: [first_relationship.source]
+                })
+                |> elem(1)
+                |> AshSql.Join.parent_expr()
+
+              used_aggregates =
+                Ash.Filter.used_aggregates(parent_expr, [])
+
+              {:ok, query} =
+                AshSql.Aggregate.add_aggregates(
+                  query,
+                  used_aggregates,
+                  first_relationship.source,
+                  false,
+                  query.__ash_bindings__.current
+                )
+
+              {:ok, query} = AshSql.Join.join_all_relationships(query, parent_expr)
+
               is_single? = match?([_], aggregates)
 
               cond do

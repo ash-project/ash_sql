@@ -183,7 +183,8 @@ defmodule AshSql.Join do
     end
   end
 
-  defp parent_expr(filter) do
+  @doc false
+  def parent_expr(filter) do
     filter
     |> Ash.Filter.map(fn
       %Ash.Query.Parent{expr: expr} ->
