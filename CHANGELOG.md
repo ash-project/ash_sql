@@ -5,6 +5,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.54](https://github.com/ash-project/ash_sql/compare/v0.2.53...v0.2.54) (2025-02-08)
+
+
+
+
+### Bug Fixes:
+
+* properly join to aggregates in `parent` exprs in relationships
+
+* handle non-utc timezoned databases
+
+* join requirements in parent exprs in first relationship of aggregates
+
 ## [v0.2.53](https://github.com/ash-project/ash_sql/compare/v0.2.52...v0.2.53) (2025-02-05)
 
 
