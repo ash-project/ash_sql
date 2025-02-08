@@ -210,9 +210,8 @@ defmodule AshSql.Expr do
 
         {Ecto.Query.dynamic(
            fragment(
-             "timezone('UTC', date_trunc('day', ? AT TIME ZONE ?) AT TIME ZONE ?)",
+             "timezone('UTC', date_trunc('day', ? AT TIME ZONE 'UTC' AT TIME ZONE ?)) ",
              ^value,
-             ^time_zone,
              ^time_zone
            )
          ), acc}

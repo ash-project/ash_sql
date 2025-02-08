@@ -116,7 +116,7 @@ defmodule AshSql.Aggregate do
                   used_aggregates,
                   first_relationship.source,
                   false,
-                  query.__ash_bindings__.current
+                  query.__ash_bindings__.root_binding
                 )
 
               {:ok, query} = AshSql.Join.join_all_relationships(query, parent_expr)

@@ -41,7 +41,12 @@ defmodule AshSql.Query do
 
           lateral_join_source_query.resource
           |> Ash.Query.set_context(%{
-            :data_layer => lateral_join_source_query.context[:data_layer]
+            :data_layer =>
+              Map.put(
+                lateral_join_source_query.context[:data_layer] || %{},
+                :no_inner_join?,
+                true
+              )
           })
           |> Ash.Query.set_tenant(lateral_join_source_query.tenant)
           |> set_lateral_join_prefix(data_layer_query)
