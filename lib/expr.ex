@@ -26,6 +26,7 @@ defmodule AshSql.Expr do
     StringDowncase,
     StringJoin,
     StringLength,
+    StringPosition,
     StringSplit,
     StringTrim,
     Today,
@@ -665,6 +666,33 @@ defmodule AshSql.Expr do
       %Fragment{
         embedded?: pred_embedded?,
         arguments: [raw: "array_to_string(", expr: values, raw: ", ", expr: joiner, raw: ")"]
+      },
+      bindings,
+      embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StringPosition{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(
+      query,
+      %Fragment{
+        embedded?: pred_embedded?,
+        arguments: [
+          raw: "#{bindings.sql_behaviour.strpos_function()}((",
+          expr: left,
+          raw: "), (",
+          expr: right,
+          raw: "))"
+        ]
       },
       bindings,
       embedded?,
