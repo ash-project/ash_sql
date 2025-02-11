@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.55](https://github.com/ash-project/ash_sql/compare/v0.2.54...v0.2.55) (2025-02-11)
+
+
+
+
+### Improvements:
+
+* add StringPosition expression (#98) (#99)
+
 ## [v0.2.54](https://github.com/ash-project/ash_sql/compare/v0.2.53...v0.2.54) (2025-02-08)
 
 
