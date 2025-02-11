@@ -181,7 +181,7 @@ defmodule AshSql.Expr do
       value ->
         {value, acc} = dynamic_expr(query, value, bindings, pred_embedded? || embedded?, nil, acc)
 
-        {Ecto.Query.dynamic(fragment("date_trunc('day'::text, ?::timestamp)", ^value)), acc}
+        {Ecto.Query.dynamic(fragment("date_trunc('day', ?)", ^value)), acc}
     end
   end
 
@@ -193,6 +193,8 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
+    {value, acc} = dynamic_expr(query, value, bindings, pred_embedded? || embedded?, nil, acc)
+
     case value do
       %DateTime{} = value ->
         new_datetime =
@@ -207,12 +209,11 @@ defmodule AshSql.Expr do
         dynamic_expr(query, new_datetime, bindings, pred_embedded? || embedded?, type, acc)
 
       value ->
-        {value, acc} = dynamic_expr(query, value, bindings, pred_embedded? || embedded?, nil, acc)
-
         {Ecto.Query.dynamic(
            fragment(
-             "timezone('UTC', date_trunc('day', ? AT TIME ZONE 'UTC' AT TIME ZONE ?)) ",
+             "(date_trunc('day', ? AT TIME ZONE ?) AT TIME ZONE 'UTC' AT TIME ZONE ?)",
              ^value,
+             ^time_zone,
              ^time_zone
            )
          ), acc}
