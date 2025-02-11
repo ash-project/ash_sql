@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.56](https://github.com/ash-project/ash_sql/compare/v0.2.55...v0.2.56) (2025-02-11)
+
+
+
+
+### Bug Fixes:
+
+* more consistent tz handling in `start_of_day`
+
 ## [v0.2.55](https://github.com/ash-project/ash_sql/compare/v0.2.54...v0.2.55) (2025-02-11)
 
 
