@@ -996,14 +996,14 @@ defmodule AshSql.Expr do
       determine_types(bindings.sql_behaviour, mod, [left, right], type)
 
     {left_expr, acc} =
-      if left_type && operator in @cast_operands_for do
+      if left_type && (operator in @cast_operands_for || complex_type?(left_type)) do
         maybe_type_expr(query, left, bindings, pred_embedded? || embedded?, acc, left_type)
       else
         do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc, left_type)
       end
 
     {right_expr, acc} =
-      if right_type && operator in @cast_operands_for do
+      if right_type && (operator in @cast_operands_for || complex_type?(right_type)) do
         maybe_type_expr(query, right, bindings, pred_embedded? || embedded?, acc, right_type)
       else
         do_dynamic_expr(query, right, bindings, pred_embedded? || embedded?, acc, right_type)
@@ -2872,4 +2872,12 @@ defmodule AshSql.Expr do
       do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
     end
   end
+
+  @known_types Ash.Type.builtin_types()
+
+  defp complex_type?(type) when type in @known_types do
+    false
+  end
+
+  defp complex_type?(_), do: true
 end
