@@ -33,6 +33,13 @@ defmodule AshSql.Atomics do
         {dynamic, acc} ->
           new_field = String.to_atom("__new_#{field}")
 
+          dynamic =
+            if is_map(dynamic) and not is_struct(dynamic) do
+              Ecto.Query.dynamic(type(^dynamic, :map))
+            else
+              dynamic
+            end
+
           {:cont,
            {:ok, AshSql.Expr.merge_accumulator(query, acc),
             dynamics ++ [{new_field, {dynamic, field}}]}}
