@@ -5,6 +5,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.57](https://github.com/ash-project/ash_sql/compare/v0.2.56...v0.2.57) (2025-02-17)
+
+
+
+
+### Bug Fixes:
+
+* rewrite loaded calculations in distinct subqueries
+
+* ensure literal maps are casted to maps in atomic update select
+
+* cast complex types in operator signatures
+
 ## [v0.2.56](https://github.com/ash-project/ash_sql/compare/v0.2.55...v0.2.56) (2025-02-11)
 
 
