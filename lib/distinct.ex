@@ -59,6 +59,9 @@ defmodule AshSql.Distinct do
                 &Ecto.Query.exclude(&2, &1)
               )
 
+            {calculations_require_rewrite, aggregates_require_rewrite, distinct_query} =
+              AshSql.Query.rewrite_nested_selects(distinct_query)
+
             joined_query =
               from(row in joined_query_source,
                 join: distinct in subquery(distinct_query),
@@ -76,7 +79,28 @@ defmodule AshSql.Distinct do
                  Map.update!(
                    joined_query,
                    :__ash_bindings__,
-                   &Map.put(&1, :__order__?, query.__ash_bindings__[:__order__?] || false)
+                   fn ash_bindings ->
+                     ash_bindings
+                     |> Map.put(:__order__?, query.__ash_bindings__[:__order__?] || false)
+                     |> Map.update!(
+                       :calculation_names,
+                       fn calculation_names ->
+                         Map.merge(
+                           calculation_names,
+                           Map.new(calculations_require_rewrite, &{elem(&1, 1), elem(&1, 0)})
+                         )
+                       end
+                     )
+                     |> Map.update!(
+                       :aggregate_names,
+                       fn aggregate_names ->
+                         Map.merge(
+                           aggregate_names,
+                           Map.new(aggregates_require_rewrite, &{elem(&1, 1), elem(&1, 0)})
+                         )
+                       end
+                     )
+                   end
                  )}
 
               {:error, error} ->
