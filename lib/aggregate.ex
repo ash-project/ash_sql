@@ -1654,13 +1654,24 @@ defmodule AshSql.Aggregate do
       )
 
     {field, query} =
-      if kind == :custom do
-        # we won't use this if its custom so don't try to make one
-        {nil, query}
-      else
-        {expr, acc} = AshSql.Expr.dynamic_expr(query, ref, query.__ash_bindings__, false)
+      case kind do
+        :custom ->
+          # we won't use this if its custom so don't try to make one
+          {nil, query}
 
-        {expr, AshSql.Bindings.merge_expr_accumulator(query, acc)}
+        :count ->
+          if aggregate.field do
+            {expr, acc} = AshSql.Expr.dynamic_expr(query, ref, query.__ash_bindings__, false)
+
+            {expr, AshSql.Bindings.merge_expr_accumulator(query, acc)}
+          else
+            {nil, query}
+          end
+
+        _ ->
+          {expr, acc} = AshSql.Expr.dynamic_expr(query, ref, query.__ash_bindings__, false)
+
+          {expr, AshSql.Bindings.merge_expr_accumulator(query, acc)}
       end
 
     type =
@@ -1681,6 +1692,9 @@ defmodule AshSql.Aggregate do
       case kind do
         :count ->
           cond do
+            !aggregate.field ->
+              Ecto.Query.dynamic([row], count())
+
             Map.get(aggregate, :uniq?) ->
               Ecto.Query.dynamic([row], count(^field, :distinct))
 
@@ -1823,17 +1837,21 @@ defmodule AshSql.Aggregate do
   end
 
   def aggregate_field_ref(aggregate, resource, relationship_path, query, first_relationship) do
-    %Ash.Query.Ref{
-      attribute: aggregate_field(aggregate, resource, query),
-      relationship_path: relationship_path,
-      resource: query.__ash_bindings__.resource
-    }
-    |> case do
-      %{attribute: %Ash.Resource.Aggregate{}} = ref ->
-        %{ref | relationship_path: [first_relationship.name | ref.relationship_path]}
+    if aggregate.kind == :count && !aggregate.field do
+      nil
+    else
+      %Ash.Query.Ref{
+        attribute: aggregate_field(aggregate, resource, query),
+        relationship_path: relationship_path,
+        resource: query.__ash_bindings__.resource
+      }
+      |> case do
+        %{attribute: %Ash.Resource.Aggregate{}} = ref ->
+          %{ref | relationship_path: [first_relationship.name | ref.relationship_path]}
 
-      other ->
-        other
+        other ->
+          other
+      end
     end
   end
 
