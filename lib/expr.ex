@@ -1363,10 +1363,10 @@ defmodule AshSql.Expr do
         ref =
           Ash.Actions.Read.add_calc_context_to_filter(
             ref,
-            aggregate.context.actor,
-            aggregate.context.authorize?,
-            aggregate.context.tenant,
-            aggregate.context.tracer,
+            Map.get(aggregate.context, :actor),
+            Map.get(aggregate.context, :authorize?),
+            Map.get(aggregate.context, :tenant),
+            Map.get(aggregate.context, :tracer),
             query.__ash_bindings__.domain,
             resource,
             parent_stack: query.__ash_bindings__[:parent_resources] || []

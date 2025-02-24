@@ -9,7 +9,14 @@ defmodule AshSql.Query do
   end
 
   def set_context(resource, data_layer_query, sql_behaviour, context) do
-    start_bindings = context[:data_layer][:start_bindings_at] || 0
+    default_start_bindings =
+      if context[:data_layer][:lateral_join_source] do
+        500
+      else
+        0
+      end
+
+    start_bindings = context[:data_layer][:start_bindings_at] || default_start_bindings
     data_layer_query = from(row in data_layer_query, as: ^start_bindings)
 
     data_layer_query =
@@ -48,9 +55,6 @@ defmodule AshSql.Query do
                 true
               )
           })
-          # This is a hack, but surely there is just no way someone writes
-          # a 500 binding query as the base of a lateral join query...
-          |> Ash.Query.set_context(%{data_layer: %{start_bindings_at: 500}})
           |> Ash.Query.set_tenant(lateral_join_source_query.tenant)
           |> set_lateral_join_prefix(data_layer_query)
           |> filter_for_records(data)

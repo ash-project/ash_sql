@@ -38,7 +38,14 @@ defmodule AshSql.Bindings do
     do: query
 
   def default_bindings(query, resource, sql_behaviour, context) do
-    start_bindings = context[:data_layer][:start_bindings_at] || 0
+    default_start_bindings =
+      if context[:data_layer][:lateral_join_source] do
+        500
+      else
+        0
+      end
+
+    start_bindings = context[:data_layer][:start_bindings_at] || default_start_bindings
 
     Map.put_new(query, :__ash_bindings__, %{
       resource: resource,

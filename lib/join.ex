@@ -692,7 +692,7 @@ defmodule AshSql.Join do
        ) do
     if Ash.Actions.Read.Relationships.has_parent_expr?(
          relationship,
-         query.__ash_bindings___[:context],
+         query.__ash_bindings__[:context],
          query.__ash_bindings__[:domain]
        ) do
       join_many_to_many_with_parent_expr(
