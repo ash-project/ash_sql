@@ -1247,7 +1247,9 @@ defmodule AshSql.Expr do
             calculation.context.authorize?,
             calculation.context.tenant,
             calculation.context.tracer,
-            nil
+            query.__ash_bindings__.domain,
+            resource,
+            parent_stack: query.__ash_bindings__[:parent_resources] || []
           )
 
         do_dynamic_expr(
@@ -1343,12 +1345,15 @@ defmodule AshSql.Expr do
           raise "Error while building reference: #{inspect(ref)}"
         end
 
+        resource =
+          Ash.Resource.Info.related(query.__ash_bindings__.resource, ref.relationship_path)
+
         ref =
           %Ash.Query.Ref{
             attribute:
               AshSql.Aggregate.aggregate_field(
                 aggregate,
-                Ash.Resource.Info.related(query.__ash_bindings__.resource, ref.relationship_path),
+                resource,
                 query
               ),
             relationship_path: ref.relationship_path,
@@ -1362,7 +1367,9 @@ defmodule AshSql.Expr do
             aggregate.context.authorize?,
             aggregate.context.tenant,
             aggregate.context.tracer,
-            nil
+            query.__ash_bindings__.domain,
+            resource,
+            parent_stack: query.__ash_bindings__[:parent_resources] || []
           )
 
         {value, acc} = do_dynamic_expr(query, ref, query.__ash_bindings__, false, acc)

@@ -477,11 +477,15 @@ defmodule AshSql.Join do
 
   defp set_has_parent_expr_context(query, relationship) do
     has_parent_expr? =
-      Ash.Actions.Read.Relationships.has_parent_expr?(%{
-        relationship
-        | filter: query.filter,
-          sort: query.sort
-      })
+      Ash.Actions.Read.Relationships.has_parent_expr?(
+        %{
+          relationship
+          | filter: query.filter,
+            sort: query.sort
+        },
+        query.context,
+        query.domain
+      )
 
     Ash.Query.set_context(query, %{data_layer: %{has_parent_expr?: has_parent_expr?}})
   end
@@ -686,7 +690,11 @@ defmodule AshSql.Join do
          sort?,
          apply_filter
        ) do
-    if Ash.Actions.Read.Relationships.has_parent_expr?(relationship) do
+    if Ash.Actions.Read.Relationships.has_parent_expr?(
+         relationship,
+         query.__ash_bindings___[:context],
+         query.__ash_bindings__[:domain]
+       ) do
       join_many_to_many_with_parent_expr(
         query,
         relationship,

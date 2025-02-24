@@ -593,7 +593,9 @@ defmodule AshSql.Aggregate do
             private_context[:authorize?],
             private_context[:tenant],
             private_context[:tracer],
-            query.__ash_bindings__[:domain]
+            query.__ash_bindings__[:domain],
+            query.__ash_bindings__[:resource],
+            parent_stack: query.__ash_bindings__[:parent_resources] || []
           )
 
         {:cont, {:ok, [aggregate | aggregates]}}
@@ -644,7 +646,9 @@ defmodule AshSql.Aggregate do
                 private_context[:authorize?],
                 private_context[:tenant],
                 private_context[:tracer],
-                query.__ash_bindings__[:domain]
+                query.__ash_bindings__[:domain],
+                query.__ash_bindings__[:resource],
+                parent_stack: query.__ash_bindings__[:parent_resources] || []
               )
 
             {:cont, {:ok, [aggregate | aggregates]}}
@@ -1910,7 +1914,11 @@ defmodule AshSql.Aggregate do
             aggregate.context.authorize?,
             aggregate.context.tenant,
             aggregate.context.tracer,
-            nil
+            query.__ash_bindings__.domain,
+            aggregate.resource,
+            parent_stack: [
+              query.__ash_bindings__.resource | query.__ash_bindings__[:parent_resources] || []
+            ]
           )
 
         other ->

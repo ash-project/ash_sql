@@ -70,7 +70,9 @@ defmodule AshSql.Calculation do
                   calculation.context.authorize?,
                   calculation.context.tenant,
                   calculation.context.tracer,
-                  nil
+                  query.__ash_bindings__.domain,
+                  query.__ash_bindings__.resource,
+                  parent_stack: query.__ash_bindings__[:parent_resources] || []
                 )
 
               {expr, acc} =

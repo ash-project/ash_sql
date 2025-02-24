@@ -31,7 +31,9 @@ defmodule AshSql.Sort do
                   query.__ash_bindings__.context[:private][:authorize?],
                   query.__ash_bindings__.context[:private][:tenant],
                   query.__ash_bindings__.context[:private][:tracer],
-                  nil
+                  query.__ash_bindings__.context[:private][:domain],
+                  query.__ash_bindings__.context[:private][:resource],
+                  parent_stack: query.__ash_bindings__[:parent_resources] || []
                 )
 
               {calculation, val}
