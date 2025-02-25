@@ -54,6 +54,7 @@ defmodule AshSql.Query do
                 :no_inner_join?,
                 true
               )
+              |> Map.delete(:lateral_join_source)
           })
           |> Ash.Query.set_tenant(lateral_join_source_query.tenant)
           |> set_lateral_join_prefix(data_layer_query)
@@ -116,7 +117,6 @@ defmodule AshSql.Query do
                    :lateral_join_source_query,
                    lateral_join_source_query
                  )
-                 |> Map.update!(:current, &(&1 + 1))
                end)}
 
             {:error, error} ->

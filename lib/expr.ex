@@ -1247,7 +1247,7 @@ defmodule AshSql.Expr do
             calculation.context.authorize?,
             calculation.context.tenant,
             calculation.context.tracer,
-            query.__ash_bindings__.domain,
+            query.__ash_bindings__[:domain],
             resource,
             parent_stack: query.__ash_bindings__[:parent_resources] || []
           )
@@ -1367,7 +1367,7 @@ defmodule AshSql.Expr do
             Map.get(aggregate.context, :authorize?),
             Map.get(aggregate.context, :tenant),
             Map.get(aggregate.context, :tracer),
-            query.__ash_bindings__.domain,
+            query.__ash_bindings__[:domain],
             resource,
             parent_stack: query.__ash_bindings__[:parent_resources] || []
           )

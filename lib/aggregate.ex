@@ -1914,7 +1914,7 @@ defmodule AshSql.Aggregate do
             aggregate.context.authorize?,
             aggregate.context.tenant,
             aggregate.context.tracer,
-            query.__ash_bindings__.domain,
+            query.__ash_bindings__[:domain],
             aggregate.resource,
             parent_stack: [
               query.__ash_bindings__.resource | query.__ash_bindings__[:parent_resources] || []
