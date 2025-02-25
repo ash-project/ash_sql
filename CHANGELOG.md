@@ -5,6 +5,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.58](https://github.com/ash-project/ash_sql/compare/v0.2.57...v0.2.58) (2025-02-25)
+
+
+
+
+### Bug Fixes:
+
+* various binding index fixes
+
+* use new functions in `ash` for proper expansion
+
+* use `count()` when no field is provided for count aggregate
+
 ## [v0.2.57](https://github.com/ash-project/ash_sql/compare/v0.2.56...v0.2.57) (2025-02-17)
 
 
