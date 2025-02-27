@@ -491,11 +491,11 @@ defmodule AshSql.Expr do
       %Fragment{
         embedded?: pred_embedded?,
         arguments: [
-          raw: "#{bindings.sql_behaviour.strpos_function()}((",
+          raw: "(#{bindings.sql_behaviour.strpos_function()}((",
           expr: left,
           raw: "), (",
           expr: right,
-          raw: ")) > 0"
+          raw: ")) > 0)"
         ]
       },
       bindings,
