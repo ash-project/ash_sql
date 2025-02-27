@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.59](https://github.com/ash-project/ash_sql/compare/v0.2.58...v0.2.59) (2025-02-27)
+
+
+
+
+### Bug Fixes:
+
+* wrap strpos comparison in parenthesis
+
 ## [v0.2.58](https://github.com/ash-project/ash_sql/compare/v0.2.57...v0.2.58) (2025-02-25)
 
 
