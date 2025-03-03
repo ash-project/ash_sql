@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.60](https://github.com/ash-project/ash_sql/compare/v0.2.59...v0.2.60) (2025-03-03)
+
+
+
+
+### Bug Fixes:
+
+* properly join to parent paths in aggregate filters
+
 ## [v0.2.59](https://github.com/ash-project/ash_sql/compare/v0.2.58...v0.2.59) (2025-02-27)
 
 
