@@ -99,7 +99,10 @@ defmodule AshSql.Aggregate do
                 end
 
               parent_expr =
-                first_relationship.filter
+                [first_relationship.filter]
+                |> Enum.concat(
+                  Enum.map(aggregates, &(&1.query.filter && &1.query.filter.expression))
+                )
                 |> Ash.Filter.hydrate_refs(%{
                   resource: first_relationship.destination,
                   parent_stack: [first_relationship.source]
@@ -119,7 +122,19 @@ defmodule AshSql.Aggregate do
                   query.__ash_bindings__.root_binding
                 )
 
-              {:ok, query} = AshSql.Join.join_all_relationships(query, parent_expr)
+              {:ok, query} =
+                AshSql.Join.join_all_relationships(
+                  query,
+                  parent_expr,
+                  [],
+                  nil,
+                  [],
+                  nil,
+                  true,
+                  nil,
+                  nil,
+                  true
+                )
 
               is_single? = match?([_], aggregates)
 
