@@ -98,16 +98,23 @@ defmodule AshSql.Aggregate do
                     first_relationship
                 end
 
+              hydrated_agg_refs =
+                aggregates
+                |> Enum.map(&(&1.query.filter && &1.query.filter.expression))
+                |> Ash.Filter.hydrate_refs(%{
+                  resource: Enum.at(aggregates, 0).query.resource,
+                  parent_stack: [first_relationship.source]
+                })
+                |> elem(1)
+
               parent_expr =
-                [first_relationship.filter]
-                |> Enum.concat(
-                  Enum.map(aggregates, &(&1.query.filter && &1.query.filter.expression))
-                )
+                first_relationship.filter
                 |> Ash.Filter.hydrate_refs(%{
                   resource: first_relationship.destination,
                   parent_stack: [first_relationship.source]
                 })
                 |> elem(1)
+                |> then(&[&1 | hydrated_agg_refs])
                 |> AshSql.Join.parent_expr()
 
               used_aggregates =
