@@ -2390,55 +2390,62 @@ defmodule AshSql.Expr do
   end
 
   defp encode_list(query, value, bindings, embedded?, acc, type) do
-    is_map? = type in [:map, :jsonb]
+    first = Enum.at(value, 0)
 
-    type =
-      case type do
-        {:array, type} -> type
-        {:in, type} -> type
-        _ -> nil
-      end
-
-    elements =
-      Enum.map(value, fn list_item ->
-        if type do
-          {:expr, %Ash.Query.Function.Type{arguments: [list_item, type, []]}}
-        else
-          {:expr, list_item}
-        end
-      end)
-      |> Enum.intersperse({:raw, ","})
-
-    if is_map? do
-      do_dynamic_expr(
-        query,
-        %Fragment{
-          embedded?: embedded?,
-          arguments:
-            [
-              raw: "array_to_json(ARRAY["
-            ] ++ elements ++ [raw: "])"]
-        },
-        bindings,
-        embedded?,
-        acc,
-        type
-      )
+    if is_struct(first) and Ash.Resource.Info.resource?(first.__struct__) and
+         Ash.Resource.Info.embedded?(first.__struct__) do
+      {value, acc}
     else
-      do_dynamic_expr(
-        query,
-        %Fragment{
-          embedded?: embedded?,
-          arguments:
-            [
-              raw: "ARRAY["
-            ] ++ elements ++ [raw: "]"]
-        },
-        bindings,
-        embedded?,
-        acc,
-        type
-      )
+      is_map? = type in [:map, :jsonb]
+
+      type =
+        case type do
+          {:array, type} -> type
+          {:in, type} -> type
+          _ -> nil
+        end
+
+      elements =
+        Enum.map(value, fn list_item ->
+          if type do
+            {:expr, %Ash.Query.Function.Type{arguments: [list_item, type, []]}}
+          else
+            {:expr, list_item}
+          end
+        end)
+        |> Enum.intersperse({:raw, ","})
+
+      if is_map? do
+        do_dynamic_expr(
+          query,
+          %Fragment{
+            embedded?: embedded?,
+            arguments:
+              [
+                raw: "array_to_json(ARRAY["
+              ] ++ elements ++ [raw: "])"]
+          },
+          bindings,
+          embedded?,
+          acc,
+          type
+        )
+      else
+        do_dynamic_expr(
+          query,
+          %Fragment{
+            embedded?: embedded?,
+            arguments:
+              [
+                raw: "ARRAY["
+              ] ++ elements ++ [raw: "]"]
+          },
+          bindings,
+          embedded?,
+          acc,
+          type
+        )
+      end
     end
   end
 
