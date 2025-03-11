@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.61](https://github.com/ash-project/ash_sql/compare/v0.2.60...v0.2.61) (2025-03-11)
+
+
+
+
+### Bug Fixes:
+
+* don't use embedded resources as expressions
+
+* hydrate aggregate expressions at the target
+
 ## [v0.2.60](https://github.com/ash-project/ash_sql/compare/v0.2.59...v0.2.60) (2025-03-03)
 
 
