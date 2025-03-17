@@ -195,6 +195,34 @@ defmodule AshSql.AggregateQuery do
             first_relationship
           )
 
+        {:ok, filtered} =
+          case ref.attribute do
+            %struct{} = agg when struct in [Ash.Query.Aggregate, Ash.Resource.Aggregate] ->
+              AshSql.Aggregate.add_aggregates(
+                filtered,
+                [agg],
+                resource,
+                false,
+                filtered.__ash_bindings__.root_binding
+              )
+
+            %Ash.Query.Calculation{} = calc ->
+              used_aggregates = Ash.Filter.used_aggregates(calc, [])
+
+              with {:ok, filtered} <- AshSql.Join.join_all_relationships(filtered, calc, []) do
+                AshSql.Aggregate.add_aggregates(
+                  filtered,
+                  used_aggregates,
+                  resource,
+                  false,
+                  filtered.__ash_bindings__.root_binding
+                )
+              end
+
+            _other ->
+              {:ok, filtered}
+          end
+
         {:ok, filtered} = AshSql.Join.join_all_relationships(filtered, ref)
 
         query =

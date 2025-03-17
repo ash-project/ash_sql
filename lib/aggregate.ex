@@ -1873,7 +1873,11 @@ defmodule AshSql.Aggregate do
       }
       |> case do
         %{attribute: %Ash.Resource.Aggregate{}} = ref ->
-          %{ref | relationship_path: [first_relationship.name | ref.relationship_path]}
+          if first_relationship do
+            %{ref | relationship_path: [first_relationship.name | ref.relationship_path]}
+          else
+            ref
+          end
 
         other ->
           other
