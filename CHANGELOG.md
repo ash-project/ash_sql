@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.62](https://github.com/ash-project/ash_sql/compare/v0.2.61...v0.2.62) (2025-03-18)
+
+
+
+
+### Bug Fixes:
+
+* support aggregate queries that are against aggregates or calcs
+
+* add handling for multidimensional arrays in `IN` operator
+
 ## [v0.2.61](https://github.com/ash-project/ash_sql/compare/v0.2.60...v0.2.61) (2025-03-11)
 
 
