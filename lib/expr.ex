@@ -2431,11 +2431,24 @@ defmodule AshSql.Expr do
   defp encode_list(query, value, bindings, embedded?, acc, type) do
     first = Enum.at(value, 0)
 
-    if is_struct(first) and Ash.Resource.Info.resource?(first.__struct__) and
-         Ash.Resource.Info.embedded?(first.__struct__) do
+    first_embedded? =
+      is_struct(first) and Ash.Resource.Info.resource?(first.__struct__) and
+        Ash.Resource.Info.embedded?(first.__struct__)
+
+    is_map? = type in [:map, :jsonb, :json]
+
+    if first_embedded? && !is_map? do
       {value, acc}
     else
-      is_map? = type in [:map, :jsonb]
+      value =
+        if first_embedded? do
+          {:ok, value} =
+            Ash.Type.dump_to_embedded({:array, first.__struct__}, value, [])
+
+          value
+        else
+          value
+        end
 
       element_type =
         case type do
