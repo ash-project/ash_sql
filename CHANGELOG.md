@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.63](https://github.com/ash-project/ash_sql/compare/v0.2.62...v0.2.63) (2025-03-25)
+
+
+
+
+### Bug Fixes:
+
+* handle embeds typed as json/jsonb/map
+
 ## [v0.2.62](https://github.com/ash-project/ash_sql/compare/v0.2.61...v0.2.62) (2025-03-18)
 
 
