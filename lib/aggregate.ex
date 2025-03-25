@@ -835,9 +835,10 @@ defmodule AshSql.Aggregate do
             expression =
               Ash.Expr.fill_template(
                 expression,
-                aggregate.context.actor,
-                %{},
-                aggregate.context
+                actor: aggregate.context.actor,
+                tenant: agg_query.to_tenant,
+                args: %{},
+                context: aggregate.context
               )
 
             expression =
@@ -873,9 +874,10 @@ defmodule AshSql.Aggregate do
             expression =
               Ash.Expr.fill_template(
                 expression,
-                context.actor,
-                context.arguments,
-                context.source_context
+                actor: context.actor,
+                tenant: agg_query.to_tenant,
+                args: context.arguments,
+                context: context.source_context
               )
 
             expression =

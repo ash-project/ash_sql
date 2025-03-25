@@ -425,7 +425,12 @@ defmodule AshSql.Join do
 
   defp hydrate_refs(query, actor) do
     query.filter
-    |> Ash.Expr.fill_template(actor, %{}, query.context)
+    |> Ash.Expr.fill_template(
+      actor: actor,
+      tenant: query.to_tenant,
+      args: %{},
+      context: query.context
+    )
     |> Ash.Filter.hydrate_refs(%{resource: query.resource})
     |> case do
       {:ok, result} -> %{query | filter: result}
