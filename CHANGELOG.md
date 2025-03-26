@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.65](https://github.com/ash-project/ash_sql/compare/v0.2.64...v0.2.65) (2025-03-26)
+
+
+
+
+### Bug Fixes:
+
+* call `.to_tenant` on the ash query, not the ecto query
+
 ## [v0.2.64](https://github.com/ash-project/ash_sql/compare/v0.2.63...v0.2.64) (2025-03-26)
 
 
