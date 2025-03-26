@@ -8,15 +8,39 @@ defmodule AshSql.Query do
     |> Map.put(:__ash_domain__, domain)
   end
 
+  def union_of([first | union_of], resource, implementation, domain \\ nil) do
+    Enum.reduce(union_of, subquery(first), fn union_of, query ->
+      Ecto.Query.union(query, ^union_of)
+    end)
+    |> then(&{:ok, &1})
+  end
+
   def set_context(resource, data_layer_query, sql_behaviour, context) do
+    data_layer_query =
+      if context[:data_layer][:union_of_queries?] do
+        from(row in subquery(data_layer_query), [])
+      else
+        data_layer_query
+      end
+
     default_start_bindings =
       if context[:data_layer][:lateral_join_source] do
         500
       else
-        0
+        if context[:data_layer][:previous_union_of] do
+          context[:data_layer][:previous_union_of].__ash_bindings__.current
+        else
+          0
+        end
       end
 
     start_bindings = context[:data_layer][:start_bindings_at] || default_start_bindings
+
+    context =
+      context
+      |> Map.put_new(:data_layer, %{})
+      |> Map.update!(:data_layer, &Map.put(&1, :start_bindings_at, start_bindings))
+
     data_layer_query = from(row in data_layer_query, as: ^start_bindings)
 
     data_layer_query =
