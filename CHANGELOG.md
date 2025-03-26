@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.64](https://github.com/ash-project/ash_sql/compare/v0.2.63...v0.2.64) (2025-03-26)
+
+
+
+
+### Improvements:
+
+* use new fill_template fn (#115)
+
 ## [v0.2.63](https://github.com/ash-project/ash_sql/compare/v0.2.62...v0.2.63) (2025-03-25)
 
 
