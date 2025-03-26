@@ -1816,6 +1816,7 @@ defmodule AshSql.Expr do
         start_bindings_at: 1,
         select_star?: !Map.get(first_relationship, :manual),
         in_group?: true,
+        refs_at_path: List.wrap(query.__ash_bindings__[:at_path]) ++ at_path,
         parent_resources: [
           query.__ash_bindings__.resource
           | query.__ash_bindings__[:parent_resources] || []
