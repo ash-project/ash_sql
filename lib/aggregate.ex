@@ -836,7 +836,7 @@ defmodule AshSql.Aggregate do
               Ash.Expr.fill_template(
                 expression,
                 actor: aggregate.context.actor,
-                tenant: agg_query.to_tenant,
+                tenant: aggregate.query.to_tenant,
                 args: %{},
                 context: aggregate.context
               )
@@ -875,7 +875,7 @@ defmodule AshSql.Aggregate do
               Ash.Expr.fill_template(
                 expression,
                 actor: context.actor,
-                tenant: agg_query.to_tenant,
+                tenant: aggregate.query.to_tenant,
                 args: context.arguments,
                 context: context.source_context
               )
