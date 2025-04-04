@@ -1794,20 +1794,6 @@ defmodule AshSql.Expr do
         end)
       end)
 
-    query =
-      if first_relationship.type == :many_to_many do
-        put_in(query.__ash_bindings__[:lateral_join_bindings], [0])
-        |> AshSql.Bindings.explicitly_set_binding(
-          %{
-            type: :left,
-            path: [first_relationship.join_relationship]
-          },
-          0
-        )
-      else
-        query
-      end
-
     {:ok, subquery} =
       AshSql.Join.related_subquery(first_relationship, query,
         filter: filter,
