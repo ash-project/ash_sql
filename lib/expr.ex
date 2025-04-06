@@ -1801,7 +1801,7 @@ defmodule AshSql.Expr do
           %{
             type: :left,
             path: [first_relationship.join_relationship]
-          }, 
+          },
           :join_source
         )
       else
