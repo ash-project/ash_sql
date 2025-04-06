@@ -1794,6 +1794,20 @@ defmodule AshSql.Expr do
         end)
       end)
 
+    query =
+      if first_relationship.type == :many_to_many do
+        put_in(query.__ash_bindings__[:lateral_join_bindings], [:join_source])
+        |> AshSql.Bindings.explicitly_set_binding(
+          %{
+            type: :left,
+            path: [first_relationship.join_relationship]
+          }, 
+          :join_source
+        )
+      else
+        query
+      end
+
     {:ok, subquery} =
       AshSql.Join.related_subquery(first_relationship, query,
         filter: filter,
@@ -1802,7 +1816,6 @@ defmodule AshSql.Expr do
         start_bindings_at: 1,
         select_star?: !Map.get(first_relationship, :manual),
         in_group?: true,
-        refs_at_path: List.wrap(query.__ash_bindings__[:at_path]) ++ at_path,
         parent_resources: [
           query.__ash_bindings__.resource
           | query.__ash_bindings__[:parent_resources] || []
@@ -1865,7 +1878,7 @@ defmodule AshSql.Expr do
 
               Ecto.Query.from(destination in subquery,
                 join: through in ^through,
-                as: ^0,
+                as: ^:join_source,
                 on:
                   field(through, ^first_relationship.destination_attribute_on_join_resource) ==
                     field(destination, ^first_relationship.destination_attribute),
