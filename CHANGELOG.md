@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.67](https://github.com/ash-project/ash_sql/compare/v0.2.66...v0.2.67) (2025-04-09)
+
+
+
+
+### Bug Fixes:
+
+* we do need to set the binding, but can just give it a unique name
+
+* remove explicitly set binding.
+
 ## [v0.2.66](https://github.com/ash-project/ash_sql/compare/v0.2.65...v0.2.66) (2025-03-26)
 
 
