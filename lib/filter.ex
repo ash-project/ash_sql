@@ -34,7 +34,12 @@ defmodule AshSql.Filter do
     filter
     |> AshSql.Expr.split_statements(:and)
     |> Enum.reduce(query, fn filter, query ->
-      {dynamic, acc} = AshSql.Expr.dynamic_expr(query, filter, query.__ash_bindings__)
+      {dynamic, acc} =
+        AshSql.Expr.dynamic_expr(
+          query,
+          filter,
+          Map.put(query.__ash_bindings__, :location, :filter)
+        )
 
       dynamic =
         if is_nil(dynamic) do

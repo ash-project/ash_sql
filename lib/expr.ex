@@ -42,6 +42,31 @@ defmodule AshSql.Expr do
     @type t :: %__MODULE__{}
   end
 
+  def parameterized_type(sql_behaviour, type, constraints, _location) do
+    sql_behaviour.parameterized_type(type, constraints)
+  end
+
+  def sub_expr?(%{location: {:sub_expr, _}}), do: true
+  def sub_expr?(_), do: false
+
+  def within?(bindings, types) when is_list(types) do
+    Enum.any?(types, &within?(bindings, &1))
+  end
+
+  def within?(%{location: {:sub_expr, type}}, type), do: true
+  def within?(%{location: type}, type), do: true
+  def within?(_, _), do: false
+
+  def set_location(%{location: {:sub_expr, _}} = bindings, :sub_expr), do: bindings
+
+  def set_location(bindings, :sub_expr) do
+    Map.update(bindings, :location, {:sub_expr, :select}, &{:sub_expr, &1})
+  end
+
+  def set_location(bindings, location) do
+    Map.put(bindings, :location, location)
+  end
+
   def dynamic_expr(query, expr, bindings, embedded? \\ false, type \\ nil, acc \\ %ExprInfo{})
 
   def dynamic_expr(_query, %Filter{expression: nil}, _bindings, _embedded?, _type, acc) do
@@ -74,7 +99,14 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(query, %Not{expression: expression}, bindings, embedded?, acc, _type) do
     {new_expression, acc} =
-      do_dynamic_expr(query, expression, bindings, embedded?, acc, :boolean)
+      do_dynamic_expr(
+        query,
+        expression,
+        set_location(bindings, :sub_expr),
+        embedded?,
+        acc,
+        :boolean
+      )
 
     {Ecto.Query.dynamic(not (^new_expression)), acc}
   end
@@ -87,7 +119,14 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    {left_expr, acc} = do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc)
+    {left_expr, acc} =
+      do_dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {Ecto.Query.dynamic(is_nil(^left_expr)), acc}
   end
@@ -100,7 +139,14 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    {left_expr, acc} = do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc)
+    {left_expr, acc} =
+      do_dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {Ecto.Query.dynamic(not is_nil(^left_expr)), acc}
   end
@@ -113,10 +159,24 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    {left_expr, acc} = do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc)
+    {left_expr, acc} =
+      do_dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {right_expr, acc} =
-      do_dynamic_expr(query, right, bindings, pred_embedded? || embedded?, acc, :boolean)
+      do_dynamic_expr(
+        query,
+        right,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :boolean
+      )
 
     {Ecto.Query.dynamic(is_nil(^left_expr) == ^right_expr), acc}
   end
@@ -142,7 +202,14 @@ defmodule AshSql.Expr do
        )
        when is_binary(right) or is_atom(right) do
     {left, acc} =
-      do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc, :integer)
+      do_dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :integer
+      )
 
     {Ecto.Query.dynamic(
        fragment("(?)", datetime_add(^DateTime.utc_now(), ^left * -1, ^to_string(right)))
@@ -193,7 +260,15 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    {value, acc} = dynamic_expr(query, value, bindings, pred_embedded? || embedded?, nil, acc)
+    {value, acc} =
+      dynamic_expr(
+        query,
+        value,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        nil,
+        acc
+      )
 
     case value do
       %DateTime{} = value ->
@@ -228,10 +303,24 @@ defmodule AshSql.Expr do
          _type
        ) do
     {left, acc} =
-      do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc, :integer)
+      do_dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :integer
+      )
 
     {right, acc} =
-      do_dynamic_expr(query, right, bindings, pred_embedded? || embedded?, acc, :integer)
+      do_dynamic_expr(
+        query,
+        right,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :integer
+      )
 
     expr =
       if is_integer(right) do
@@ -253,7 +342,14 @@ defmodule AshSql.Expr do
        )
        when is_binary(right) or is_atom(right) do
     {left, acc} =
-      do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc, :integer)
+      do_dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :integer
+      )
 
     {Ecto.Query.dynamic(
        fragment("(?)", datetime_add(^DateTime.utc_now(), ^left, ^to_string(right)))
@@ -269,10 +365,24 @@ defmodule AshSql.Expr do
          _type
        )
        when is_binary(interval) or is_atom(interval) do
-    {datetime, acc} = do_dynamic_expr(query, datetime, bindings, pred_embedded? || embedded?, acc)
+    {datetime, acc} =
+      do_dynamic_expr(
+        query,
+        datetime,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {amount, acc} =
-      do_dynamic_expr(query, amount, bindings, pred_embedded? || embedded?, acc, :integer)
+      do_dynamic_expr(
+        query,
+        amount,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :integer
+      )
 
     {Ecto.Query.dynamic(fragment("(?)", datetime_add(^datetime, ^amount, ^to_string(interval)))),
      acc}
@@ -287,10 +397,24 @@ defmodule AshSql.Expr do
          _type
        )
        when is_binary(interval) or is_atom(interval) do
-    {date, acc} = do_dynamic_expr(query, date, bindings, pred_embedded? || embedded?, acc)
+    {date, acc} =
+      do_dynamic_expr(
+        query,
+        date,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {amount, acc} =
-      do_dynamic_expr(query, amount, bindings, pred_embedded? || embedded?, acc, :integer)
+      do_dynamic_expr(
+        query,
+        amount,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :integer
+      )
 
     {Ecto.Query.dynamic(fragment("(?)", datetime_add(^date, ^amount, ^to_string(interval)))), acc}
   end
@@ -344,10 +468,12 @@ defmodule AshSql.Expr do
         type
         |> Ash.Resource.Info.aggregate_type(aggregate)
         |> split_at_paths(constraints, right)
-        |> Enum.reduce(do_dynamic_expr(query, left, bindings, embedded?, acc), fn data,
-                                                                                  {expr, acc} ->
-          do_get_path(query, expr, data, bindings, embedded?, pred_embedded?, acc)
-        end)
+        |> Enum.reduce(
+          do_dynamic_expr(query, left, set_location(bindings, :sub_expr), embedded?, acc),
+          fn data, {expr, acc} ->
+            do_get_path(query, expr, data, bindings, embedded?, pred_embedded?, acc)
+          end
+        )
     end
   end
 
@@ -370,10 +496,12 @@ defmodule AshSql.Expr do
       :error ->
         type
         |> split_at_paths(constraints, right)
-        |> Enum.reduce(do_dynamic_expr(query, left, bindings, embedded?, acc), fn data,
-                                                                                  {expr, acc} ->
-          do_get_path(query, expr, data, bindings, embedded?, pred_embedded?, acc)
-        end)
+        |> Enum.reduce(
+          do_dynamic_expr(query, left, set_location(bindings, :sub_expr), embedded?, acc),
+          fn data, {expr, acc} ->
+            do_get_path(query, expr, data, bindings, embedded?, pred_embedded?, acc)
+          end
+        )
     end
   end
 
@@ -389,7 +517,14 @@ defmodule AshSql.Expr do
       text = escape_contains(right.string)
 
       {left, acc} =
-        AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
+        AshSql.Expr.dynamic_expr(
+          query,
+          left,
+          set_location(bindings, :sub_expr),
+          pred_embedded? || embedded?,
+          :string,
+          acc
+        )
 
       {Ecto.Query.dynamic(ilike(^left, ^text)), acc}
     else
@@ -473,7 +608,14 @@ defmodule AshSql.Expr do
     text = escape_contains(right)
 
     {left, acc} =
-      AshSql.Expr.dynamic_expr(query, left, bindings, pred_embedded? || embedded?, :string, acc)
+      AshSql.Expr.dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        :string,
+        acc
+      )
 
     {Ecto.Query.dynamic(like(^left, ^text)), acc}
   end
@@ -566,7 +708,7 @@ defmodule AshSql.Expr do
       do_dynamic_expr(
         query,
         condition,
-        bindings,
+        set_location(bindings, :sub_expr),
         pred_embedded? || embedded?,
         acc,
         condition_type
@@ -576,7 +718,7 @@ defmodule AshSql.Expr do
       do_dynamic_expr(
         query,
         when_true,
-        bindings,
+        set_location(bindings, :sub_expr),
         pred_embedded? || embedded?,
         acc,
         when_true_type
@@ -586,7 +728,7 @@ defmodule AshSql.Expr do
       extract_cases(
         query,
         when_false,
-        bindings,
+        set_location(bindings, :sub_expr),
         pred_embedded? || embedded?,
         acc,
         when_false_type
@@ -864,8 +1006,6 @@ defmodule AshSql.Expr do
     )
   end
 
-  # Sorry :(
-  # This is bad to do, but is the only reasonable way I could find.
   defp default_dynamic_expr(
          query,
          %Fragment{arguments: arguments, embedded?: pred_embedded?},
@@ -908,7 +1048,13 @@ defmodule AshSql.Expr do
 
         {:expr, expr}, {params, fragment_data, count, acc} ->
           {dynamic, acc} =
-            do_dynamic_expr(query, expr, bindings, pred_embedded? || embedded?, acc)
+            do_dynamic_expr(
+              query,
+              expr,
+              set_location(bindings, :sub_expr),
+              pred_embedded? || embedded?,
+              acc
+            )
 
           {item, params, count} =
             {{:^, [], [count]}, [{dynamic, :any} | params], count + 1}
@@ -934,8 +1080,11 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    {left_expr, acc} = do_dynamic_expr(query, left, bindings, embedded?, acc, :boolean)
-    {right_expr, acc} = do_dynamic_expr(query, right, bindings, embedded?, acc, :boolean)
+    {left_expr, acc} =
+      do_dynamic_expr(query, left, set_location(bindings, :sub_expr), embedded?, acc, :boolean)
+
+    {right_expr, acc} =
+      do_dynamic_expr(query, right, set_location(bindings, :sub_expr), embedded?, acc, :boolean)
 
     expr =
       case op do
@@ -964,7 +1113,7 @@ defmodule AshSql.Expr do
       do_dynamic_expr(
         query,
         arg,
-        bindings,
+        set_location(bindings, :sub_expr),
         pred_embedded? || embedded?,
         acc,
         determined_type || type
@@ -996,9 +1145,23 @@ defmodule AshSql.Expr do
 
     {left_expr, acc} =
       if left_type && (operator in @cast_operands_for || complex_type?(left_type)) do
-        maybe_type_expr(query, left, bindings, pred_embedded? || embedded?, acc, left_type)
+        maybe_type_expr(
+          query,
+          left,
+          set_location(bindings, :sub_expr),
+          pred_embedded? || embedded?,
+          acc,
+          left_type
+        )
       else
-        do_dynamic_expr(query, left, bindings, pred_embedded? || embedded?, acc, left_type)
+        do_dynamic_expr(
+          query,
+          left,
+          set_location(bindings, :sub_expr),
+          pred_embedded? || embedded?,
+          acc,
+          left_type
+        )
       end
 
     with :in <- operator,
@@ -1006,7 +1169,14 @@ defmodule AshSql.Expr do
          {:ok, right} <- extract_list_value(right) do
       Enum.reduce(right, {nil, acc}, fn item, {expr, acc} ->
         {elem_expr, acc} =
-          do_dynamic_expr(query, item, bindings, pred_embedded? || embedded?, acc, item_type)
+          do_dynamic_expr(
+            query,
+            item,
+            set_location(bindings, :sub_expr),
+            pred_embedded? || embedded?,
+            acc,
+            item_type
+          )
 
         if is_nil(expr) do
           {Ecto.Query.dynamic(^left_expr == ^elem_expr), acc}
@@ -1018,9 +1188,23 @@ defmodule AshSql.Expr do
       _ ->
         {right_expr, acc} =
           if right_type && (operator in @cast_operands_for || complex_type?(right_type)) do
-            maybe_type_expr(query, right, bindings, pred_embedded? || embedded?, acc, right_type)
+            maybe_type_expr(
+              query,
+              right,
+              set_location(bindings, :sub_expr),
+              pred_embedded? || embedded?,
+              acc,
+              right_type
+            )
           else
-            do_dynamic_expr(query, right, bindings, pred_embedded? || embedded?, acc, right_type)
+            do_dynamic_expr(
+              query,
+              right,
+              set_location(bindings, :sub_expr),
+              pred_embedded? || embedded?,
+              acc,
+              right_type
+            )
           end
 
         case operator do
@@ -1271,7 +1455,7 @@ defmodule AshSql.Expr do
         do_dynamic_expr(
           query,
           expression,
-          bindings,
+          set_location(bindings, :sub_expr),
           embedded?,
           acc,
           {calculation.type, Map.get(calculation, :constraints, [])}
@@ -1440,7 +1624,14 @@ defmodule AshSql.Expr do
         end
       end
 
-    type = bindings.sql_behaviour.parameterized_type(aggregate.type, aggregate.constraints)
+    type =
+      parameterized_type(
+        bindings.sql_behaviour,
+        aggregate.type,
+        aggregate.constraints,
+        :expr
+      )
+
     validate_type!(query, type, ref)
 
     coalesced =
@@ -1527,7 +1718,14 @@ defmodule AshSql.Expr do
        ) do
     arg2 = Ash.Type.get_type(arg2)
     arg1 = maybe_uuid_to_binary(arg2, arg1, arg1)
-    type = bindings.sql_behaviour.parameterized_type(arg2, constraints)
+
+    type =
+      parameterized_type(
+        bindings.sql_behaviour,
+        arg2,
+        constraints,
+        :expr
+      )
 
     if type do
       {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, arg2)
@@ -1560,7 +1758,13 @@ defmodule AshSql.Expr do
 
     composite_keys = Ash.Type.composite_types(type, constraints)
 
-    type = bindings.sql_behaviour.parameterized_type(type, constraints)
+    type =
+      parameterized_type(
+        bindings.sql_behaviour,
+        type,
+        constraints,
+        :expr
+      )
 
     values =
       composite_keys
@@ -1639,10 +1843,10 @@ defmodule AshSql.Expr do
     do_dynamic_expr(
       %{
         query
-        | __ash_bindings__: new_bindings
+        | __ash_bindings__: set_location(new_bindings, :sub_expr)
       },
       expr,
-      new_bindings,
+      set_location(new_bindings, :sub_expr),
       embedded?,
       acc,
       type
@@ -1717,7 +1921,13 @@ defmodule AshSql.Expr do
       # its weird, but there isn't any other way that I can tell :)
       validate_type!(query, type, value)
 
-      type = bindings.sql_behaviour.parameterized_type(type, [])
+      type =
+        parameterized_type(
+          bindings.sql_behaviour,
+          type,
+          [],
+          :expr
+        )
 
       if type do
         dynamic = Ecto.Query.dynamic(type(fragment("NULL"), ^type))
@@ -1938,7 +2148,12 @@ defmodule AshSql.Expr do
 
     type =
       if !bindings[:no_cast?] do
-        bindings.sql_behaviour.parameterized_type(attr_type || expr_type, constraints)
+        parameterized_type(
+          bindings.sql_behaviour,
+          attr_type || expr_type,
+          constraints,
+          :expr
+        )
       end
 
     expr =
@@ -2000,7 +2215,8 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(query, value, bindings, embedded?, acc, type)
        when is_map(value) and not is_struct(value) do
-    if bindings[:location] in [:update, :aggregate] && Ash.Expr.expr?(value) do
+    if (within?(bindings, :select) && sub_expr?(bindings)) ||
+         (within?(bindings, [:update, :aggregate]) && Ash.Expr.expr?(value)) do
       elements =
         value
         |> Enum.flat_map(fn {key, list_item} ->
@@ -2042,19 +2258,12 @@ defmodule AshSql.Expr do
         type
       )
     else
-      {value, acc} =
-        if bindings[:location] == :select do
-          Enum.reduce(value, {%{}, acc}, fn {key, value}, {map, acc} ->
-            {value, acc} = do_dynamic_expr(query, value, bindings, embedded?, acc)
+      if bindings[:location] == :select do
+        Enum.reduce(value, {%{}, acc}, fn {key, value}, {map, acc} ->
+          {value, acc} = do_dynamic_expr(query, value, bindings, embedded?, acc)
 
-            {Map.put(map, key, value), acc}
-          end)
-        else
-          {value, acc}
-        end
-
-      if embedded? do
-        {query.__ash_bindings__.sql_behaviour.type_expr(value, :map), acc}
+          {Map.put(map, key, value), acc}
+        end)
       else
         {value, acc}
       end
@@ -2129,7 +2338,13 @@ defmodule AshSql.Expr do
       case maybe_sanitize_list(query, value, bindings, true, acc, type) do
         {^value, acc} ->
           if type do
-            type = bindings.sql_behaviour.parameterized_type(type, [])
+            type =
+              parameterized_type(
+                bindings.sql_behaviour,
+                type,
+                [],
+                :expr
+              )
 
             if type do
               validate_type!(query, type, value)
@@ -2260,7 +2475,7 @@ defmodule AshSql.Expr do
       do_dynamic_expr(
         query,
         condition,
-        bindings,
+        set_location(bindings, :sub_expr),
         pred_embedded? || embedded?,
         acc,
         condition_type || type
@@ -2270,7 +2485,7 @@ defmodule AshSql.Expr do
       do_dynamic_expr(
         query,
         when_true,
-        bindings,
+        set_location(bindings, :sub_expr),
         pred_embedded? || embedded?,
         acc,
         when_true_type || type
@@ -2279,7 +2494,7 @@ defmodule AshSql.Expr do
     extract_cases(
       query,
       when_false,
-      bindings,
+      set_location(bindings, :sub_expr),
       embedded?,
       acc,
       when_false_type || type,
@@ -2300,7 +2515,7 @@ defmodule AshSql.Expr do
       do_dynamic_expr(
         query,
         other,
-        bindings,
+        set_location(bindings, :sub_expr),
         embedded?,
         acc,
         type
@@ -2514,7 +2729,14 @@ defmodule AshSql.Expr do
 
       {params, exprs, _, acc} =
         Enum.reduce(value, {[], [], 0, acc}, fn value, {params, data, count, acc} ->
-          case do_dynamic_expr(query, value, bindings, embedded?, acc, type) do
+          case do_dynamic_expr(
+                 query,
+                 value,
+                 bindings,
+                 embedded?,
+                 acc,
+                 type
+               ) do
             {%Ecto.Query.DynamicExpr{} = dynamic, acc} ->
               result =
                 Ecto.Query.Builder.Dynamic.partially_expand(
@@ -2607,7 +2829,8 @@ defmodule AshSql.Expr do
       else
         value
         |> Enum.reduce({[], acc}, fn item, {list, acc} ->
-          {new_item, acc} = do_dynamic_expr(query, item, bindings, embedded?, acc, type)
+          {new_item, acc} =
+            do_dynamic_expr(query, item, set_location(bindings, :sub_expr), embedded?, acc, type)
 
           {[new_item | list], acc}
         end)
@@ -2689,7 +2912,14 @@ defmodule AshSql.Expr do
          pred_embedded?,
          acc
        ) do
-    type = bindings.sql_behaviour.parameterized_type(type, constraints)
+    type =
+      parameterized_type(
+        bindings.sql_behaviour,
+        type,
+        constraints,
+        :expr
+      )
+
     path = path |> Enum.reverse() |> Enum.map(&to_string/1)
 
     path_frags =
@@ -2734,7 +2964,13 @@ defmodule AshSql.Expr do
          acc
        )
        when is_atom(field) do
-    type = bindings.sql_behaviour.parameterized_type(type, constraints)
+    type =
+      parameterized_type(
+        bindings.sql_behaviour,
+        type,
+        constraints,
+        :expr
+      )
 
     {expr, acc} =
       do_dynamic_expr(
@@ -2887,7 +3123,14 @@ defmodule AshSql.Expr do
         %Ash.Query.Function.Type{arguments: [arg1, arg2, constraints]} ->
           arg2 = Ash.Type.get_type(arg2)
           arg1 = maybe_uuid_to_binary(arg2, arg1, arg1)
-          nested_type = bindings.sql_behaviour.parameterized_type(arg2, constraints)
+
+          nested_type =
+            parameterized_type(
+              bindings.sql_behaviour,
+              arg2,
+              constraints,
+              :expr
+            )
 
           if nested_type do
             {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, arg2)
@@ -2907,14 +3150,27 @@ defmodule AshSql.Expr do
             if nested_type == type do
               {expr, acc}
             else
-              type = bindings.sql_behaviour.parameterized_type(type, [])
+              type =
+                parameterized_type(
+                  bindings.sql_behaviour,
+                  type,
+                  [],
+                  :expr
+                )
+
               {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
             end
           else
             {expr, acc} =
               do_dynamic_expr(query, arg1, bindings, embedded?, acc, type)
 
-            type = bindings.sql_behaviour.parameterized_type(type, [])
+            type =
+              parameterized_type(
+                bindings.sql_behaviour,
+                type,
+                [],
+                :expr
+              )
 
             if type do
               {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
@@ -2925,7 +3181,14 @@ defmodule AshSql.Expr do
 
         other ->
           {expr, acc} = do_dynamic_expr(query, other, bindings, embedded?, acc, type)
-          type = bindings.sql_behaviour.parameterized_type(type, [])
+
+          type =
+            parameterized_type(
+              bindings.sql_behaviour,
+              type,
+              [],
+              :expr
+            )
 
           if type do
             {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}

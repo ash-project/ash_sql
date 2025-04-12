@@ -75,7 +75,38 @@ defmodule AshSql.Calculation do
                   parent_stack: query.__ash_bindings__[:parent_resources] || []
                 )
 
-              {expr, acc} =
+              expression =
+                if calculation.context.type do
+                  case expression do
+                    %Ash.Query.Function.Type{arguments: [expression | _]} ->
+                      expression
+
+                    %Ash.Query.Call{name: :type, args: [expression | _]} ->
+                      expression
+
+                    _ ->
+                      expression
+                  end
+                else
+                  expression
+                end
+
+              expression =
+                if is_nil(calculation.context.type) ||
+                     map_type?(calculation.context.type, calculation.context.constraints || []) do
+                  expression
+                else
+                  {:ok, expression} =
+                    Ash.Query.Function.Type.new([
+                      expression,
+                      calculation.context.type,
+                      calculation.context.constraints || []
+                    ])
+
+                  expression
+                end
+
+              {expression, acc} =
                 AshSql.Expr.dynamic_expr(
                   query,
                   expression,
@@ -84,20 +115,7 @@ defmodule AshSql.Calculation do
                   {calculation.type, Map.get(calculation, :constraints, [])}
                 )
 
-              type =
-                query.__ash_bindings__.sql_behaviour.parameterized_type(
-                  calculation.type,
-                  Map.get(calculation, :constraints, [])
-                )
-
-              expr =
-                if type do
-                  query.__ash_bindings__.sql_behaviour.type_expr(expr, type)
-                else
-                  expr
-                end
-
-              {[{calculation.load, calculation.name, expr} | list],
+              {[{calculation.load, calculation.name, expression} | list],
                AshSql.Expr.merge_accumulator(query, acc)}
             end)
 
@@ -119,6 +137,25 @@ defmodule AshSql.Calculation do
         Congratulations, this means that you have gone so wildly beyond our imagination
         of how much can fit into a single quer. Please file an issue and we will raise the limit.
         """
+  end
+
+  @doc false
+  def map_type?({:array, type}, constraints) do
+    map_type?(type, constraints[:items] || [])
+  end
+
+  def map_type?(type, constraints) when type in [:map, Ash.Type.Map] do
+    !Keyword.has_key?(constraints, :fields)
+  end
+
+  def map_type?(type, constraints) do
+    if Ash.Type.NewType.new_type?(type) do
+      constraints = Ash.Type.NewType.constraints(type, constraints)
+      type = Ash.Type.NewType.subtype_of(type)
+      map_type?(type, constraints)
+    else
+      false
+    end
   end
 
   defp use_calculation_name(query, aggregate_name) do

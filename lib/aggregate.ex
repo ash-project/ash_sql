@@ -729,9 +729,11 @@ defmodule AshSql.Aggregate do
         {value, acc} = AshSql.Expr.dynamic_expr(query, ref, query.__ash_bindings__, false)
 
         type =
-          query.__ash_bindings__.sql_behaviour.parameterized_type(
+          AshSql.Expr.parameterized_type(
+            query.__ash_bindings__.sql_behaviour,
             aggregate.type,
-            aggregate.constraints
+            aggregate.constraints,
+            :aggregate
           )
 
         with_default =
@@ -1264,9 +1266,11 @@ defmodule AshSql.Aggregate do
 
   defp select_dynamic(_resource, query, aggregate, binding) do
     type =
-      query.__ash_bindings__.sql_behaviour.parameterized_type(
+      AshSql.Expr.parameterized_type(
+        query.__ash_bindings__.sql_behaviour,
         aggregate.type,
-        aggregate.constraints
+        aggregate.constraints,
+        :aggregate
       )
 
     field =
@@ -1337,9 +1341,11 @@ defmodule AshSql.Aggregate do
       )
 
     type =
-      query.__ash_bindings__.sql_behaviour.parameterized_type(
+      AshSql.Expr.parameterized_type(
+        query.__ash_bindings__.sql_behaviour,
         aggregate.type,
-        aggregate.constraints
+        aggregate.constraints,
+        :aggregate
       )
 
     binding =
@@ -1502,9 +1508,11 @@ defmodule AshSql.Aggregate do
         first_relationship
       ) do
     type =
-      query.__ash_bindings__.sql_behaviour.parameterized_type(
+      AshSql.Expr.parameterized_type(
+        query.__ash_bindings__.sql_behaviour,
         aggregate.type,
-        aggregate.constraints
+        aggregate.constraints,
+        :aggregate
       )
 
     binding =
@@ -1703,9 +1711,11 @@ defmodule AshSql.Aggregate do
       end
 
     type =
-      query.__ash_bindings__.sql_behaviour.parameterized_type(
+      AshSql.Expr.parameterized_type(
+        query.__ash_bindings__.sql_behaviour,
         aggregate.type,
-        aggregate.constraints
+        aggregate.constraints,
+        :aggregate
       )
 
     binding =
@@ -1920,9 +1930,11 @@ defmodule AshSql.Aggregate do
            ) do
         %Ash.Resource.Calculation{calculation: {module, opts}} = calculation ->
           calc_type =
-            query.__ash_bindings__.sql_behaviour.parameterized_type(
+            AshSql.Expr.parameterized_type(
+              query.__ash_bindings__.sql_behaviour,
               calculation.type,
-              Map.get(calculation, :constraints, [])
+              Map.get(calculation, :constraints, []),
+              :calculation
             )
 
           AshSql.Expr.validate_type!(query, calc_type, "#{inspect(calculation.name)}")

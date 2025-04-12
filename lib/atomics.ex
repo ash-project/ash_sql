@@ -14,12 +14,27 @@ defmodule AshSql.Atomics do
     |> Enum.reduce_while({:ok, query, []}, fn {field, expr}, {:ok, query, dynamics} ->
       attribute = Ash.Resource.Info.attribute(resource, field)
 
-      type =
-        query.__ash_bindings__.sql_behaviour.storage_type(resource, attribute.name) ||
-          query.__ash_bindings__.sql_behaviour.parameterized_type(
-            attribute.type,
-            attribute.constraints
-          )
+      expr =
+        case expr do
+          %Ash.Query.Function.Type{arguments: [expr | _]} ->
+            expr
+
+          %Ash.Query.Call{name: :type, args: [expr | _]} ->
+            expr
+
+          _ ->
+            expr
+        end
+
+      expr =
+        if AshSql.Calculation.map_type?(
+             attribute.type,
+             attribute.constraints || []
+           ) do
+          expr
+        else
+          type_cast_unless_list_of_embedded(expr, attribute)
+        end
 
       case AshSql.Expr.dynamic_expr(
              query,
@@ -27,8 +42,7 @@ defmodule AshSql.Atomics do
              Map.merge(query.__ash_bindings__, %{
                location: :update
              }),
-             false,
-             type
+             false
            ) do
         {dynamic, acc} ->
           new_field = String.to_atom("__new_#{field}")
@@ -106,6 +120,36 @@ defmodule AshSql.Atomics do
 
       other ->
         other
+    end
+  end
+
+  defp type_cast_unless_list_of_embedded(expr, attribute) do
+    type_cast? =
+      if is_list(expr) do
+        first = Enum.at(expr, 0)
+
+        first_embedded? =
+          is_struct(first) and Ash.Resource.Info.resource?(first.__struct__) and
+            Ash.Resource.Info.embedded?(first.__struct__)
+
+        is_map? = attribute.type in [:map, :jsonb, :json]
+
+        not (first_embedded? && !is_map?)
+      else
+        true
+      end
+
+    if type_cast? do
+      {:ok, expr} =
+        Ash.Query.Function.Type.new([
+          expr,
+          attribute.type,
+          attribute.constraints || []
+        ])
+
+      expr
+    else
+      expr
     end
   end
 
@@ -214,12 +258,27 @@ defmodule AshSql.Atomics do
       |> Enum.reduce_while({:ok, query, []}, fn {field, expr}, {:ok, query, set} ->
         attribute = Ash.Resource.Info.attribute(resource, field)
 
-        type =
-          query.__ash_bindings__.sql_behaviour.storage_type(resource, attribute.name) ||
-            query.__ash_bindings__.sql_behaviour.parameterized_type(
-              attribute.type,
-              attribute.constraints
-            )
+        expr =
+          case expr do
+            %Ash.Query.Function.Type{arguments: [expr | _]} ->
+              expr
+
+            %Ash.Query.Call{name: :type, args: [expr | _]} ->
+              expr
+
+            _ ->
+              expr
+          end
+
+        expr =
+          if AshSql.Calculation.map_type?(
+               attribute.type,
+               attribute.constraints || []
+             ) do
+            expr
+          else
+            type_cast_unless_list_of_embedded(expr, attribute)
+          end
 
         case AshSql.Expr.dynamic_expr(
                query,
@@ -227,8 +286,7 @@ defmodule AshSql.Atomics do
                Map.merge(query.__ash_bindings__, %{
                  location: :update
                }),
-               false,
-               type
+               false
              ) do
           {dynamic, acc} ->
             {:cont,

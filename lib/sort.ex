@@ -170,9 +170,11 @@ defmodule AshSql.Sort do
           {order, %Ash.Query.Aggregate{} = agg}, {:ok, query_expr, query} ->
             type =
               if agg.type do
-                query.__ash_bindings__.sql_behaviour.parameterized_type(
+                AshSql.Expr.parameterized_type(
+                  query.__ash_bindings__.sql_behaviour,
                   agg.type,
-                  agg.constraints
+                  agg.constraints,
+                  :sort
                 )
               else
                 nil
@@ -203,9 +205,11 @@ defmodule AshSql.Sort do
           {order, %Ash.Query.Calculation{} = calc}, {:ok, query_expr, query} ->
             type =
               if calc.type do
-                query.__ash_bindings__.sql_behaviour.parameterized_type(
+                AshSql.Expr.parameterized_type(
+                  query.__ash_bindings__.sql_behaviour,
                   calc.type,
-                  calc.constraints
+                  calc.constraints,
+                  :sort
                 )
               else
                 nil
@@ -260,9 +264,11 @@ defmodule AshSql.Sort do
 
                       if attr && related do
                         {:ok,
-                         query.__ash_bindings__.sql_behaviour.parameterized_type(
+                         AshSql.Expr.parameterized_type(
+                           query.__ash_bindings__.sql_behaviour,
                            attr.type,
-                           attr.constraints
+                           attr.constraints,
+                           :sort
                          )}
                       else
                         {:ok, nil}

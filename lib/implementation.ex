@@ -9,13 +9,6 @@ defmodule AshSql.Implementation do
 
   @callback parameterized_type(
               Ash.Type.t() | Ecto.Type.t(),
-              constraints :: Keyword.t(),
-              no_maps? :: boolean
-            ) ::
-              term
-
-  @callback parameterized_type(
-              Ash.Type.t() | Ecto.Type.t(),
               constraints :: Keyword.t()
             ) ::
               term
