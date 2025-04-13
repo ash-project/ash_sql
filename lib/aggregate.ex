@@ -22,6 +22,15 @@ defmodule AshSql.Aggregate do
   def add_aggregates(query, aggregates, resource, select?, source_binding, root_data) do
     case resource_aggregates_to_aggregates(resource, query, aggregates) do
       {:ok, aggregates} ->
+        root_data_path =
+          case root_data do
+            {_, path} ->
+              path
+
+            _ ->
+              []
+          end
+
         tenant =
           case Enum.at(aggregates, 0) do
             %{context: %{tenant: tenant}} ->
@@ -54,22 +63,32 @@ defmodule AshSql.Aggregate do
           )
 
         aggregates =
-          Enum.reject(aggregates, fn aggregate ->
-            Map.has_key?(query.__ash_bindings__.aggregate_defs, aggregate.name)
-          end)
+          if root_data_path == [] do
+            Enum.reject(aggregates, fn aggregate ->
+              if Map.has_key?(query.__ash_bindings__.aggregate_defs, aggregate.name) do
+                true
+              end
+            end)
+          else
+            aggregates
+          end
 
         query =
-          query
-          |> Map.update!(:__ash_bindings__, fn bindings ->
-            bindings
-            |> Map.update!(:aggregate_defs, fn aggregate_defs ->
-              Map.merge(aggregate_defs, Map.new(aggregates, &{&1.name, &1}))
+          if root_data_path == [] do
+            query
+            |> Map.update!(:__ash_bindings__, fn bindings ->
+              bindings
+              |> Map.update!(:aggregate_defs, fn aggregate_defs ->
+                Map.merge(aggregate_defs, Map.new(aggregates, &{&1.name, &1}))
+              end)
             end)
-          end)
+          else
+            query
+          end
 
         result =
           aggregates
-          |> Enum.reject(&already_added?(&1, query.__ash_bindings__))
+          |> Enum.reject(&already_added?(&1, query.__ash_bindings__, root_data_path))
           |> Enum.group_by(&{&1.relationship_path, &1.join_filters || %{}})
           |> Enum.flat_map(fn {{path, join_filters}, aggregates} ->
             {can_group, cant_group} =
@@ -179,15 +198,6 @@ defmodule AshSql.Aggregate do
                       Map.get(aggregate.query, :filter)
                     end
 
-                  root_data_path =
-                    case root_data do
-                      {_, path} ->
-                        path
-
-                      _ ->
-                        []
-                    end
-
                   {exists, acc} =
                     AshSql.Expr.dynamic_expr(
                       query,
@@ -203,15 +213,6 @@ defmodule AshSql.Aggregate do
                     [{aggregate.load, aggregate.name, exists} | dynamics]}}
 
                 true ->
-                  root_data_path =
-                    case root_data do
-                      {_, path} ->
-                        path
-
-                      _ ->
-                        []
-                    end
-
                   tmp_query =
                     if first_relationship.type == :many_to_many do
                       put_in(query.__ash_bindings__[:lateral_join_bindings], [
@@ -764,9 +765,9 @@ defmodule AshSql.Aggregate do
     end
   end
 
-  defp already_added?(aggregate, bindings) do
+  defp already_added?(aggregate, bindings, root_data_path) do
     Enum.any?(bindings.bindings, fn
-      {_, %{type: :aggregate, aggregates: aggregates}} ->
+      {_, %{type: :aggregate, aggregates: aggregates}, path: ^root_data_path} ->
         aggregate in aggregates
 
       _ ->
