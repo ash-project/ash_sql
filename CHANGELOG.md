@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.69](https://github.com/ash-project/ash_sql/compare/v0.2.68...v0.2.69) (2025-04-15)
+
+
+
+
+### Bug Fixes:
+
+* pass correct operation to split_statements (#121)
+
 ## [v0.2.68](https://github.com/ash-project/ash_sql/compare/v0.2.67...v0.2.68) (2025-04-15)
 
 
