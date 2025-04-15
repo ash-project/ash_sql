@@ -3059,7 +3059,7 @@ defmodule AshSql.Expr do
   def split_statements(nil, _op), do: []
 
   def split_statements([left, right | rest], op) do
-    split_statements([%BooleanExpression{op: :and, left: left, right: right} | rest], op)
+    split_statements([%BooleanExpression{op: op, left: left, right: right} | rest], op)
   end
 
   def split_statements([last], op), do: split_statements(last, op)
