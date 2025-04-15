@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.68](https://github.com/ash-project/ash_sql/compare/v0.2.67...v0.2.68) (2025-04-15)
+
+
+
+
+### Bug Fixes:
+
+* duplicate aggregate pruning was pruning non-duplicates
+
+* handle map type logic natively in ash_sql instead of extensions
+
 ## [v0.2.67](https://github.com/ash-project/ash_sql/compare/v0.2.66...v0.2.67) (2025-04-09)
 
 
