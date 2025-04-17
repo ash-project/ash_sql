@@ -1892,6 +1892,13 @@ defmodule AshSql.Aggregate do
             ref
           end
 
+        %{attribute: %Ash.Query.Aggregate{}} = ref ->
+          if first_relationship do
+            %{ref | relationship_path: [first_relationship.name | ref.relationship_path]}
+          else
+            ref
+          end
+
         other ->
           other
       end
