@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.70](https://github.com/ash-project/ash_sql/compare/v0.2.69...v0.2.70) (2025-04-17)
+
+
+
+
+### Bug Fixes:
+
+* handle query aggregate in aggregate field properly
+
 ## [v0.2.69](https://github.com/ash-project/ash_sql/compare/v0.2.68...v0.2.69) (2025-04-15)
 
 
