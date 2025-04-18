@@ -8,16 +8,28 @@ defmodule AshSql.Query do
     |> Map.put(:__ash_domain__, domain)
   end
 
-  def union_of([first | union_of], resource, implementation, domain \\ nil) do
-    Enum.reduce(union_of, subquery(first), fn union_of, query ->
-      Ecto.Query.union(query, ^union_of)
+  def combination_of([{:base, first} | combination_of], resource, implementation, domain \\ nil) do
+    Enum.reduce(combination_of, subquery(first), fn {type, combination_of}, query ->
+      case type do
+        :union ->
+          Ecto.Query.union(query, ^combination_of)
+
+        :union_all ->
+          Ecto.Query.union_all(query, ^combination_of)
+
+        :intersect ->
+          Ecto.Query.intersect(query, ^combination_of)
+
+        :except ->
+          Ecto.Query.except(query, ^combination_of)
+      end
     end)
     |> then(&{:ok, &1})
   end
 
   def set_context(resource, data_layer_query, sql_behaviour, context) do
     data_layer_query =
-      if context[:data_layer][:union_of_queries?] do
+      if context[:data_layer][:combination_of_queries?] do
         from(row in subquery(data_layer_query), [])
       else
         data_layer_query
@@ -27,8 +39,8 @@ defmodule AshSql.Query do
       if context[:data_layer][:lateral_join_source] do
         500
       else
-        if context[:data_layer][:previous_union_of] do
-          context[:data_layer][:previous_union_of].__ash_bindings__.current
+        if context[:data_layer][:previous_combination] do
+          context[:data_layer][:previous_combination].__ash_bindings__.current
         else
           0
         end
