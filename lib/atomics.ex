@@ -112,7 +112,7 @@ defmodule AshSql.Atomics do
         query =
           Map.put(query, :select, %Ecto.Query.SelectExpr{
             expr: {:%{}, [], Enum.reverse(selects)},
-            subqueries: subqueries,
+            subqueries: Enum.map(subqueries, &set_subquery_prefix(&1, query)),
             params: Enum.reverse(params)
           })
 
@@ -120,6 +120,37 @@ defmodule AshSql.Atomics do
 
       other ->
         other
+    end
+  end
+
+  def set_subquery_prefix(sub_query, query) do
+    %{
+      sub_query
+      | query: %{
+          sub_query.query
+          | prefix:
+              subquery_prefix(
+                sub_query,
+                query,
+                sub_query.query.__ash_bindings__.resource
+              )
+        }
+    }
+  end
+
+  defp subquery_prefix(sub_query, base_query, resource) do
+    if Ash.Resource.Info.multitenancy_strategy(resource) == :context do
+      sub_query.query.__ash_bindings__.sql_behaviour.schema(resource) ||
+        Map.get(Map.get(base_query, :__ash_bindings__), :tenant) ||
+        base_query.prefix ||
+        sub_query.query.__ash_bindings__.sql_behaviour.repo(resource, :mutate).config()[
+          :default_prefix
+        ]
+    else
+      sub_query.query.__ash_bindings__.sql_behaviour.schema(resource) ||
+        sub_query.query.__ash_bindings__.sql_behaviour.repo(resource, :mutate).config()[
+          :default_prefix
+        ]
     end
   end
 
