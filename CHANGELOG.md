@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.73](https://github.com/ash-project/ash_sql/compare/v0.2.72...v0.2.73) (2025-04-29)
+
+
+
+
+### Bug Fixes:
+
+* prefix subqueries for atomic validations
+
+* change start_of_day
+
 ## [v0.2.72](https://github.com/ash-project/ash_sql/compare/v0.2.71...v0.2.72) (2025-04-22)
 
 
