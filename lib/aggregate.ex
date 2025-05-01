@@ -1073,7 +1073,57 @@ defmodule AshSql.Aggregate do
   def can_group?(resource, aggregate, query) do
     can_group_kind?(aggregate, resource, query) && !has_exists?(aggregate) &&
       !references_to_many_relationships?(aggregate) &&
-      !optimizable_first_aggregate?(resource, aggregate, query)
+      !optimizable_first_aggregate?(resource, aggregate, query) &&
+      !has_parent_expr?(aggregate.query.filter)
+  end
+
+  # TODO: I don't think I should have to do this.
+  # If you remove this, a test in ash_postgres fails
+  # about a non-matching parent expression that *should* work
+  # I just don't have time to hunt down the related (potential)
+  # ecto bug
+  defp has_parent_expr?(filter, depth \\ 0) do
+    not is_nil(
+      Ash.Filter.find(
+        filter,
+        fn
+          %Ash.Query.Call{name: :parent, args: [expr]} ->
+            if depth == 0 do
+              true
+            else
+              has_parent_expr?(expr, depth - 1)
+            end
+
+          %Ash.Query.Exists{expr: expr} ->
+            has_parent_expr?(expr, depth + 1)
+
+          %Ash.Query.Parent{expr: expr} ->
+            if depth == 0 do
+              true
+            else
+              has_parent_expr?(expr, depth - 1)
+            end
+
+          %Ash.Query.Ref{
+            attribute: %Ash.Query.Aggregate{
+              field: %Ash.Query.Calculation{module: module, opts: opts, context: context}
+            }
+          } ->
+            if module.has_expression?() do
+              module.expression(opts, context)
+              |> has_parent_expr?(depth + 1)
+            else
+              false
+            end
+
+          _other ->
+            false
+        end,
+        true,
+        true,
+        true
+      )
+    )
   end
 
   # We can potentially optimize this. We don't have to prevent aggregates that reference
