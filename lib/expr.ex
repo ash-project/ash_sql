@@ -21,6 +21,7 @@ defmodule AshSql.Expr do
     Lazy,
     Length,
     Now,
+    Rem,
     Round,
     StartOfDay,
     StringDowncase,
@@ -835,6 +836,33 @@ defmodule AshSql.Expr do
           raw: "), (",
           expr: right,
           raw: "))"
+        ]
+      },
+      bindings,
+      embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Rem{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(
+      query,
+      %Fragment{
+        embedded?: pred_embedded?,
+        arguments: [
+          raw: "MOD(",
+          expr: left,
+          raw: ", ",
+          expr: right,
+          raw: ")"
         ]
       },
       bindings,
