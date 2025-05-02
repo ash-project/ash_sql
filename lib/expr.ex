@@ -858,7 +858,7 @@ defmodule AshSql.Expr do
       %Fragment{
         embedded?: pred_embedded?,
         arguments: [
-          raw: "MOD(",
+          raw: "mod(",
           expr: left,
           raw: ", ",
           expr: right,
