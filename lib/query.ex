@@ -1,6 +1,7 @@
 defmodule AshSql.Query do
   @moduledoc false
   import Ecto.Query, only: [subquery: 1, from: 2]
+  require Ecto.Query
   require Ash.Expr
 
   def resource_to_query(resource, implementation, domain \\ nil) do
@@ -8,15 +9,56 @@ defmodule AshSql.Query do
     |> Map.put(:__ash_domain__, domain)
   end
 
+  def combination_of(
+        [{:base, first} | combination_of],
+        _resource,
+        _implementation,
+        _domain \\ nil
+      ) do
+    Enum.reduce(combination_of, subquery(first), fn {type, combination_of}, query ->
+      case type do
+        :union ->
+          Ecto.Query.union(query, ^combination_of)
+
+        :union_all ->
+          Ecto.Query.union_all(query, ^combination_of)
+
+        :intersect ->
+          Ecto.Query.intersect(query, ^combination_of)
+
+        :except ->
+          Ecto.Query.except(query, ^combination_of)
+      end
+    end)
+    |> then(&{:ok, &1})
+  end
+
   def set_context(resource, data_layer_query, sql_behaviour, context) do
+    data_layer_query =
+      if context[:data_layer][:combination_of_queries?] do
+        from(row in subquery(data_layer_query), [])
+      else
+        data_layer_query
+      end
+
     default_start_bindings =
       if context[:data_layer][:lateral_join_source] do
         500
       else
-        0
+        if context[:data_layer][:previous_combination] do
+          context[:data_layer][:previous_combination].__ash_bindings__.current
+        else
+          0
+        end
       end
 
     start_bindings = context[:data_layer][:start_bindings_at] || default_start_bindings
+
+    context =
+      context
+      |> Map.put_new(:data_layer, %{})
+      |> Map.update!(:data_layer, &Map.put(&1, :start_bindings_at, start_bindings))
+
     data_layer_query = from(row in data_layer_query, as: ^start_bindings)
 
     data_layer_query =
@@ -220,54 +262,72 @@ defmodule AshSql.Query do
         {:error, error}
 
       {:ok, query} ->
-        if query.__ash_bindings__[:__order__?] && query.windows[:order] do
-          if query.distinct do
-            {calculations_require_rewrite, aggregates_require_rewrite, query} =
-              rewrite_nested_selects(query)
+        query =
+          if query.__ash_bindings__[:__order__?] && query.windows[:order] do
+            if query.distinct do
+              {calculations_require_rewrite, aggregates_require_rewrite, query} =
+                rewrite_nested_selects(query)
 
-            query_with_order =
-              from(row in query, select_merge: %{__order__: over(row_number(), :order)})
+              query_with_order =
+                from(row in query, select_merge: %{__order__: over(row_number(), :order)})
 
-            query_without_limit_and_offset =
-              query_with_order
-              |> Ecto.Query.exclude(:limit)
-              |> Ecto.Query.exclude(:offset)
+              query_without_limit_and_offset =
+                query_with_order
+                |> Ecto.Query.exclude(:limit)
+                |> Ecto.Query.exclude(:offset)
 
-            {:ok,
-             from(row in subquery(query_without_limit_and_offset),
-               select: row,
-               order_by: row.__order__
-             )
-             |> Map.put(:limit, query.limit)
-             |> Map.put(:offset, query.offset)
-             |> AshSql.Bindings.default_bindings(
-               resource,
-               query.__ash_bindings__.sql_behaviour,
-               query.__ash_bindings__.context
-             )
-             |> Map.update!(:__ash_bindings__, fn bindings ->
-               Map.merge(
-                 bindings,
-                 %{
-                   calculations_require_rewrite: calculations_require_rewrite,
-                   aggregates_require_rewrite: aggregates_require_rewrite
-                 },
-                 fn _, v1, v2 -> Map.merge(v1, v2) end
-               )
-             end)}
+              from(row in subquery(query_without_limit_and_offset),
+                select: row,
+                order_by: row.__order__
+              )
+              |> Map.put(:limit, query.limit)
+              |> Map.put(:offset, query.offset)
+              |> AshSql.Bindings.default_bindings(
+                resource,
+                query.__ash_bindings__.sql_behaviour,
+                query.__ash_bindings__.context
+              )
+              |> Map.update!(:__ash_bindings__, fn bindings ->
+                Map.merge(
+                  bindings,
+                  %{
+                    calculations_require_rewrite: calculations_require_rewrite,
+                    aggregates_require_rewrite: aggregates_require_rewrite
+                  },
+                  fn _, v1, v2 -> Map.merge(v1, v2) end
+                )
+              end)
+            else
+              order_by = %{query.windows[:order] | expr: query.windows[:order].expr[:order_by]}
+
+              %{
+                query
+                | windows: Keyword.delete(query.windows, :order),
+                  order_bys: [order_by]
+              }
+            end
           else
-            order_by = %{query.windows[:order] | expr: query.windows[:order].expr[:order_by]}
-
-            {:ok,
-             %{
-               query
-               | windows: Keyword.delete(query.windows, :order),
-                 order_bys: [order_by]
-             }}
+            %{query | windows: Keyword.delete(query.windows, :order)}
           end
-        else
-          {:ok, %{query | windows: Keyword.delete(query.windows, :order)}}
-        end
+
+        combination_fieldset =
+          query.__ash_bindings__.context[:data_layer][:combination_fieldset]
+
+        query =
+          if combination_fieldset do
+            fields =
+              resource
+              |> Ash.Resource.Info.fields([:attributes, :calculations, :aggregates])
+              |> Enum.map(& &1.name)
+
+            to_add_to_calcs = combination_fieldset -- fields
+
+            add_combination_calcs(query, to_add_to_calcs)
+          else
+            query
+          end
+
+        {:ok, query}
     end
   end
 
@@ -277,6 +337,82 @@ defmodule AshSql.Query do
     else
       ash_query
     end
+  end
+
+  defp add_combination_calcs(query, to_add_to_calcs) do
+    case query.select do
+      %Ecto.Query.SelectExpr{
+        expr:
+          {:merge, merge_meta,
+           [
+             merge_base,
+             {:%{}, map_meta, current_merging}
+           ]}
+      } = select ->
+        if Keyword.has_key?(current_merging, :calculations) do
+          %{
+            query
+            | select: %{
+                select
+                | expr:
+                    {:merge, merge_meta,
+                     [
+                       merge_base,
+                       {:%{}, map_meta,
+                        add_combinations_to_calc_map(
+                          current_merging,
+                          to_add_to_calcs,
+                          query.__ash_bindings__.root_binding
+                        )}
+                     ]}
+              }
+          }
+        else
+          simple_combination_calcs(query, to_add_to_calcs)
+        end
+
+      %Ecto.Query.SelectExpr{expr: {:%{}, map_meta, fields}} = select ->
+        if Keyword.has_key?(fields, :calculations) do
+          %{
+            query
+            | select: %{
+                select
+                | expr:
+                    {:%{}, map_meta,
+                     add_combinations_to_calc_map(
+                       fields,
+                       to_add_to_calcs,
+                       query.__ash_bindings__.root_binding
+                     )}
+              }
+          }
+        else
+          simple_combination_calcs(query, to_add_to_calcs)
+        end
+
+      _ ->
+        simple_combination_calcs(query, to_add_to_calcs)
+    end
+  end
+
+  defp add_combinations_to_calc_map(fields, to_add_to_calcs, root_binding) do
+    Keyword.update!(fields, :calculations, fn {:%{}, map_meta, calcs} ->
+      merge =
+        Keyword.new(to_add_to_calcs, fn name ->
+          {name, {{:., [], [{:as, [], [root_binding]}, name]}, [], []}}
+        end)
+
+      {:%{}, map_meta, Keyword.merge(calcs, merge)}
+    end)
+  end
+
+  defp simple_combination_calcs(query, to_add_to_calcs) do
+    dynamics =
+      Map.new(to_add_to_calcs, fn name ->
+        {name, Ecto.Query.dynamic([row], field(row, ^name))}
+      end)
+
+    Ecto.Query.select_merge(query, ^%{calculations: dynamics})
   end
 
   # sobelow_skip ["DOS.StringToAtom"]
@@ -326,7 +462,42 @@ defmodule AshSql.Query do
 
         {calculation_merges, aggregate_merges, new_query}
 
-      %Ecto.Query.SelectExpr{expr: _other_expr} ->
+      %Ecto.Query.SelectExpr{expr: {:%{}, map_meta, current_merging}} = select ->
+        merging =
+          Enum.flat_map(current_merging, fn
+            {type, {:%{}, _, type_exprs}} when type in [:calculations, :aggregates] ->
+              Enum.map(type_exprs, fn {name, expr} ->
+                {String.to_atom("__#{type}__#{name}"), expr}
+              end)
+
+            {type, other} ->
+              [{type, other}]
+          end)
+
+        aggregate_merges =
+          current_merging
+          |> Keyword.get(:aggregates, {:%{}, [], []})
+          |> elem(2)
+          |> Map.new(fn {name, _expr} ->
+            {String.to_existing_atom("__aggregates__#{name}"), name}
+          end)
+
+        calculation_merges =
+          current_merging
+          |> Keyword.get(:calculations, {:%{}, [], []})
+          |> elem(2)
+          |> Map.new(fn {name, _expr} ->
+            {String.to_existing_atom("__calculations__#{name}"), name}
+          end)
+
+        new_query = %{
+          query
+          | select: %{select | expr: {:%{}, map_meta, merging}}
+        }
+
+        {calculation_merges, aggregate_merges, new_query}
+
+      _ ->
         {%{}, %{}, query}
     end
   end

@@ -53,7 +53,9 @@ defmodule AshSql.Calculation do
            source_binding
          ) do
       {:ok, query} ->
-        if select? do
+        combinations? = query.__ash_bindings__.context[:data_layer][:combination_query?]
+
+        if select? || combinations? do
           query =
             if query.select do
               query
@@ -115,7 +117,14 @@ defmodule AshSql.Calculation do
                   {calculation.type, Map.get(calculation, :constraints, [])}
                 )
 
-              {[{calculation.load, calculation.name, expression} | list],
+              load =
+                if combinations? do
+                  calculation.name
+                else
+                  calculation.load
+                end
+
+              {[{load, calculation.name, expression} | list],
                AshSql.Expr.merge_accumulator(query, acc)}
             end)
 
