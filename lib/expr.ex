@@ -2151,6 +2151,31 @@ defmodule AshSql.Expr do
   end
 
   defp default_dynamic_expr(
+         _query,
+         %Ref{
+           attribute: %Ash.Query.CombinationAttr{
+             name: name
+           }
+         },
+         bindings,
+         _embedded?,
+         acc,
+         _expr_type
+       ) do
+    ref_binding = bindings.root_binding
+
+    dynamic =
+      if bindings[:parent?] &&
+           ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
+        Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+      else
+        Ecto.Query.dynamic(field(as(^ref_binding), ^name))
+      end
+
+    {dynamic, acc}
+  end
+
+  defp default_dynamic_expr(
          query,
          %Ref{
            attribute: %Ash.Resource.Attribute{
