@@ -2160,7 +2160,7 @@ defmodule AshSql.Expr do
          bindings,
          _embedded?,
          acc,
-         expr_type
+         _expr_type
        ) do
     ref_binding = bindings.root_binding
 

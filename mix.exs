@@ -69,7 +69,7 @@ defmodule AshSql.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ash, "~> 3.0 and >= 3.5.0"},
+      {:ash, ash_version("~> 3.0 and >= 3.5.0")},
       {:ecto_sql, "~> 3.9"},
       {:ecto, "~> 3.9"},
       # dev/test dependencies
@@ -84,6 +84,25 @@ defmodule AshSql.MixProject do
       {:sobelow, ">= 0.0.0", only: [:dev, :test], runtime: false},
       {:mix_audit, ">= 0.0.0", only: [:dev, :test], runtime: false}
     ]
+  end
+
+  defp ash_version(default_version) do
+    case System.get_env("ASH_VERSION") do
+      nil ->
+        default_version
+
+      "local" ->
+        [path: "../ash", override: true]
+
+      "main" ->
+        [git: "https://github.com/ash-project/ash.git", override: true]
+
+      version when is_binary(version) ->
+        "~> #{version}"
+
+      version ->
+        version
+    end
   end
 
   defp aliases do
