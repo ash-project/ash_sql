@@ -508,7 +508,9 @@ defmodule AshSql.Query do
         calculations_require_rewrite \\ %{},
         aggregates_require_rewrite \\ %{}
       ) do
-    calculation_names = query.__ash_bindings__.calculation_names
+    calculation_names =
+      query.__ash_bindings__.calculation_names
+
     aggregate_names = query.__ash_bindings__.aggregate_names
 
     calculations_require_rewrite =

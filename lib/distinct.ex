@@ -82,21 +82,23 @@ defmodule AshSql.Distinct do
                    fn ash_bindings ->
                      ash_bindings
                      |> Map.put(:__order__?, query.__ash_bindings__[:__order__?] || false)
-                     |> Map.update!(
-                       :calculation_names,
-                       fn calculation_names ->
+                     |> Map.update(
+                       :calculations_require_rewrite,
+                       calculations_require_rewrite,
+                       fn current_calculations_require_rewrite ->
                          Map.merge(
-                           calculation_names,
-                           Map.new(calculations_require_rewrite, &{elem(&1, 1), elem(&1, 0)})
+                           current_calculations_require_rewrite,
+                           calculations_require_rewrite
                          )
                        end
                      )
-                     |> Map.update!(
-                       :aggregate_names,
-                       fn aggregate_names ->
+                     |> Map.update(
+                       :aggregates_require_rewrite,
+                       aggregates_require_rewrite,
+                       fn current_aggregates_require_rewrite ->
                          Map.merge(
-                           aggregate_names,
-                           Map.new(aggregates_require_rewrite, &{elem(&1, 1), elem(&1, 0)})
+                           current_aggregates_require_rewrite,
+                           aggregates_require_rewrite
                          )
                        end
                      )
