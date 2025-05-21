@@ -43,6 +43,10 @@ defmodule AshSql.Expr do
     @type t :: %__MODULE__{}
   end
 
+  def parameterized_type(sql_behaviour, {type, constraints}, _, _location) when type != :array do
+    sql_behaviour.parameterized_type(type, constraints)
+  end
+
   def parameterized_type(sql_behaviour, type, constraints, _location) do
     sql_behaviour.parameterized_type(type, constraints)
   end
@@ -1757,7 +1761,7 @@ defmodule AshSql.Expr do
       )
 
     if type do
-      {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, arg2)
+      {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, {arg2, constraints})
 
       case {type, expr} do
         {{:parameterized, Ash.Type.Map.EctoType, []}, %Ecto.Query.DynamicExpr{}} ->
