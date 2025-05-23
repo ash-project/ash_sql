@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.76](https://github.com/ash-project/ash_sql/compare/v0.2.75...v0.2.76) (2025-05-23)
+
+
+
+
+### Bug Fixes:
+
+* retain constraints when type casting
+
 ## [v0.2.75](https://github.com/ash-project/ash_sql/compare/v0.2.74...v0.2.75) (2025-05-06)
 
 
