@@ -2456,6 +2456,9 @@ defmodule AshSql.Expr do
   # I literally hate this
   defp reverse_engineer_type(value) do
     case value do
+      %Type{} = value ->
+        value
+
       list_item when is_integer(list_item) ->
         %Type{arguments: [list_item, :integer, []]}
 
@@ -2897,16 +2900,7 @@ defmodule AshSql.Expr do
         end)
       end
     else
-      case bindings.sql_behaviour.expr(query, value, bindings, true, acc, type) do
-        {:ok, expr, acc} ->
-          {expr, acc}
-
-        {:error, error} ->
-          raise "Error while building expression: #{error}"
-
-        :error ->
-          {value, acc}
-      end
+      {value, acc}
     end
   end
 
