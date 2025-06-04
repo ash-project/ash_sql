@@ -5,6 +5,21 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.77](https://github.com/ash-project/ash_sql/compare/v0.2.76...v0.2.77) (2025-06-04)
+
+
+
+
+### Bug Fixes:
+
+* clean up a whole slew of ecto hacks that arent necessary
+
+* don't implicitly cast all values
+
+### Improvements:
+
+* reduce cases of double-typecasting
+
 ## [v0.2.76](https://github.com/ash-project/ash_sql/compare/v0.2.75...v0.2.76) (2025-05-23)
 
 
