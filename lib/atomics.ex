@@ -55,8 +55,7 @@ defmodule AshSql.Atomics do
             end
 
           {:cont,
-           {:ok, AshSql.Expr.merge_accumulator(query, acc),
-            dynamics ++ [{new_field, {dynamic, field}}]}}
+           {:ok, AshSql.Expr.merge_accumulator(query, acc), dynamics ++ [{new_field, dynamic}]}}
 
         other ->
           {:halt, other}
@@ -70,53 +69,12 @@ defmodule AshSql.Atomics do
           resource
           |> Ash.Resource.Info.primary_key()
           |> Enum.map(fn key ->
-            {key, {Ecto.Query.dynamic([row], field(row, ^key)), key}}
+            {key, Ecto.Query.dynamic([row], field(row, ^key))}
           end)
 
-        dynamics = Keyword.merge(dynamics, pkey_dynamics)
+        dynamics = Map.new(Keyword.merge(dynamics, pkey_dynamics))
 
-        {params, selects, subqueries, _, query} =
-          Enum.reduce(
-            dynamics,
-            {[], [], [], 0, query},
-            fn {key, {value, original_field}}, {params, select, subqueries, count, query} ->
-              case AshSql.Expr.dynamic_expr(query, value, query.__ash_bindings__) do
-                {%Ecto.Query.DynamicExpr{} = dynamic, acc} ->
-                  result =
-                    Ecto.Query.Builder.Dynamic.partially_expand(
-                      query,
-                      dynamic,
-                      params,
-                      subqueries,
-                      %{},
-                      count
-                    )
-
-                  expr = elem(result, 0)
-                  new_params = elem(result, 1)
-                  new_subqueries = elem(result, 2)
-
-                  new_count =
-                    result |> Tuple.to_list() |> List.last()
-
-                  {new_params, [{key, expr} | select], new_subqueries, new_count,
-                   AshSql.Expr.merge_accumulator(query, acc)}
-
-                {other, acc} ->
-                  {[{other, {0, original_field}} | params], [{key, {:^, [], [count]}} | select],
-                   subqueries, count + 1, AshSql.Expr.merge_accumulator(query, acc)}
-              end
-            end
-          )
-
-        query =
-          Map.put(query, :select, %Ecto.Query.SelectExpr{
-            expr: {:%{}, [], Enum.reverse(selects)},
-            subqueries: Enum.map(subqueries, &set_subquery_prefix(&1, query)),
-            params: Enum.reverse(params)
-          })
-
-        {:ok, query}
+        {:ok, Ecto.Query.select(query, ^dynamics)}
 
       other ->
         other
@@ -209,59 +167,29 @@ defmodule AshSql.Atomics do
         {query, [{field, Ecto.Query.dynamic([], field(as(^binding), ^mapped_field))} | set]}
       end)
 
-    {params, set, count} =
-      updating_one_changes
-      |> Map.to_list()
-      |> Enum.reduce({[], [], 0}, fn {key, value}, {params, set, count} ->
-        {[{value, {0, key}} | params], [{key, {:^, [], [count]}} | set], count + 1}
-      end)
+    Enum.reduce_while(
+      dynamics ++ existing_set,
+      {:ok, query, Map.to_list(updating_one_changes)},
+      fn {key, value}, {:ok, query, set} ->
+        case AshSql.Expr.dynamic_expr(query, value, query.__ash_bindings__) do
+          {dynamic, acc} ->
+            {:cont,
+             {:ok, AshSql.Expr.merge_accumulator(query, acc), Keyword.put(set, key, dynamic)}}
 
-    {params, set, _, query} =
-      Enum.reduce(
-        dynamics ++ existing_set,
-        {params, set, count, query},
-        fn {key, value}, {params, set, count, query} ->
-          case AshSql.Expr.dynamic_expr(query, value, query.__ash_bindings__) do
-            {%Ecto.Query.DynamicExpr{} = dynamic, acc} ->
-              result =
-                Ecto.Query.Builder.Dynamic.partially_expand(
-                  :update,
-                  query,
-                  dynamic,
-                  params,
-                  count
-                )
-
-              expr = elem(result, 0)
-              new_params = elem(result, 1)
-
-              new_count =
-                result |> Tuple.to_list() |> List.last()
-
-              {new_params, [{key, expr} | set], new_count,
-               AshSql.Expr.merge_accumulator(query, acc)}
-
-            {other, acc} ->
-              {[{other, {0, key}} | params], [{key, {:^, [], [count]}} | set], count + 1,
-               AshSql.Expr.merge_accumulator(query, acc)}
-          end
+          other ->
+            {:halt, other}
         end
-      )
-
-    case set do
-      [] ->
+      end
+    )
+    |> case do
+      {:ok, query, []} ->
         {:empty, query}
 
-      set ->
-        {:ok,
-         Map.put(query, :updates, [
-           %Ecto.Query.QueryExpr{
-             # why do I have to reverse the `set`???
-             # it breaks if I don't
-             expr: [set: Enum.reverse(set)],
-             params: Enum.reverse(params)
-           }
-         ])}
+      {:ok, query, set} ->
+        {:ok, Ecto.Query.update(query, set: ^set)}
+
+      {:error, error} ->
+        {:error, error}
     end
   end
 
@@ -283,10 +211,10 @@ defmodule AshSql.Atomics do
         AshSql.Filter.filter(query, filter, resource)
       end
 
-    atomics_result =
-      atomics
-      |> Enum.reverse()
-      |> Enum.reduce_while({:ok, query, []}, fn {field, expr}, {:ok, query, set} ->
+    atomics
+    |> Enum.reduce_while(
+      {:ok, query, existing_set ++ Map.to_list(updating_one_changes)},
+      fn {field, expr}, {:ok, query, set} ->
         attribute = Ash.Resource.Info.attribute(resource, field)
 
         expr =
@@ -326,64 +254,14 @@ defmodule AshSql.Atomics do
           other ->
             {:halt, other}
         end
-      end)
+      end
+    )
+    |> case do
+      {:ok, query, []} ->
+        {:empty, query}
 
-    case atomics_result do
-      {:ok, query, dynamics} ->
-        {params, set, count} =
-          updating_one_changes
-          |> Map.to_list()
-          |> Enum.reduce({[], [], 0}, fn {key, value}, {params, set, count} ->
-            {[{value, {0, key}} | params], [{key, {:^, [], [count]}} | set], count + 1}
-          end)
-
-        {params, set, _, query} =
-          Enum.reduce(
-            dynamics ++ existing_set,
-            {params, set, count, query},
-            fn {key, value}, {params, set, count, query} ->
-              case AshSql.Expr.dynamic_expr(query, value, query.__ash_bindings__) do
-                {%Ecto.Query.DynamicExpr{} = dynamic, acc} ->
-                  result =
-                    Ecto.Query.Builder.Dynamic.partially_expand(
-                      :select,
-                      query,
-                      dynamic,
-                      params,
-                      count
-                    )
-
-                  expr = elem(result, 0)
-                  new_params = elem(result, 1)
-
-                  new_count =
-                    result |> Tuple.to_list() |> List.last()
-
-                  {new_params, [{key, expr} | set], new_count,
-                   AshSql.Expr.merge_accumulator(query, acc)}
-
-                {other, acc} ->
-                  {[{other, {0, key}} | params], [{key, {:^, [], [count]}} | set], count + 1,
-                   AshSql.Expr.merge_accumulator(query, acc)}
-              end
-            end
-          )
-
-        case set do
-          [] ->
-            {:empty, query}
-
-          set ->
-            {:ok,
-             Map.put(query, :updates, [
-               %Ecto.Query.QueryExpr{
-                 # why do I have to reverse the `set`???
-                 # it breaks if I don't
-                 expr: [set: Enum.reverse(set)],
-                 params: Enum.reverse(params)
-               }
-             ])}
-        end
+      {:ok, query, set} ->
+        {:ok, Ecto.Query.update(query, set: ^set)}
 
       {:error, error} ->
         {:error, error}
