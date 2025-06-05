@@ -1183,9 +1183,7 @@ defmodule AshSql.Expr do
       end
 
     {left_expr, acc} =
-      if left_type &&
-           (operator in @cast_operands_for ||
-              complex_type?(left_type)) do
+      if left_type do
         maybe_type_expr(
           query,
           left,
@@ -1228,9 +1226,7 @@ defmodule AshSql.Expr do
     else
       _ ->
         {right_expr, acc} =
-          if right_type &&
-               (operator in @cast_operands_for ||
-                  complex_type?(right_type)) do
+          if right_type do
             maybe_type_expr(
               query,
               right,
@@ -1774,30 +1770,6 @@ defmodule AshSql.Expr do
     if type do
       bindings =
         case {arg1, arg2} do
-          {%Ash.Query.Ref{}, {Ash.Type.UtcDatetime, _}} ->
-            bindings
-
-          {%Ash.Query.Ref{}, {Ash.Type.UtcDatetimeUsec, _}} ->
-            bindings
-
-          {%Ash.Query.Ref{}, {Ash.Type.NaiveDatetime, _}} ->
-            bindings
-
-          {%Ash.Query.Ref{}, {Ash.Type.NaiveDatetimeUsec, _}} ->
-            bindings
-
-          {%Ash.Query.Ref{}, :utc_datetime} ->
-            bindings
-
-          {%Ash.Query.Ref{}, :naive_datetime} ->
-            bindings
-
-          {%Ash.Query.Ref{}, :utc_datetime_usec} ->
-            bindings
-
-          {%Ash.Query.Ref{}, :naive_datetime_usec} ->
-            bindings
-
           {%Ash.Query.Ref{}, _} ->
             Map.put(bindings, :no_cast?, true)
 
