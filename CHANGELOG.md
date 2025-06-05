@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.78](https://github.com/ash-project/ash_sql/compare/v0.2.77...v0.2.78) (2025-06-05)
+
+
+
+
+### Bug Fixes:
+
+* always cast operator types, even simple ones
+
+* undo change that prevents casting literals
+
 ## [v0.2.77](https://github.com/ash-project/ash_sql/compare/v0.2.76...v0.2.77) (2025-06-04)
 
 
