@@ -1155,10 +1155,6 @@ defmodule AshSql.Expr do
     {Ecto.Query.dynamic(-(^expr)), acc}
   end
 
-  # Honestly we need to either 1. not type cast or 2. build in type compatibility concepts
-  # instead of `:same` we need an `ANY COMPATIBLE` equivalent.
-  @cast_operands_for [:<>]
-
   defp default_dynamic_expr(
          query,
          %mod{
@@ -3206,18 +3202,4 @@ defmodule AshSql.Expr do
       do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
     end
   end
-
-  @known_types Ash.Type.builtin_types()
-
-  defp complex_type?({:array, _}), do: true
-
-  defp complex_type?({type, _}) when type in @known_types do
-    false
-  end
-
-  defp complex_type?(type) when type in @known_types do
-    false
-  end
-
-  defp complex_type?(_), do: true
 end
