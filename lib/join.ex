@@ -741,6 +741,11 @@ defmodule AshSql.Join do
                apply_filter?: apply_filter,
                refs_at_path: path
              ) do
+        relationship_through = set_join_prefix(relationship_through, query, relationship.through)
+
+        relationship_destination =
+          set_join_prefix(relationship_destination, query, relationship.destination)
+
         {relationship_destination, dest_acc} =
           maybe_apply_filter(
             relationship_destination,
