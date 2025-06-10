@@ -74,7 +74,14 @@ defmodule AshSql.Atomics do
 
         dynamics = Map.new(Keyword.merge(dynamics, pkey_dynamics))
 
-        {:ok, Ecto.Query.select(query, ^dynamics)}
+        {:ok,
+         Ecto.Query.select(query, ^dynamics)
+         |> Map.update!(:select, fn select ->
+           %{
+             select
+             | subqueries: Enum.map(select.subqueries || [], &set_subquery_prefix(&1, query))
+           }
+         end)}
 
       other ->
         other
@@ -261,7 +268,7 @@ defmodule AshSql.Atomics do
         {:empty, query}
 
       {:ok, query, set} ->
-        {:ok, Ecto.Query.update(query, set: ^set)}
+        {:ok, Ecto.Query.update(query, set: ^set) |> IO.inspect(structs: false)}
 
       {:error, error} ->
         {:error, error}
