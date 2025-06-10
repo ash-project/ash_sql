@@ -268,7 +268,7 @@ defmodule AshSql.Atomics do
         {:empty, query}
 
       {:ok, query, set} ->
-        {:ok, Ecto.Query.update(query, set: ^set) |> IO.inspect(structs: false)}
+        {:ok, Ecto.Query.update(query, set: ^set)}
 
       {:error, error} ->
         {:error, error}
