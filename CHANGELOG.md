@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.79](https://github.com/ash-project/ash_sql/compare/v0.2.78...v0.2.79) (2025-06-10)
+
+
+
+
+### Bug Fixes:
+
+* ensure that subqueries have prefix set on atomic update selection by [@zachdaniel](https://github.com/zachdaniel)
+
+* apply subquery schema on many-to-many relationships (#143) by kernel-io
+
 ## [v0.2.78](https://github.com/ash-project/ash_sql/compare/v0.2.77...v0.2.78) (2025-06-05)
 
 
