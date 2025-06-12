@@ -1770,8 +1770,14 @@ defmodule AshSql.Expr do
             Map.put(bindings, :no_cast?, true)
 
           _ ->
-            bindings
+            if Ash.Expr.expr?(arg1) do
+              bindings
+            else
+              Map.put(bindings, :no_cast?, true)
+            end
         end
+
+      validate_type!(query, type, arg1)
 
       {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, {arg2, constraints})
 
@@ -2360,7 +2366,7 @@ defmodule AshSql.Expr do
           end
         end
       else
-        maybe_sanitize_list(query, other, bindings, true, acc, type)
+        handle_literal(query, other, bindings, true, acc, type)
       end
     end
   end
@@ -2384,7 +2390,7 @@ defmodule AshSql.Expr do
     if is_list(value) do
       list_expr(query, value, bindings, false, acc, type)
     else
-      maybe_sanitize_list(query, value, bindings, true, acc, type)
+      handle_literal(query, value, bindings, true, acc, type)
     end
   end
 
@@ -2405,30 +2411,34 @@ defmodule AshSql.Expr do
         end
       end
     else
-      case maybe_sanitize_list(query, value, bindings, true, acc, type) do
-        {^value, acc} ->
-          if type do
-            type =
-              parameterized_type(
-                bindings.sql_behaviour,
-                type,
-                [],
-                :expr
-              )
-
+      if bindings[:no_cast?] do
+        {value, acc}
+      else
+        case handle_literal(query, value, bindings, true, acc, type) do
+          {^value, acc} ->
             if type do
-              validate_type!(query, type, value)
+              type =
+                parameterized_type(
+                  bindings.sql_behaviour,
+                  type,
+                  [],
+                  :expr
+                )
 
-              {query.__ash_bindings__.sql_behaviour.type_expr(value, type), acc}
+              if type do
+                validate_type!(query, type, value)
+
+                {query.__ash_bindings__.sql_behaviour.type_expr(value, type), acc}
+              else
+                {value, acc}
+              end
             else
               {value, acc}
             end
-          else
-            {value, acc}
-          end
 
-        {value, acc} ->
-          {value, acc}
+          {value, acc} ->
+            {value, acc}
+        end
       end
     end
   end
@@ -2895,7 +2905,7 @@ defmodule AshSql.Expr do
     end
   end
 
-  defp maybe_sanitize_list(query, value, bindings, embedded?, acc, type) do
+  defp handle_literal(query, value, bindings, embedded?, acc, type) do
     if is_list(value) do
       if list_requires_encoding?(value) do
         encode_list(query, value, bindings, embedded?, acc, type)
