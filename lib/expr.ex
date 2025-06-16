@@ -1172,7 +1172,16 @@ defmodule AshSql.Expr do
     {[left_type, right_type], type} =
       case operator do
         :/ ->
-          {[{Ash.Type.Decimal, []}, {Ash.Type.Decimal, []}], {Ash.Type.Decimal, []}}
+          {types, result} = determine_types(bindings.sql_behaviour, mod, [left, right], type)
+
+          {Enum.map(types, fn
+             {Ash.Type.Float, _} -> {Ash.Type.Decimal, []}
+             other -> other
+           end),
+           case result do
+             {Ash.Type.Float, _} -> {Ash.Type.Decimal, []}
+             other -> other
+           end}
 
         _ ->
           determine_types(bindings.sql_behaviour, mod, [left, right], type)
@@ -1737,6 +1746,29 @@ defmodule AshSql.Expr do
     do_dynamic_expr(
       query,
       %{type_expr | arguments: [arg1, type, constraints]},
+      bindings,
+      embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Type{
+           arguments: [
+             %Ash.Query.Ref{attribute: %{type: type}} = arg1,
+             type | _
+           ]
+         },
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(
+      query,
+      arg1,
       bindings,
       embedded?,
       acc,
