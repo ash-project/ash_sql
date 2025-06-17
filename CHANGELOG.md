@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.81](https://github.com/ash-project/ash_sql/compare/v0.2.80...v0.2.81) (2025-06-17)
+
+
+
+
+### Improvements:
+
+* fix another double-type-casting issue by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.80](https://github.com/ash-project/ash_sql/compare/v0.2.79...v0.2.80) (2025-06-12)
 
 
