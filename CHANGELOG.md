@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.82](https://github.com/ash-project/ash_sql/compare/v0.2.81...v0.2.82) (2025-06-18)
+
+
+
+
+### Improvements:
+
+* optimize/simplify boolean functions like && and || by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.81](https://github.com/ash-project/ash_sql/compare/v0.2.80...v0.2.81) (2025-06-17)
 
 
