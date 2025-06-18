@@ -1306,11 +1306,11 @@ defmodule AshSql.Expr do
 
           :|| ->
             cond do
-              is_boolean_type?(left_type) and is_boolean_type?(right_type) and
+              boolean_type?(left_type) and boolean_type?(right_type) and
                   cant_return_nil?(left) ->
                 {Ecto.Query.dynamic(^left_expr or ^right_expr), acc}
 
-              is_boolean_type?(left_type) and is_boolean_type?(right_type) ->
+              boolean_type?(left_type) and boolean_type?(right_type) ->
                 {Ecto.Query.dynamic(coalesce(^left_expr or ^right_expr, false)), acc}
 
               cannot_be_boolean?(left_type) ->
@@ -1369,11 +1369,11 @@ defmodule AshSql.Expr do
 
           :&& ->
             cond do
-              is_boolean_type?(left_type) and is_boolean_type?(right_type) and
+              boolean_type?(left_type) and boolean_type?(right_type) and
                   cant_return_nil?(left) ->
                 {Ecto.Query.dynamic(^left_expr and ^right_expr), acc}
 
-              is_boolean_type?(left_type) and is_boolean_type?(right_type) ->
+              boolean_type?(left_type) and boolean_type?(right_type) ->
                 {Ecto.Query.dynamic(coalesce(^left_expr and ^right_expr, false)), acc}
 
               true ->
@@ -3281,11 +3281,11 @@ defmodule AshSql.Expr do
   end
 
   # Helper function to detect if a type is definitely boolean
-  defp is_boolean_type?(:boolean), do: true
-  defp is_boolean_type?({:boolean, _}), do: true
-  defp is_boolean_type?({Ash.Type.Boolean, _}), do: true
-  defp is_boolean_type?(Ash.Type.Boolean), do: true
-  defp is_boolean_type?(_), do: false
+  defp boolean_type?(:boolean), do: true
+  defp boolean_type?({:boolean, _}), do: true
+  defp boolean_type?({Ash.Type.Boolean, _}), do: true
+  defp boolean_type?(Ash.Type.Boolean), do: true
+  defp boolean_type?(_), do: false
 
   # Helper function to detect if a type definitely cannot be boolean
   defp cannot_be_boolean?(nil), do: false
