@@ -1305,103 +1305,126 @@ defmodule AshSql.Expr do
             )
 
           :|| ->
-            if "ash-functions" in query.__ash_bindings__.sql_behaviour.repo(
-                 query.__ash_bindings__.resource,
-                 :mutate
-               ).installed_extensions() do
-              do_dynamic_expr(
-                query,
-                %Fragment{
-                  embedded?: pred_embedded?,
-                  arguments: [
-                    raw: "ash_elixir_or(",
-                    casted_expr: left_expr,
-                    raw: ", ",
-                    casted_expr: right_expr,
-                    raw: ")"
-                  ]
-                },
-                bindings,
-                embedded?,
-                acc,
-                type
-              )
-            else
-              if query.__ash_bindings__.sql_behaviour.require_ash_functions_for_or_and_and?() do
-                require_ash_functions!(query, "||")
-              end
+            cond do
+              is_boolean_type?(left_type) and is_boolean_type?(right_type) and
+                  cant_return_nil?(left) ->
+                {Ecto.Query.dynamic(^left_expr or ^right_expr), acc}
 
-              do_dynamic_expr(
-                query,
-                %Ash.Query.Function.Fragment{
-                  embedded?: pred_embedded?,
-                  arguments: [
-                    raw: "(CASE WHEN (",
-                    casted_expr: left_expr,
-                    raw: " = FALSE OR ",
-                    casted_expr: left_expr,
-                    raw: " IS NULL) THEN ",
-                    casted_expr: right_expr,
-                    raw: " ELSE ",
-                    casted_expr: left_expr,
-                    raw: "END)"
-                  ]
-                },
-                bindings,
-                embedded?,
-                acc,
-                type
-              )
+              is_boolean_type?(left_type) and is_boolean_type?(right_type) ->
+                {Ecto.Query.dynamic(coalesce(^left_expr or ^right_expr, false)), acc}
+
+              cannot_be_boolean?(left_type) ->
+                {Ecto.Query.dynamic(coalesce(^left_expr, ^right_expr)), acc}
+
+              true ->
+                if "ash-functions" in query.__ash_bindings__.sql_behaviour.repo(
+                     query.__ash_bindings__.resource,
+                     :mutate
+                   ).installed_extensions() do
+                  do_dynamic_expr(
+                    query,
+                    %Fragment{
+                      embedded?: pred_embedded?,
+                      arguments: [
+                        raw: "ash_elixir_or(",
+                        casted_expr: left_expr,
+                        raw: ", ",
+                        casted_expr: right_expr,
+                        raw: ")"
+                      ]
+                    },
+                    bindings,
+                    embedded?,
+                    acc,
+                    type
+                  )
+                else
+                  if query.__ash_bindings__.sql_behaviour.require_ash_functions_for_or_and_and?() do
+                    require_ash_functions!(query, "||")
+                  end
+
+                  do_dynamic_expr(
+                    query,
+                    %Ash.Query.Function.Fragment{
+                      embedded?: pred_embedded?,
+                      arguments: [
+                        raw: "(CASE WHEN (",
+                        casted_expr: left_expr,
+                        raw: " = FALSE OR ",
+                        casted_expr: left_expr,
+                        raw: " IS NULL) THEN ",
+                        casted_expr: right_expr,
+                        raw: " ELSE ",
+                        casted_expr: left_expr,
+                        raw: "END)"
+                      ]
+                    },
+                    bindings,
+                    embedded?,
+                    acc,
+                    type
+                  )
+                end
             end
 
           :&& ->
-            if "ash-functions" in query.__ash_bindings__.sql_behaviour.repo(
-                 query.__ash_bindings__.resource,
-                 :mutate
-               ).installed_extensions() do
-              do_dynamic_expr(
-                query,
-                %Fragment{
-                  embedded?: pred_embedded?,
-                  arguments: [
-                    raw: "ash_elixir_and(",
-                    casted_expr: left_expr,
-                    raw: ", ",
-                    casted_expr: right_expr,
-                    raw: ")"
-                  ]
-                },
-                bindings,
-                embedded?,
-                acc,
-                type
-              )
-            else
-              if query.__ash_bindings__.sql_behaviour.require_ash_functions_for_or_and_and?() do
-                require_ash_functions!(query, "&&")
-              end
+            cond do
+              is_boolean_type?(left_type) and is_boolean_type?(right_type) and
+                  cant_return_nil?(left) ->
+                {Ecto.Query.dynamic(^left_expr and ^right_expr), acc}
 
-              do_dynamic_expr(
-                query,
-                %Fragment{
-                  embedded?: pred_embedded?,
-                  arguments: [
-                    raw: "(CASE WHEN (",
-                    casted_expr: left_expr,
-                    raw: " = FALSE OR ",
-                    casted_expr: left_expr,
-                    raw: " IS NULL) THEN ",
-                    casted_expr: left_expr,
-                    raw: " ELSE ",
-                    casted_expr: right_expr,
-                    raw: "END)"
-                  ]
-                },
-                bindings,
-                embedded?,
-                acc,
-                type
-              )
+              is_boolean_type?(left_type) and is_boolean_type?(right_type) ->
+                {Ecto.Query.dynamic(coalesce(^left_expr and ^right_expr, false)), acc}
+
+              true ->
+                if "ash-functions" in query.__ash_bindings__.sql_behaviour.repo(
+                     query.__ash_bindings__.resource,
+                     :mutate
+                   ).installed_extensions() do
+                  do_dynamic_expr(
+                    query,
+                    %Fragment{
+                      embedded?: pred_embedded?,
+                      arguments: [
+                        raw: "ash_elixir_and(",
+                        casted_expr: left_expr,
+                        raw: ", ",
+                        casted_expr: right_expr,
+                        raw: ")"
+                      ]
+                    },
+                    bindings,
+                    embedded?,
+                    acc,
+                    type
+                  )
+                else
+                  if query.__ash_bindings__.sql_behaviour.require_ash_functions_for_or_and_and?() do
+                    require_ash_functions!(query, "&&")
+                  end
+
+                  do_dynamic_expr(
+                    query,
+                    %Fragment{
+                      embedded?: pred_embedded?,
+                      arguments: [
+                        raw: "(CASE WHEN (",
+                        casted_expr: left_expr,
+                        raw: " = FALSE OR ",
+                        casted_expr: left_expr,
+                        raw: " IS NULL) THEN ",
+                        casted_expr: left_expr,
+                        raw: " ELSE ",
+                        casted_expr: right_expr,
+                        raw: "END)"
+                      ]
+                    },
+                    bindings,
+                    embedded?,
+                    acc,
+                    type
+                  )
+                end
             end
 
           other ->
@@ -3244,4 +3267,31 @@ defmodule AshSql.Expr do
       do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
     end
   end
+
+  defp cant_return_nil?(%Ash.Query.Ref{attribute: %{allow_nil?: false}, relationship_path: []}) do
+    true
+  end
+
+  defp cant_return_nil?(other) do
+    if Ash.Expr.expr?(other) do
+      false
+    else
+      not is_nil(other)
+    end
+  end
+
+  # Helper function to detect if a type is definitely boolean
+  defp is_boolean_type?(:boolean), do: true
+  defp is_boolean_type?({:boolean, _}), do: true
+  defp is_boolean_type?({Ash.Type.Boolean, _}), do: true
+  defp is_boolean_type?(Ash.Type.Boolean), do: true
+  defp is_boolean_type?(_), do: false
+
+  # Helper function to detect if a type definitely cannot be boolean
+  defp cannot_be_boolean?(nil), do: false
+  defp cannot_be_boolean?(:boolean), do: false
+  defp cannot_be_boolean?({:boolean, _}), do: false
+  defp cannot_be_boolean?({Ash.Type.Boolean, _}), do: false
+  defp cannot_be_boolean?(Ash.Type.Boolean), do: false
+  defp cannot_be_boolean?(_), do: true
 end
