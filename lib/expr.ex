@@ -1821,7 +1821,7 @@ defmodule AshSql.Expr do
     if type do
       bindings =
         case arg1 do
-          %Ash.Query.Ref{} ->
+          %Ash.Query.Ref{attribute: %Ash.Resource.Attribute{}} ->
             Map.put(bindings, :no_cast?, true)
 
           _ ->
