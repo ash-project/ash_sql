@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.83](https://github.com/ash-project/ash_sql/compare/v0.2.82...v0.2.83) (2025-06-25)
+
+
+
+
+### Bug Fixes:
+
+* ensure calculations are properly type cast by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.82](https://github.com/ash-project/ash_sql/compare/v0.2.81...v0.2.82) (2025-06-18)
 
 
