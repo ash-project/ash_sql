@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.84](https://github.com/ash-project/ash_sql/compare/v0.2.83...v0.2.84) (2025-07-02)
+
+
+
+
+### Bug Fixes:
+
+* handle parent paths in first relationship of exists path by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.83](https://github.com/ash-project/ash_sql/compare/v0.2.82...v0.2.83) (2025-06-25)
 
 
