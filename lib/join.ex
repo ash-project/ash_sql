@@ -87,6 +87,22 @@ defmodule AshSql.Join do
             |> Ash.Filter.relationship_paths()
             |> to_joins(filter, query.__ash_bindings__.resource)
 
+        # Add parent relationship paths from relationship filters with parent expressions
+        # But only if we haven't already processed them (to avoid infinite recursion)
+        {query, relationship_paths} =
+          if query.__ash_bindings__[:processed_parent_paths] do
+            {query, relationship_paths}
+          else
+            parent_relationship_paths =
+              extract_parent_paths_from_exists_relationships(
+                filter,
+                query.__ash_bindings__.resource
+              )
+
+            updated_query = put_in(query.__ash_bindings__[:processed_parent_paths], true)
+            {updated_query, relationship_paths ++ parent_relationship_paths}
+          end
+
         Enum.reduce_while(relationship_paths, {:ok, query}, fn
           {_join_type, []}, {:ok, query} ->
             {:cont, {:ok, query}}
@@ -250,6 +266,50 @@ defmodule AshSql.Join do
          )}
       end
     end)
+  end
+
+  defp extract_parent_paths_from_exists_relationships(filter, resource) do
+    # Use flat_map to accumulate parent paths from exists expressions
+    parent_paths =
+      Ash.Filter.flat_map(filter, fn
+        %Ash.Query.Exists{path: [first_rel_name | _rest]} = _exists ->
+          # Get the first relationship
+          relationship = Ash.Resource.Info.relationship(resource, first_rel_name)
+
+          if relationship && relationship.filter do
+            # Extract parent expressions from the relationship filter
+            extract_parent_refs_from_filter(relationship.filter)
+          else
+            []
+          end
+
+        _other ->
+          []
+      end)
+
+    # Convert to relationship path tuples and return
+    parent_paths
+    |> Enum.uniq()
+    |> Enum.map(fn path ->
+      relationships = relationship_path_to_relationships(resource, path)
+      {:left, relationships}
+    end)
+  end
+
+  defp extract_parent_refs_from_filter(filter) do
+    # Use flat_map to accumulate relationship paths from parent expressions
+    Ash.Filter.flat_map(filter, fn
+      %Ash.Query.Parent{expr: expr} = _parent ->
+        # Extract refs from parent expression
+        expr
+        |> Ash.Filter.list_refs()
+        |> Enum.map(& &1.relationship_path)
+        |> Enum.reject(&Enum.empty?/1)
+
+      _other ->
+        []
+    end)
+    |> Enum.uniq()
   end
 
   def relationship_path_to_relationships(resource, path, acc \\ [])

@@ -1603,7 +1603,7 @@ defmodule AshSql.Expr do
         ref_binding = ref_binding(ref, bindings)
 
         if is_nil(ref_binding) do
-          raise "Error while building reference: #{inspect(ref)}"
+          reference_error!(query, ref)
         end
 
         resource =
@@ -1645,7 +1645,7 @@ defmodule AshSql.Expr do
         ref_binding = ref_binding(ref, bindings)
 
         if is_nil(ref_binding) do
-          raise "Error while building reference: #{inspect(ref)}"
+          reference_error!(query, ref)
         end
 
         {ref_binding, aggregate.name, nil, acc}
@@ -2269,7 +2269,7 @@ defmodule AshSql.Expr do
     ref_binding = ref_binding(ref, bindings)
 
     if is_nil(ref_binding) do
-      raise "Error while building reference: #{inspect(ref)}"
+      reference_error!(query, ref)
     end
 
     constraints =
@@ -2326,7 +2326,7 @@ defmodule AshSql.Expr do
     ref_binding = ref_binding(ref, bindings)
 
     if is_nil(ref_binding) do
-      raise "Error while building reference: #{inspect(ref)}"
+      reference_error!(query, ref)
     end
 
     expr =
@@ -3278,6 +3278,20 @@ defmodule AshSql.Expr do
     else
       not is_nil(other)
     end
+  end
+
+  defp reference_error!(query, ref) do
+    raise """
+    Error while building reference: #{inspect(ref)}
+
+    Query so far:
+
+    #{inspect(query)}
+
+    Current bindings:
+
+    #{inspect(query.__ash_bindings__.bindings)}
+    """
   end
 
   # Helper function to detect if a type is definitely boolean
