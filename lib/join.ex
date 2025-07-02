@@ -272,7 +272,8 @@ defmodule AshSql.Join do
     # Use flat_map to accumulate parent paths from exists expressions
     parent_paths =
       Ash.Filter.flat_map(filter, fn
-        %Ash.Query.Exists{path: [first_rel_name | _rest]} = _exists ->
+        %Ash.Query.Exists{at_path: at_path, path: [first_rel_name | _rest]} = _exists ->
+          resource = Ash.Resource.Info.related(resource, at_path)
           # Get the first relationship
           relationship = Ash.Resource.Info.relationship(resource, first_rel_name)
 
