@@ -445,7 +445,11 @@ defmodule AshSql.Join do
           Ash.Query.set_context(related_query, %{
             data_layer: %{
               parent_bindings:
-                Map.put(query.__ash_bindings__, :refs_at_path, List.wrap(opts[:refs_at_path]))
+                Map.put(
+                  query.__ash_bindings__,
+                  :refs_at_path,
+                  List.wrap(opts[:refs_at_path])
+                )
             }
           })
         )
@@ -935,7 +939,10 @@ defmodule AshSql.Join do
 
     case join_all_relationships(
            query,
-           parent_expr(destination_filter)
+           parent_expr(destination_filter),
+           [],
+           nil,
+           relationship_path_to_relationships(query.__ash_bindings__.resource, path)
          ) do
       {:ok, query} ->
         case related_subquery(relationship, query,
@@ -1135,7 +1142,14 @@ defmodule AshSql.Join do
         query.__ash_bindings__.current
       )
 
-    with {:ok, query} <- join_all_relationships(query, parent_expr(relationship.filter)),
+    with {:ok, query} <-
+           join_all_relationships(
+             query,
+             parent_expr(relationship.filter),
+             [],
+             nil,
+             relationship_path_to_relationships(query.__ash_bindings__.resource, path)
+           ),
          {:ok, relationship_through} <- related_subquery(join_relationship, query),
          {:ok, relationship_destination} <-
            related_subquery(relationship, query_with_bindings,

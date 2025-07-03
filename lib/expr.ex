@@ -3281,8 +3281,15 @@ defmodule AshSql.Expr do
   end
 
   defp reference_error!(query, ref) do
+    parent =
+      if query.__ash_bindings__[:parent?] do
+        "parent "
+      else
+        ""
+      end
+
     raise """
-    Error while building reference: #{inspect(ref)}
+    Error while building #{parent}reference: #{inspect(ref)}
 
     Query so far:
 
