@@ -1943,20 +1943,40 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    parent? = Map.get(bindings.parent_bindings, :parent_is_parent_as?, true)
-    new_bindings = Map.put(bindings.parent_bindings, :parent?, parent?)
+    if bindings[:parent_bindings] do
+      parent? = Map.get(bindings[:parent_bindings], :parent_is_parent_as?, true)
 
-    do_dynamic_expr(
-      %{
-        query
-        | __ash_bindings__: set_location(new_bindings, :sub_expr)
-      },
-      expr,
-      set_location(new_bindings, :sub_expr),
-      embedded?,
-      acc,
-      type
-    )
+      # For parent expressions with relationship paths in exists relationships,
+      # we need to clear refs_at_path to avoid incorrect path concatenation
+      new_bindings =
+        case expr do
+          %Ash.Query.Ref{relationship_path: [_ | _]} ->
+            # This is a parent reference with a relationship path (e.g., parent(organization.name))
+            # Clear refs_at_path to resolve directly in parent context
+            bindings[:parent_bindings]
+            |> Map.put(:parent?, parent?)
+            |> Map.delete(:refs_at_path)
+
+          _ ->
+            # This is likely a simple parent reference (e.g., parent(score) in aggregates)
+            # Keep refs_at_path for proper relative resolution
+            Map.put(bindings[:parent_bindings], :parent?, parent?)
+        end
+
+      do_dynamic_expr(
+        %{
+          query
+          | __ash_bindings__: set_location(new_bindings, :sub_expr)
+        },
+        expr,
+        set_location(new_bindings, :sub_expr),
+        embedded?,
+        acc,
+        type
+      )
+    else
+      raise "parent() expressions are not supported when no parent binding context is available"
+    end
   end
 
   defp default_dynamic_expr(
