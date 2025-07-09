@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.85](https://github.com/ash-project/ash_sql/compare/v0.2.84...v0.2.85) (2025-07-09)
+
+
+
+
+### Bug Fixes:
+
+* ensure we join nested parent references properly by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.84](https://github.com/ash-project/ash_sql/compare/v0.2.83...v0.2.84) (2025-07-02)
 
 
