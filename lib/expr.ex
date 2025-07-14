@@ -1174,14 +1174,23 @@ defmodule AshSql.Expr do
         :/ ->
           {types, result} = determine_types(bindings.sql_behaviour, mod, [left, right], type)
 
-          {Enum.map(types, fn
-             {Ash.Type.Float, _} -> {Ash.Type.Decimal, []}
-             other -> other
-           end),
-           case result do
-             {Ash.Type.Float, _} -> {Ash.Type.Decimal, []}
-             other -> other
-           end}
+          {types, result} =
+            {Enum.map(types, fn
+               {Ash.Type.Float, _} -> {Ash.Type.Decimal, []}
+               other -> other
+             end),
+             case result do
+               {Ash.Type.Float, _} -> {Ash.Type.Decimal, []}
+               other -> other
+             end}
+
+          case result do
+            {Ash.Type.Decimal, _} ->
+              {Enum.map(types, fn _ -> {Ash.Type.Decimal, []} end), result}
+
+            _ ->
+              {types, result}
+          end
 
         _ ->
           determine_types(bindings.sql_behaviour, mod, [left, right], type)
