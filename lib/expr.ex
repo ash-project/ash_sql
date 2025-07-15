@@ -1492,7 +1492,11 @@ defmodule AshSql.Expr do
        ) do
     calculation = %{calculation | load: calculation.name}
 
-    resource = Ash.Resource.Info.related(bindings.resource, relationship_path)
+    resource =
+      Ash.Resource.Info.related(
+        bindings.resource,
+        List.wrap(bindings[:refs_at_path]) ++ relationship_path
+      )
 
     case Ash.Filter.hydrate_refs(
            calculation.module.expression(calculation.opts, calculation.context),
@@ -1500,7 +1504,8 @@ defmodule AshSql.Expr do
              resource: resource,
              aggregates: %{},
              calculations: %{},
-             public?: false
+             public?: false,
+             parent_stack: query.__ash_bindings__[:parent_resources] || []
            }
          ) do
       {:ok, expression} ->
@@ -1953,13 +1958,10 @@ defmodule AshSql.Expr do
          type
        ) do
     parent? = Map.get(bindings.parent_bindings, :parent_is_parent_as?, true)
-    new_bindings = Map.put(bindings.parent_bindings, :parent?, parent?)
+    new_bindings = set_location(Map.put(bindings.parent_bindings, :parent?, parent?), :sub_expr)
 
     do_dynamic_expr(
-      %{
-        query
-        | __ash_bindings__: set_location(new_bindings, :sub_expr)
-      },
+      %{query | __ash_bindings__: new_bindings},
       expr,
       set_location(new_bindings, :sub_expr),
       embedded?,
