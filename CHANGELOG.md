@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.86](https://github.com/ash-project/ash_sql/compare/v0.2.85...v0.2.86) (2025-07-17)
+
+
+
+
+### Bug Fixes:
+
+* ensure aggregates set `refs_at_path` and calc hydration uses them by [@zachdaniel](https://github.com/zachdaniel)
+
+* ensure that decimal-producing calculations cast args as decimals by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.85](https://github.com/ash-project/ash_sql/compare/v0.2.84...v0.2.85) (2025-07-09)
 
 
