@@ -89,12 +89,12 @@ defmodule AshSql.Aggregate do
         result =
           aggregates
           |> Enum.reject(&already_added?(&1, query.__ash_bindings__, root_data_path))
-          |> Enum.group_by(&{&1.relationship_path, &1.join_filters || %{}})
-          |> Enum.flat_map(fn {{path, join_filters}, aggregates} ->
+          |> Enum.group_by(&{&1.relationship_path, &1.join_filters || %{}, &1.query.action.name})
+          |> Enum.flat_map(fn {{path, join_filters, read_action}, aggregates} ->
             {can_group, cant_group} =
               Enum.split_with(aggregates, &can_group?(resource, &1, query))
 
-            [{{path, join_filters}, can_group}] ++
+            [{{path, join_filters, read_action}, can_group}] ++
               Enum.map(cant_group, &{{path, join_filters}, [&1]})
           end)
           |> Enum.filter(fn
@@ -106,8 +106,24 @@ defmodule AshSql.Aggregate do
           end)
           |> Enum.reduce_while(
             {:ok, query, []},
-            fn {{[first_relationship | relationship_path], join_filters}, aggregates},
+            fn {{[first_relationship | relationship_path] = path, join_filters, read_action},
+                aggregates},
                {:ok, query, dynamics} ->
+              read_action =
+                resource
+                |> Ash.Resource.Info.related(path)
+                |> Ash.Resource.Info.action(read_action)
+
+              if read_action.modify_query do
+                raise """
+                Data layer does not currently support aggregates over read actions that use `modify_query`.
+
+                Resource: #{inspect(resource)}
+                Relationship Path: #{inspect(path)}
+                Action: #{read_action.name}
+                """
+              end
+
               first_relationship =
                 case Ash.Resource.Info.relationship(resource, first_relationship) do
                   nil ->
