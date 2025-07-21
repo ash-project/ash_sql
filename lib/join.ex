@@ -84,7 +84,7 @@ defmodule AshSql.Join do
         relationship_paths =
           relationship_paths ||
             filter
-            |> Ash.Filter.relationship_paths()
+            |> Ash.Filter.relationship_paths(true)
             |> to_joins(filter, query.__ash_bindings__.resource)
 
         # Add parent relationship paths from relationship filters with parent expressions
