@@ -5,6 +5,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.87](https://github.com/ash-project/ash_sql/compare/v0.2.86...v0.2.87) (2025-07-22)
+
+
+
+
+### Bug Fixes:
+
+* include references within `exists` while building calculation joins by [@zachdaniel](https://github.com/zachdaniel)
+
+* make it clear that we don't support aggregates w/ modify_query by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.86](https://github.com/ash-project/ash_sql/compare/v0.2.85...v0.2.86) (2025-07-17)
 
 
