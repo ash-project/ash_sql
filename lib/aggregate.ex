@@ -95,7 +95,7 @@ defmodule AshSql.Aggregate do
               Enum.split_with(aggregates, &can_group?(resource, &1, query))
 
             [{{path, join_filters, read_action}, can_group}] ++
-              Enum.map(cant_group, &{{path, join_filters}, [&1]})
+              Enum.map(cant_group, &{{path, join_filters, read_action}, [&1]})
           end)
           |> Enum.filter(fn
             {_, []} ->
