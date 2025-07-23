@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.88](https://github.com/ash-project/ash_sql/compare/v0.2.87...v0.2.88) (2025-07-23)
+
+
+
+
+### Bug Fixes:
+
+* add missing pattern match on exists aggregate by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.87](https://github.com/ash-project/ash_sql/compare/v0.2.86...v0.2.87) (2025-07-22)
 
 
