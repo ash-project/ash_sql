@@ -567,6 +567,7 @@ defmodule AshSql.Join do
   defp join_prefix(base_query, query, resource) do
     if Ash.Resource.Info.multitenancy_strategy(resource) == :context do
       query.__ash_bindings__.sql_behaviour.schema(resource) ||
+        Map.get(query, :__tenant__) ||
         Map.get(base_query, :__tenant__) ||
         base_query.prefix ||
         query.__ash_bindings__.sql_behaviour.repo(resource, :mutate).config()[
