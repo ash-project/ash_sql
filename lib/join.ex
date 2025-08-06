@@ -658,11 +658,11 @@ defmodule AshSql.Join do
       sort = joined_query.__ash_bindings__.sort
 
       distinct =
-        if sort != [] && Keyword.keyword?(sort) do
-          Enum.map(sort, fn {attribute, direction} -> {direction, attribute} end)
-        else
+        Enum.flat_map(sort, fn
+          {attribute, direction} when is_atom(attribute) -> [{direction, attribute}]
+          {%Ash.Query.Calculation{}, _} -> []
+        end) ++
           Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
-        end
 
       if joined_query.__ash_bindings__.sql_behaviour.multicolumn_distinct?() do
         from(row in joined_query,
