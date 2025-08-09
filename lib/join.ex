@@ -655,11 +655,45 @@ defmodule AshSql.Join do
            joined_query.__ash_bindings__.context[:data_layer][:in_group?]) &&
          (relationship.cardinality == :many || Map.get(relationship, :from_many?)) &&
          !joined_query.distinct do
-      pkey = Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
+      sort = joined_query.__ash_bindings__.sort
 
-      if joined_query.__ash_bindings__.sql_behaviour.multicolumn_distinct?() do
-        from(row in joined_query,
-          distinct: ^pkey
+      calcs =
+        Enum.filter(sort, fn
+          {%Ash.Query.Calculation{}, _} -> true
+          _ -> false
+        end)
+        |> Enum.map(fn {calc, direction} ->
+          {calc, calc.module.expression(calc.opts, calc.context)}
+        end)
+
+      {:ok, query} =
+        joined_query
+        |> AshSql.Calculation.add_calculations(
+          calcs,
+          relationship.destination,
+          joined_query.__ash_bindings__
+        )
+
+      distinct =
+        Enum.map(sort, fn
+          {attribute, direction} when is_atom(attribute) ->
+            {direction, attribute}
+
+          {%Ash.Query.Calculation{} = calc, direction} ->
+            {expr, _} =
+              AshSql.Expr.dynamic_expr(
+                query,
+                %Ash.Query.Ref{attribute: calc},
+                query.__ash_bindings__
+              )
+
+            {direction, expr}
+        end) ++
+          Ash.Resource.Info.primary_key(query.__ash_bindings__.resource)
+
+      if query.__ash_bindings__.sql_behaviour.multicolumn_distinct?() do
+        from(row in query,
+          distinct: ^distinct
         )
       else
         from(row in joined_query, distinct: true)
