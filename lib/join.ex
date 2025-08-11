@@ -657,11 +657,18 @@ defmodule AshSql.Join do
            joined_query.__ash_bindings__.context[:data_layer][:in_group?]) &&
          (relationship.cardinality == :many || Map.get(relationship, :from_many?)) &&
          !joined_query.distinct do
-      pkey = Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
+      sort = joined_query.__ash_bindings__.sort
+
+      distinct =
+        Enum.flat_map(sort, fn
+          {attribute, direction} when is_atom(attribute) -> [{direction, attribute}]
+          {%Ash.Query.Calculation{}, _} -> []
+        end) ++
+          Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
 
       if joined_query.__ash_bindings__.sql_behaviour.multicolumn_distinct?() do
         from(row in joined_query,
-          distinct: ^pkey
+          distinct: ^distinct
         )
       else
         from(row in joined_query, distinct: true)
