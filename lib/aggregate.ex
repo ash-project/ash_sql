@@ -1211,7 +1211,7 @@ defmodule AshSql.Aggregate do
             nil
 
           %{destination: destination, name: name} ->
-            {destination, name}
+            {destination, [name]}
         end
 
       agg_query =
