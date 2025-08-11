@@ -469,7 +469,8 @@ defmodule AshSql.Join do
     end
   end
 
-  defp handle_attribute_multitenancy(query, tenant) do
+  @doc false
+  def handle_attribute_multitenancy(query, tenant) do
     if tenant && Ash.Resource.Info.multitenancy_strategy(query.resource) == :attribute do
       multitenancy_attribute = Ash.Resource.Info.multitenancy_attribute(query.resource)
 
@@ -488,7 +489,8 @@ defmodule AshSql.Join do
     end
   end
 
-  defp hydrate_refs(query, actor) do
+  @doc false
+  def hydrate_refs(query, actor) do
     query.filter
     |> Ash.Expr.fill_template(
       actor: actor,
@@ -932,7 +934,6 @@ defmodule AshSql.Join do
         end
       )
 
-    # TODO: We should not double process this filter
     destination_filter =
       relationship.destination
       |> Ash.Query.do_filter(relationship.filter, parent_stack: [query.__ash_bindings__.resource])

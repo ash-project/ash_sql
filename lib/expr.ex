@@ -1548,12 +1548,13 @@ defmodule AshSql.Expr do
   defp default_dynamic_expr(
          query,
          %Ref{
-           attribute: %Ash.Query.Aggregate{
-             kind: :exists,
-             relationship_path: agg_relationship_path,
-             query: agg_query,
-             join_filters: join_filters
-           },
+           attribute:
+             %Ash.Query.Aggregate{
+               kind: :exists,
+               relationship_path: agg_relationship_path,
+               query: agg_query,
+               join_filters: join_filters
+             } = aggregate,
            relationship_path: ref_relationship_path
          },
          bindings,
@@ -1561,26 +1562,69 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    filter =
-      if is_nil(agg_query.filter) do
-        true
-      else
-        agg_query.filter
-      end
+    related? = Map.get(aggregate, :related?, true)
 
-    do_dynamic_expr(
-      query,
-      %Ash.Query.Exists{
-        path: agg_relationship_path,
-        expr: filter,
-        at_path: ref_relationship_path
-      }
-      |> Map.put(:__join_filters__, join_filters),
-      bindings,
-      embedded?,
-      acc,
-      type
-    )
+    if related? == false do
+      aggregate_resource = aggregate.resource
+
+      filter =
+        if is_nil(agg_query.filter) do
+          true
+        else
+          agg_query.filter
+        end
+
+      subquery_result =
+        aggregate_resource
+        |> Ash.Query.new()
+        |> Ash.Query.set_context(query.__ash_bindings__.context)
+        |> Ash.Query.set_context(%{
+          data_layer: %{
+            table: nil,
+            parent_bindings: query.__ash_bindings__,
+            start_bindings_at: (query.__ash_bindings__.current || 0) + 1
+          }
+        })
+        |> then(fn ash_query ->
+          if filter != true do
+            require Ash.Query
+            Ash.Query.filter(ash_query, filter)
+          else
+            ash_query
+          end
+        end)
+        |> Ash.Query.data_layer_query()
+
+      case subquery_result do
+        {:ok, ecto_query} ->
+          subquery = Ecto.Query.exclude(ecto_query, :select)
+          {Ecto.Query.dynamic(exists(subquery)), acc}
+
+        {:error, error} ->
+          raise "Failed to create unrelated exists subquery: #{inspect(error)}"
+      end
+    else
+      filter =
+        if is_nil(agg_query.filter) do
+          true
+        else
+          agg_query.filter
+        end
+
+      do_dynamic_expr(
+        query,
+        %Ash.Query.Exists{
+          path: agg_relationship_path,
+          expr: filter,
+          at_path: ref_relationship_path
+        }
+        |> Map.put(:__join_filters__, join_filters),
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
+    end
   end
 
   defp default_dynamic_expr(
@@ -1601,60 +1645,66 @@ defmodule AshSql.Expr do
           %{ref | attribute: %{aggregate | name: name}}
       end
 
-    related = Ash.Resource.Info.related(query.__ash_bindings__.resource, ref.relationship_path)
+    related? = Map.get(aggregate, :related?, true)
+
+    resource =
+      if related? == false do
+        aggregate.resource
+      else
+        Ash.Resource.Info.related(query.__ash_bindings__.resource, ref.relationship_path)
+      end
 
     first_optimized_aggregate? =
-      AshSql.Aggregate.optimizable_first_aggregate?(related, aggregate, query)
+      AshSql.Aggregate.optimizable_first_aggregate?(resource, aggregate, query)
 
     {ref_binding, field_name, value, acc} =
       if first_optimized_aggregate? do
-        ref = %{
-          ref
-          | attribute: %Ash.Resource.Attribute{name: :fake},
-            relationship_path: ref.relationship_path ++ aggregate.relationship_path
-        }
+        if related? do
+          ref =
+            %{
+              ref
+              | attribute: %Ash.Resource.Attribute{name: :fake},
+                relationship_path: ref.relationship_path ++ aggregate.relationship_path
+            }
 
-        ref_binding = ref_binding(ref, bindings)
+          ref_binding = ref_binding(ref, bindings)
 
-        if is_nil(ref_binding) do
-          reference_error!(query, ref)
+          ref =
+            %Ash.Query.Ref{
+              attribute:
+                AshSql.Aggregate.aggregate_field(
+                  aggregate,
+                  resource,
+                  query
+                ),
+              relationship_path: ref.relationship_path,
+              resource: resource
+            }
+
+          ref =
+            Ash.Actions.Read.add_calc_context_to_filter(
+              ref,
+              Map.get(aggregate.context, :actor),
+              Map.get(aggregate.context, :authorize?),
+              Map.get(aggregate.context, :tenant),
+              Map.get(aggregate.context, :tracer),
+              query.__ash_bindings__[:domain],
+              resource,
+              parent_stack: query.__ash_bindings__[:parent_resources] || []
+            )
+
+          {value, acc} = do_dynamic_expr(query, ref, query.__ash_bindings__, false, acc)
+
+          if is_nil(ref_binding) do
+            reference_error!(query, ref)
+          end
+
+          {ref_binding, aggregate.field, value, acc}
+        else
+          ref_binding = ref_binding(ref, bindings)
+
+          {ref_binding, aggregate.field, nil, acc}
         end
-
-        resource =
-          Ash.Resource.Info.related(query.__ash_bindings__.resource, ref.relationship_path)
-
-        ref =
-          %Ash.Query.Ref{
-            attribute:
-              AshSql.Aggregate.aggregate_field(
-                aggregate,
-                resource,
-                query
-              ),
-            relationship_path: ref.relationship_path,
-            resource: query.__ash_bindings__.resource
-          }
-
-        ref =
-          Ash.Actions.Read.add_calc_context_to_filter(
-            ref,
-            Map.get(aggregate.context, :actor),
-            Map.get(aggregate.context, :authorize?),
-            Map.get(aggregate.context, :tenant),
-            Map.get(aggregate.context, :tracer),
-            query.__ash_bindings__[:domain],
-            resource,
-            parent_stack: query.__ash_bindings__[:parent_resources] || []
-          )
-
-        {value, acc} = do_dynamic_expr(query, ref, query.__ash_bindings__, false, acc)
-
-        case aggregate.field do
-          %{name: name} -> name
-          field -> field
-        end
-
-        {ref_binding, aggregate.field, value, acc}
       else
         ref_binding = ref_binding(ref, bindings)
 
@@ -2056,6 +2106,65 @@ defmodule AshSql.Expr do
     else
       {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
     end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Exists{related?: false, expr: expr, resource: resource},
+         bindings,
+         _embedded?,
+         acc,
+         _type
+       ) do
+    {:ok, subquery} =
+      resource
+      |> Ash.Query.new()
+      |> Ash.Query.set_context(bindings.context)
+      |> Ash.Query.set_context(%{
+        data_layer: %{
+          parent_bindings: query.__ash_bindings__,
+          start_bindings_at: (query.__ash_bindings__.current || 0) + 1
+        }
+      })
+      |> then(fn ash_query ->
+        if ash_query.__validated_for_action__ do
+          ash_query
+        else
+          Ash.Query.for_read(
+            ash_query,
+            Ash.Resource.Info.primary_action!(ash_query.resource, :read).name,
+            %{},
+            actor: bindings.context[:private][:actor],
+            tenant: bindings.context[:private][:tenant]
+          )
+        end
+      end)
+      |> Ash.Query.unset([:sort, :distinct, :select, :limit, :offset])
+      |> AshSql.Join.handle_attribute_multitenancy(bindings.context[:private][:tenant])
+      |> AshSql.Join.hydrate_refs(bindings.context[:private][:actor])
+      |> then(fn related_query ->
+        if expr != true do
+          Ash.Query.do_filter(related_query, expr)
+        else
+          related_query
+        end
+      end)
+      |> case do
+        %{valid?: true} = related_query ->
+          case Ash.Query.data_layer_query(related_query) do
+            {:ok, ecto_query} ->
+              {:ok, Ecto.Query.exclude(ecto_query, :select)}
+
+            {:error, error} ->
+              {:error, error}
+          end
+
+        %{errors: errors} ->
+          {:error, errors}
+      end
+
+    # Create the exists dynamic expression
+    {Ecto.Query.dynamic(exists(subquery)), acc}
   end
 
   defp default_dynamic_expr(
