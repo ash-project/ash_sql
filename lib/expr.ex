@@ -1565,8 +1565,6 @@ defmodule AshSql.Expr do
     related? = Map.get(aggregate, :related?, true)
 
     if related? == false do
-      aggregate_resource = aggregate.resource
-
       filter =
         if is_nil(agg_query.filter) do
           true
@@ -1575,8 +1573,7 @@ defmodule AshSql.Expr do
         end
 
       subquery_result =
-        aggregate_resource
-        |> Ash.Query.new()
+        aggregate.query
         |> Ash.Query.set_context(query.__ash_bindings__.context)
         |> Ash.Query.set_context(%{
           data_layer: %{
@@ -1647,12 +1644,7 @@ defmodule AshSql.Expr do
 
     related? = Map.get(aggregate, :related?, true)
 
-    resource =
-      if related? == false do
-        aggregate.resource
-      else
-        Ash.Resource.Info.related(query.__ash_bindings__.resource, ref.relationship_path)
-      end
+    resource = aggregate.resource
 
     first_optimized_aggregate? =
       AshSql.Aggregate.optimizable_first_aggregate?(resource, aggregate, query)
@@ -1674,7 +1666,7 @@ defmodule AshSql.Expr do
               attribute:
                 AshSql.Aggregate.aggregate_field(
                   aggregate,
-                  resource,
+                  aggregate.query.resource,
                   query
                 ),
               relationship_path: ref.relationship_path,

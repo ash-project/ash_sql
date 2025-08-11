@@ -90,9 +90,10 @@ defmodule AshSql.Aggregate do
         result =
           aggregates
           |> Enum.reject(&already_added?(&1, query.__ash_bindings__, root_data_path))
-          |> Enum.group_by(
-            &{&1.relationship_path, &1.resource, &1.join_filters || %{}, &1.query.action.name}
-          )
+          |> Enum.group_by(fn aggregate ->
+            {aggregate.relationship_path || [], aggregate.resource, aggregate.join_filters || %{},
+             aggregate.query.action.name}
+          end)
           |> Enum.flat_map(fn {{path, resource, join_filters, read_action}, aggregates} ->
             {can_group, cant_group} =
               Enum.split_with(aggregates, &can_group?(resource, &1, query))
@@ -109,7 +110,9 @@ defmodule AshSql.Aggregate do
           end)
           |> Enum.reduce_while(
             {:ok, query, []},
-            fn {{path, related, join_filters, read_action}, aggregates}, {:ok, query, dynamics} ->
+            fn {{path, resource, join_filters, read_action}, aggregates},
+               {:ok, query, dynamics} ->
+              related = Ash.Resource.Info.related(resource, path)
               read_action = Ash.Resource.Info.action(related, read_action)
 
               if read_action.modify_query do
@@ -130,7 +133,7 @@ defmodule AshSql.Aggregate do
                   [first_relationship | rest] ->
                     case Ash.Resource.Info.relationship(resource, first_relationship) do
                       nil ->
-                        raise "No such relationship for #{inspect(first_relationship)} aggregates #{inspect(aggregates)}"
+                        raise "No such relationship #{inspect(resource)}.#{first_relationship}. aggregates: #{inspect(aggregates)}"
 
                       first_relationship ->
                         {first_relationship, rest}
@@ -864,8 +867,6 @@ defmodule AshSql.Aggregate do
           []
       end
 
-    aggregate_resource = aggregate.resource
-
     subquery_result =
       aggregate.query
       |> Ash.Query.set_context(%{
@@ -888,7 +889,7 @@ defmodule AshSql.Aggregate do
         ref =
           %Ash.Query.Ref{
             attribute: aggregate.field,
-            resource: aggregate_resource
+            resource: aggregate.query.resource
           }
 
         {:ok, ecto_query} = AshSql.Join.join_all_relationships(ecto_query, ref)
@@ -900,7 +901,7 @@ defmodule AshSql.Aggregate do
                 add_aggregates(
                   ecto_query,
                   [aggregate],
-                  aggregate_resource,
+                  aggregate.query.resource,
                   true,
                   source_binding,
                   root_data
@@ -913,7 +914,7 @@ defmodule AshSql.Aggregate do
                 add_aggregates(
                   ecto_query,
                   [aggregate],
-                  aggregate_resource,
+                  Ash.Resource.Info.related(aggregate.resource, aggregate.relationship_path),
                   true,
                   source_binding,
                   root_data
@@ -995,9 +996,9 @@ defmodule AshSql.Aggregate do
 
         ref =
           %Ash.Query.Ref{
-            attribute: aggregate_field(aggregate, aggregate_resource, query),
+            attribute: aggregate_field(aggregate, aggregate.query.resource, query),
             relationship_path: [],
-            resource: aggregate_resource
+            resource: aggregate.query.resource
           }
 
         value =
@@ -1186,7 +1187,14 @@ defmodule AshSql.Aggregate do
           aggregate.query.filter
         end
 
-      related = Enum.at(aggregates, 0).resource
+      # For unrelated aggregates (first_relationship is nil), use the aggregate's resource
+      # For related aggregates, use the relationship destination
+      related =
+        if first_relationship do
+          first_relationship.destination
+        else
+          aggregate.query.resource
+        end
 
       field =
         case aggregate.field do
@@ -1313,7 +1321,7 @@ defmodule AshSql.Aggregate do
         end
 
       if has_filter?(aggregate.query) && is_single? do
-        {:cont, AshSql.Filter.filter(agg_query, filter, related)}
+        {:cont, AshSql.Filter.filter(agg_query, filter, agg_query.__ash_bindings__.resource)}
       else
         {:cont, {:ok, agg_query}}
       end
@@ -1573,7 +1581,7 @@ defmodule AshSql.Aggregate do
 
       nil ->
         raise """
-        No such relationship #{inspect(rel)} for resource #{inspect(resource)}
+        No such relationship #{inspect(resource)}.#{rel}
         """
 
       rel ->
@@ -1835,7 +1843,7 @@ defmodule AshSql.Aggregate do
     has_sort? = has_sort?(aggregate.query)
 
     array_agg =
-      query.__ash_bindings__.sql_behaviour.list_aggregate(aggregate.resource)
+      query.__ash_bindings__.sql_behaviour.list_aggregate(aggregate.query.resource)
 
     {sorted, include_nil_filter_field, query} =
       if has_sort? || first_relationship.sort not in [nil, []] do
@@ -2436,11 +2444,14 @@ defmodule AshSql.Aggregate do
             aggregate.context.tenant,
             aggregate.context.tracer,
             query.__ash_bindings__[:domain],
-            aggregate.resource,
+            aggregate.query.resource,
             parent_stack: [
               query.__ash_bindings__.resource | query.__ash_bindings__[:parent_resources] || []
             ]
           )
+
+        nil ->
+          raise "no such aggregate field: #{inspect(resource)}.#{aggregate.field}"
 
         other ->
           other
