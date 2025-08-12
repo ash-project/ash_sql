@@ -335,6 +335,7 @@ defmodule AshSql.Join do
     on_subquery = Keyword.get(opts, :on_subquery, & &1)
     filter = Keyword.get(opts, :filter, nil)
     filter_subquery? = Keyword.get(opts, :filter_subquery?, false)
+    skip_distinct_for_first_rel? = Keyword.get(opts, :skip_distinct_for_first_rel?, false)
 
     with {:ok, query} <- related_query(relationship, root_query, opts) do
       has_parent_expr? =
@@ -344,6 +345,13 @@ defmodule AshSql.Join do
       query =
         if has_parent_expr? do
           on_parent_expr.(query)
+        else
+          query
+        end
+
+      query =
+        if skip_distinct_for_first_rel? do
+          Map.update!(query, :__ash_bindings__, &Map.put(&1, :skip_distinct_for_first_rel?, true))
         else
           query
         end
@@ -441,20 +449,37 @@ defmodule AshSql.Join do
     |> set_has_parent_expr_context(relationship)
     |> case do
       %{valid?: true} = related_query ->
+        parent_bindings =
+          query.__ash_bindings__
+          |> Map.put(:refs_at_path, List.wrap(opts[:refs_at_path]))
+          |> then(fn bindings ->
+            if opts[:skip_distinct_for_first_rel?] do
+              Map.put(bindings, :skip_distinct_for_first_rel?, true)
+            else
+              bindings
+            end
+          end)
+
         Ash.Query.data_layer_query(
           Ash.Query.set_context(related_query, %{
             data_layer: %{
-              parent_bindings:
-                Map.put(
-                  query.__ash_bindings__,
-                  :refs_at_path,
-                  List.wrap(opts[:refs_at_path])
-                )
+              parent_bindings: parent_bindings
             }
           })
         )
         |> case do
           {:ok, ecto_query} ->
+            ecto_query =
+              if opts[:skip_distinct_for_first_rel?] do
+                Map.update!(
+                  ecto_query,
+                  :__ash_bindings__,
+                  &Map.put(&1, :skip_distinct_for_first_rel?, true)
+                )
+              else
+                ecto_query
+              end
+
             {:ok,
              ecto_query
              |> set_join_prefix(query, Map.get(relationship, :through, relationship.destination))
@@ -653,9 +678,19 @@ defmodule AshSql.Join do
   def get_binding(_, _, _, _), do: nil
 
   defp add_distinct(relationship, _join_type, joined_query) do
+    # Skip distinct for first relationship in aggregate contexts
+    skip_for_aggregate_first_rel? =
+      Map.get(joined_query.__ash_bindings__, :skip_distinct_for_first_rel?, false) ||
+        Map.get(
+          joined_query.__ash_bindings__.context[:data_layer][:parent_bindings] || %{},
+          :skip_distinct_for_first_rel?,
+          false
+        )
+
     if !(joined_query.__ash_bindings__.in_group? ||
            joined_query.__ash_bindings__.context[:data_layer][:in_group?]) &&
          (relationship.cardinality == :many || Map.get(relationship, :from_many?)) &&
+         !skip_for_aggregate_first_rel? &&
          !joined_query.distinct do
       sort = joined_query.__ash_bindings__.sort
 

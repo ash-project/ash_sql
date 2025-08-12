@@ -456,6 +456,7 @@ defmodule AshSql.Aggregate do
       tmp_query,
       start_bindings_at: start_bindings_at,
       refs_at_path: root_data_path,
+      skip_distinct_for_first_rel?: true,
       on_subquery: fn subquery ->
         base_binding = subquery.__ash_bindings__.root_binding
         current_binding = subquery.__ash_bindings__.current
