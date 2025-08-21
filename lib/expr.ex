@@ -1498,8 +1498,14 @@ defmodule AshSql.Expr do
         List.wrap(bindings[:refs_at_path]) ++ relationship_path
       )
 
+    expression = if calculation.module.has_expression? do
+      calculation.module.expression(calculation.opts, calculation.context)
+    else
+      nil
+    end 
+
     case Ash.Filter.hydrate_refs(
-           calculation.module.expression(calculation.opts, calculation.context),
+           expression,
            %{
              resource: resource,
              aggregates: %{},
