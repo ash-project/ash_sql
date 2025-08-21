@@ -463,7 +463,7 @@ defmodule AshSql.Sort do
     Map.update!(query, :__ash_bindings__, &Map.put(&1, :sort_applied?, true))
   end
 
-  defp sanitize_sort(sort) do
+  def sanitize_sort(sort) do
     sort
     |> List.wrap()
     |> Enum.map(fn
