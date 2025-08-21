@@ -697,7 +697,7 @@ defmodule AshSql.Join do
       distinct =
         Enum.flat_map(sort, fn
           {attribute, direction} when is_atom(attribute) ->
-            [{direction, attribute}]
+            [{attribute, direction}]
 
           {%Ash.Query.Calculation{} = calculation, direction} ->
             resource = joined_query.__ash_bindings__.resource
@@ -707,13 +707,15 @@ defmodule AshSql.Join do
 
             case AshSql.Expr.dynamic_expr(calc_query, expression, calc_query.__ash_bindings__) do
               {result, _} when is_atom(result) -> []
-              {dynamic_expr, _} -> [{direction, dynamic_expr}]
+              {dynamic_expr, _} -> [{dynamic_expr, direction}]
             end
 
           _ ->
             []
         end) ++
           Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
+
+      distinct = distinct |> AshSql.Sort.sanitize_sort()
 
       if joined_query.__ash_bindings__.sql_behaviour.multicolumn_distinct?() do
         from(row in joined_query,
