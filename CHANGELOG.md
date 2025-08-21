@@ -5,6 +5,23 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.90](https://github.com/ash-project/ash_sql/compare/v0.2.89...v0.2.90) (2025-08-21)
+
+
+
+
+### Bug Fixes:
+
+* Sanitize distinct in joins (#168) by [@jechol](https://github.com/jechol)
+
+* don't distinct aggregate subqueries by [@zachdaniel](https://github.com/zachdaniel)
+
+* Expand distinct with sort order (#162) by Kenneth Kostrešević
+
+### Improvements:
+
+* support unrelated aggregates (#164) by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.89](https://github.com/ash-project/ash_sql/compare/v0.2.88...v0.2.89) (2025-07-25)
 
 
