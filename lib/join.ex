@@ -692,7 +692,7 @@ defmodule AshSql.Join do
          (relationship.cardinality == :many || Map.get(relationship, :from_many?)) &&
          !skip_for_aggregate_first_rel? &&
          !joined_query.distinct do
-      sort = joined_query.__ash_bindings__.sort
+      sort = joined_query.__ash_bindings__[:sort] || []
 
       distinct =
         Enum.flat_map(sort, fn
