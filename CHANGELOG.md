@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.91](https://github.com/ash-project/ash_sql/compare/v0.2.90...v0.2.91) (2025-08-31)
+
+
+
+
+### Bug Fixes:
+
+* handle case where sort is not set in bindings by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.90](https://github.com/ash-project/ash_sql/compare/v0.2.89...v0.2.90) (2025-08-21)
 
 
