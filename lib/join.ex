@@ -694,26 +694,32 @@ defmodule AshSql.Join do
          !joined_query.distinct do
       sort = joined_query.__ash_bindings__[:sort] || []
 
-      distinct =
-        Enum.flat_map(sort, fn
-          {attribute, direction} when is_atom(attribute) ->
-            [{attribute, direction}]
+      {joined_query, distinct} =
+        Enum.reduce(sort, {joined_query, []}, fn
+          {attribute, direction}, {joined_query, distinct} when is_atom(attribute) ->
+            {joined_query, [{attribute, direction} | distinct]}
 
-          {%Ash.Query.Calculation{} = calculation, direction} ->
+          {%Ash.Query.Calculation{} = calculation, direction}, {joined_query, distinct} ->
             resource = joined_query.__ash_bindings__.resource
             expression = calculation.module.expression(calculation.opts, calculation.context)
             filter = %Ash.Filter{resource: resource, expression: expression}
-            {:ok, calc_query} = AshSql.Join.join_all_relationships(joined_query, filter)
+            {:ok, joined_query} = AshSql.Join.join_all_relationships(joined_query, filter)
 
-            case AshSql.Expr.dynamic_expr(calc_query, expression, calc_query.__ash_bindings__) do
-              {result, _} when is_atom(result) -> []
-              {dynamic_expr, _} -> [{dynamic_expr, direction}]
+            case AshSql.Expr.dynamic_expr(joined_query, expression, joined_query.__ash_bindings__) do
+              {result, _} when is_atom(result) -> {joined_query, []}
+              {dynamic_expr, _} -> {joined_query, [{dynamic_expr, direction} | distinct]}
             end
 
-          _ ->
-            []
-        end) ++
-          Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
+          _other, {joined_query, distinct} ->
+            {joined_query, distinct}
+        end)
+        |> then(fn {joined_query, distinct} ->
+          {joined_query,
+           Enum.concat(
+             Enum.reverse(distinct),
+             Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
+           )}
+        end)
 
       distinct = distinct |> AshSql.Sort.sanitize_sort()
 
