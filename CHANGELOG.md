@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.92](https://github.com/ash-project/ash_sql/compare/v0.2.91...v0.2.92) (2025-09-01)
+
+
+
+
+### Bug Fixes:
+
+* retain joined relationships for distinct requirements by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.91](https://github.com/ash-project/ash_sql/compare/v0.2.90...v0.2.91) (2025-08-31)
 
 
