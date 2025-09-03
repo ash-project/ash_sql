@@ -714,19 +714,16 @@ defmodule AshSql.Join do
             {joined_query, distinct}
         end)
         |> then(fn {joined_query, distinct} ->
-          {joined_query,
+          {joined_query |> Ecto.Query.exclude(:distinct),
            Enum.concat(
              Enum.reverse(distinct),
              Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
-           )}
+           )
+           |> AshSql.Sort.sanitize_sort()}
         end)
 
-      distinct = distinct |> AshSql.Sort.sanitize_sort()
-
       if joined_query.__ash_bindings__.sql_behaviour.multicolumn_distinct?() do
-        from(row in joined_query,
-          distinct: ^distinct
-        )
+        from(row in joined_query, distinct: ^distinct)
       else
         from(row in joined_query, distinct: true)
       end
