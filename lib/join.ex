@@ -176,7 +176,7 @@ defmodule AshSql.Join do
                          source,
                          sort?,
                          join_filters,
-                         Map.update!(joined_query, :__ash_bindings__, fn ash_bindings ->
+                         Map.update!(joined_query_with_distinct, :__ash_bindings__, fn ash_bindings ->
                            Map.put(
                              ash_bindings,
                              :refs_at_path,
@@ -687,12 +687,15 @@ defmodule AshSql.Join do
           false
         )
 
-    if !(joined_query.__ash_bindings__.in_group? ||
-           joined_query.__ash_bindings__.context[:data_layer][:in_group?]) &&
+    if !joined_query.__ash_bindings__[:added_distinct?] &&
+         !(joined_query.__ash_bindings__.in_group? || 
+             joined_query.__ash_bindings__.context[:data_layer][:in_group?]) &&
          (relationship.cardinality == :many || Map.get(relationship, :from_many?)) &&
          !skip_for_aggregate_first_rel? &&
          !joined_query.distinct do
       sort = joined_query.__ash_bindings__[:sort] || []
+
+      joined_query = Map.update!(joined_query, :__ash_bindings__, &Map.put(&1, :added_distinct?, true))
 
       {joined_query, distinct} =
         Enum.reduce(sort, {joined_query, []}, fn
