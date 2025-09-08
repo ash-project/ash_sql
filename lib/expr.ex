@@ -2823,12 +2823,12 @@ defmodule AshSql.Expr do
         type && Ash.Type.composite?(type, constraints) ->
           condition =
             if is_binary(next) do
-              fn {name, _type, _constraints} ->
-                to_string(name) == next
+              fn type ->
+                to_string(elem(type, 0)) == next
               end
             else
-              fn {name, _type, _constraints} ->
-                name == next
+              fn type ->
+                elem(type, 0) == next
               end
             end
 
