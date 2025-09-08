@@ -263,13 +263,6 @@ defmodule AshSql.Query do
 
       {:ok, query} ->
         query =
-          if query.__ash_bindings__[:needs_distinct?] do
-            apply_distinct(query)
-          else
-            query
-          end
-
-        query =
           if query.__ash_bindings__[:__order__?] && query.windows[:order] do
             if query.distinct do
               {calculations_require_rewrite, aggregates_require_rewrite, query} =
@@ -335,47 +328,6 @@ defmodule AshSql.Query do
           end
 
         {:ok, query}
-    end
-  end
-
-  defp apply_distinct(joined_query) do
-    sort = joined_query.__ash_bindings__[:sort] || []
-
-    {joined_query, distinct} =
-      Enum.reduce(sort, {joined_query, []}, fn
-        {attribute, direction}, {joined_query, distinct} when is_atom(attribute) ->
-          {joined_query, [{attribute, direction} | distinct]}
-
-        {%Ash.Query.Calculation{} = calculation, direction}, {joined_query, distinct} ->
-          resource = joined_query.__ash_bindings__.resource
-          expression = calculation.module.expression(calculation.opts, calculation.context)
-          filter = %Ash.Filter{resource: resource, expression: expression}
-          {:ok, joined_query} = AshSql.Join.join_all_relationships(joined_query, filter)
-
-          case AshSql.Expr.dynamic_expr(joined_query, expression, joined_query.__ash_bindings__) do
-            {result, _} when is_atom(result) -> {joined_query, []}
-            {dynamic_expr, _} -> {joined_query, [{dynamic_expr, direction} | distinct]}
-          end
-
-        _other, {joined_query, distinct} ->
-          {joined_query, distinct}
-      end)
-      |> then(fn {joined_query, distinct} ->
-        {joined_query,
-         Enum.concat(
-           Enum.reverse(distinct),
-           Ash.Resource.Info.primary_key(joined_query.__ash_bindings__.resource)
-         )}
-      end)
-
-    distinct = distinct |> AshSql.Sort.sanitize_sort()
-
-    if joined_query.__ash_bindings__.sql_behaviour.multicolumn_distinct?() do
-      from(row in joined_query,
-        distinct: ^distinct
-      )
-    else
-      from(row in joined_query, distinct: true)
     end
   end
 
