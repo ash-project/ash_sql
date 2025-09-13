@@ -1,6 +1,9 @@
 defmodule AshSql.Expr do
   @moduledoc false
 
+  require Ash.Query
+  require Ash.Expr
+
   alias Ash.Filter
   alias Ash.Query.{BooleanExpression, Exists, Not, Ref}
   alias Ash.Query.Operator.IsNil
@@ -1280,7 +1283,11 @@ defmodule AshSql.Expr do
             {Ecto.Query.dynamic(^left_expr <= ^right_expr), acc}
 
           :in ->
-            {Ecto.Query.dynamic(^left_expr in ^right_expr), acc}
+            if match?(%Ash.Query.Function.GetPath{}, right) && !right_type do
+              {Ecto.Query.dynamic(fragment("(?::jsonb \\? ?)", ^right_expr, ^left_expr)), acc}
+            else
+              {Ecto.Query.dynamic(^left_expr in ^right_expr), acc}
+            end
 
           :+ ->
             {Ecto.Query.dynamic(^left_expr + ^right_expr), acc}
@@ -1584,7 +1591,6 @@ defmodule AshSql.Expr do
         })
         |> then(fn ash_query ->
           if filter != true do
-            require Ash.Query
             Ash.Query.filter(ash_query, filter)
           else
             ash_query
