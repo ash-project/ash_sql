@@ -1242,209 +1242,224 @@ defmodule AshSql.Expr do
       end)
     else
       _ ->
-        {right_expr, acc} =
-          if right_type do
-            maybe_type_expr(
-              query,
-              right,
-              set_location(bindings, :sub_expr),
-              pred_embedded? || embedded?,
-              acc,
-              right_type
-            )
-          else
-            do_dynamic_expr(
-              query,
-              right,
-              set_location(bindings, :sub_expr),
-              pred_embedded? || embedded?,
-              acc,
-              right_type
-            )
-          end
+        if operator == :in do
+          get_path = strip_get_path_type(right)
 
-        case operator do
-          :== ->
-            {Ecto.Query.dynamic(^left_expr == ^right_expr), acc}
+          cond do
+            match?(%Ash.Query.Function.GetPath{}, get_path) and get_path_array_type?(right_type) ->
+              context_embedded? = pred_embedded? || embedded?
 
-          :!= ->
-            {Ecto.Query.dynamic(^left_expr != ^right_expr), acc}
+              {raw_right_expr, acc} =
+                get_untyped_get_path_expr(
+                  query,
+                  get_path,
+                  bindings,
+                  context_embedded?,
+                  acc
+                )
 
-          :> ->
-            {Ecto.Query.dynamic(^left_expr > ^right_expr), acc}
+              {Ecto.Query.dynamic(fragment("(?::jsonb \\? ?)", ^raw_right_expr, ^left_expr)), acc}
 
-          :< ->
-            {Ecto.Query.dynamic(^left_expr < ^right_expr), acc}
+            true ->
+              {right_expr, acc} =
+                evaluate_right(
+                  query,
+                  right,
+                  bindings,
+                  pred_embedded? || embedded?,
+                  acc,
+                  right_type
+                )
 
-          :>= ->
-            {Ecto.Query.dynamic(^left_expr >= ^right_expr), acc}
-
-          :<= ->
-            {Ecto.Query.dynamic(^left_expr <= ^right_expr), acc}
-
-          :in ->
-            if match?(%Ash.Query.Function.GetPath{}, right) && !right_type do
-              {Ecto.Query.dynamic(fragment("(?::jsonb \\? ?)", ^right_expr, ^left_expr)), acc}
-            else
               {Ecto.Query.dynamic(^left_expr in ^right_expr), acc}
-            end
-
-          :+ ->
-            {Ecto.Query.dynamic(^left_expr + ^right_expr), acc}
-
-          :- ->
-            {Ecto.Query.dynamic(^left_expr - ^right_expr), acc}
-
-          :/ ->
-            {Ecto.Query.dynamic(^left_expr / ^right_expr), acc}
-
-          :* ->
-            {Ecto.Query.dynamic(^left_expr * ^right_expr), acc}
-
-          :<> ->
-            do_dynamic_expr(
+          end
+        else
+          {right_expr, acc} =
+            evaluate_right(
               query,
-              %Fragment{
-                embedded?: pred_embedded?,
-                arguments: [
-                  raw: "(",
-                  casted_expr: left_expr,
-                  raw: " || ",
-                  casted_expr: right_expr,
-                  raw: ")"
-                ]
-              },
+              right,
               bindings,
-              embedded?,
+              pred_embedded? || embedded?,
               acc,
-              type
+              right_type
             )
 
-          :|| ->
-            cond do
-              boolean_type?(left_type) and boolean_type?(right_type) and
-                  cant_return_nil?(left) ->
-                {Ecto.Query.dynamic(^left_expr or ^right_expr), acc}
+          case operator do
+            :== ->
+              {Ecto.Query.dynamic(^left_expr == ^right_expr), acc}
 
-              boolean_type?(left_type) and boolean_type?(right_type) ->
-                {Ecto.Query.dynamic(coalesce(^left_expr or ^right_expr, false)), acc}
+            :!= ->
+              {Ecto.Query.dynamic(^left_expr != ^right_expr), acc}
 
-              cannot_be_boolean?(left_type) ->
-                {Ecto.Query.dynamic(coalesce(^left_expr, ^right_expr)), acc}
+            :> ->
+              {Ecto.Query.dynamic(^left_expr > ^right_expr), acc}
 
-              true ->
-                if "ash-functions" in query.__ash_bindings__.sql_behaviour.repo(
-                     query.__ash_bindings__.resource,
-                     :mutate
-                   ).installed_extensions() do
-                  do_dynamic_expr(
-                    query,
-                    %Fragment{
-                      embedded?: pred_embedded?,
-                      arguments: [
-                        raw: "ash_elixir_or(",
-                        casted_expr: left_expr,
-                        raw: ", ",
-                        casted_expr: right_expr,
-                        raw: ")"
-                      ]
-                    },
-                    bindings,
-                    embedded?,
-                    acc,
-                    type
-                  )
-                else
-                  if query.__ash_bindings__.sql_behaviour.require_ash_functions_for_or_and_and?() do
-                    require_ash_functions!(query, "||")
+            :< ->
+              {Ecto.Query.dynamic(^left_expr < ^right_expr), acc}
+
+            :>= ->
+              {Ecto.Query.dynamic(^left_expr >= ^right_expr), acc}
+
+            :<= ->
+              {Ecto.Query.dynamic(^left_expr <= ^right_expr), acc}
+
+            :+ ->
+              {Ecto.Query.dynamic(^left_expr + ^right_expr), acc}
+
+            :- ->
+              {Ecto.Query.dynamic(^left_expr - ^right_expr), acc}
+
+            :/ ->
+              {Ecto.Query.dynamic(^left_expr / ^right_expr), acc}
+
+            :* ->
+              {Ecto.Query.dynamic(^left_expr * ^right_expr), acc}
+
+            :<> ->
+              do_dynamic_expr(
+                query,
+                %Fragment{
+                  embedded?: pred_embedded?,
+                  arguments: [
+                    raw: "(",
+                    casted_expr: left_expr,
+                    raw: " || ",
+                    casted_expr: right_expr,
+                    raw: ")"
+                  ]
+                },
+                bindings,
+                embedded?,
+                acc,
+                type
+              )
+
+            :|| ->
+              cond do
+                boolean_type?(left_type) and boolean_type?(right_type) and
+                    cant_return_nil?(left) ->
+                  {Ecto.Query.dynamic(^left_expr or ^right_expr), acc}
+
+                boolean_type?(left_type) and boolean_type?(right_type) ->
+                  {Ecto.Query.dynamic(coalesce(^left_expr or ^right_expr, false)), acc}
+
+                cannot_be_boolean?(left_type) ->
+                  {Ecto.Query.dynamic(coalesce(^left_expr, ^right_expr)), acc}
+
+                true ->
+                  if "ash-functions" in query.__ash_bindings__.sql_behaviour.repo(
+                       query.__ash_bindings__.resource,
+                       :mutate
+                     ).installed_extensions() do
+                    do_dynamic_expr(
+                      query,
+                      %Fragment{
+                        embedded?: pred_embedded?,
+                        arguments: [
+                          raw: "ash_elixir_or(",
+                          casted_expr: left_expr,
+                          raw: ", ",
+                          casted_expr: right_expr,
+                          raw: ")"
+                        ]
+                      },
+                      bindings,
+                      embedded?,
+                      acc,
+                      type
+                    )
+                  else
+                    if query.__ash_bindings__.sql_behaviour.require_ash_functions_for_or_and_and?() do
+                      require_ash_functions!(query, "||")
+                    end
+
+                    do_dynamic_expr(
+                      query,
+                      %Ash.Query.Function.Fragment{
+                        embedded?: pred_embedded?,
+                        arguments: [
+                          raw: "(CASE WHEN (",
+                          casted_expr: left_expr,
+                          raw: " = FALSE OR ",
+                          casted_expr: left_expr,
+                          raw: " IS NULL) THEN ",
+                          casted_expr: right_expr,
+                          raw: " ELSE ",
+                          casted_expr: left_expr,
+                          raw: "END)"
+                        ]
+                      },
+                      bindings,
+                      embedded?,
+                      acc,
+                      type
+                    )
                   end
+              end
 
-                  do_dynamic_expr(
-                    query,
-                    %Ash.Query.Function.Fragment{
-                      embedded?: pred_embedded?,
-                      arguments: [
-                        raw: "(CASE WHEN (",
-                        casted_expr: left_expr,
-                        raw: " = FALSE OR ",
-                        casted_expr: left_expr,
-                        raw: " IS NULL) THEN ",
-                        casted_expr: right_expr,
-                        raw: " ELSE ",
-                        casted_expr: left_expr,
-                        raw: "END)"
-                      ]
-                    },
-                    bindings,
-                    embedded?,
-                    acc,
-                    type
-                  )
-                end
-            end
+            :&& ->
+              cond do
+                boolean_type?(left_type) and boolean_type?(right_type) and
+                    cant_return_nil?(left) ->
+                  {Ecto.Query.dynamic(^left_expr and ^right_expr), acc}
 
-          :&& ->
-            cond do
-              boolean_type?(left_type) and boolean_type?(right_type) and
-                  cant_return_nil?(left) ->
-                {Ecto.Query.dynamic(^left_expr and ^right_expr), acc}
+                boolean_type?(left_type) and boolean_type?(right_type) ->
+                  {Ecto.Query.dynamic(coalesce(^left_expr and ^right_expr, false)), acc}
 
-              boolean_type?(left_type) and boolean_type?(right_type) ->
-                {Ecto.Query.dynamic(coalesce(^left_expr and ^right_expr, false)), acc}
+                true ->
+                  if "ash-functions" in query.__ash_bindings__.sql_behaviour.repo(
+                       query.__ash_bindings__.resource,
+                       :mutate
+                     ).installed_extensions() do
+                    do_dynamic_expr(
+                      query,
+                      %Fragment{
+                        embedded?: pred_embedded?,
+                        arguments: [
+                          raw: "ash_elixir_and(",
+                          casted_expr: left_expr,
+                          raw: ", ",
+                          casted_expr: right_expr,
+                          raw: ")"
+                        ]
+                      },
+                      bindings,
+                      embedded?,
+                      acc,
+                      type
+                    )
+                  else
+                    if query.__ash_bindings__.sql_behaviour.require_ash_functions_for_or_and_and?() do
+                      require_ash_functions!(query, "&&")
+                    end
 
-              true ->
-                if "ash-functions" in query.__ash_bindings__.sql_behaviour.repo(
-                     query.__ash_bindings__.resource,
-                     :mutate
-                   ).installed_extensions() do
-                  do_dynamic_expr(
-                    query,
-                    %Fragment{
-                      embedded?: pred_embedded?,
-                      arguments: [
-                        raw: "ash_elixir_and(",
-                        casted_expr: left_expr,
-                        raw: ", ",
-                        casted_expr: right_expr,
-                        raw: ")"
-                      ]
-                    },
-                    bindings,
-                    embedded?,
-                    acc,
-                    type
-                  )
-                else
-                  if query.__ash_bindings__.sql_behaviour.require_ash_functions_for_or_and_and?() do
-                    require_ash_functions!(query, "&&")
+                    do_dynamic_expr(
+                      query,
+                      %Fragment{
+                        embedded?: pred_embedded?,
+                        arguments: [
+                          raw: "(CASE WHEN (",
+                          casted_expr: left_expr,
+                          raw: " = FALSE OR ",
+                          casted_expr: left_expr,
+                          raw: " IS NULL) THEN ",
+                          casted_expr: left_expr,
+                          raw: " ELSE ",
+                          casted_expr: right_expr,
+                          raw: "END)"
+                        ]
+                      },
+                      bindings,
+                      embedded?,
+                      acc,
+                      type
+                    )
                   end
+              end
 
-                  do_dynamic_expr(
-                    query,
-                    %Fragment{
-                      embedded?: pred_embedded?,
-                      arguments: [
-                        raw: "(CASE WHEN (",
-                        casted_expr: left_expr,
-                        raw: " = FALSE OR ",
-                        casted_expr: left_expr,
-                        raw: " IS NULL) THEN ",
-                        casted_expr: left_expr,
-                        raw: " ELSE ",
-                        casted_expr: right_expr,
-                        raw: "END)"
-                      ]
-                    },
-                    bindings,
-                    embedded?,
-                    acc,
-                    type
-                  )
-                end
-            end
-
-          other ->
-            raise "Operator not implemented #{other}"
+            other ->
+              raise "Operator not implemented #{other}"
+          end
         end
     end
   end
@@ -3194,10 +3209,15 @@ defmodule AshSql.Expr do
         acc
       )
 
-    if type do
-      {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
-    else
-      {expr, acc}
+    cond do
+      type && get_path_array_type?(type) ->
+        {expr, acc}
+
+      type ->
+        {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
+
+      true ->
+        {expr, acc}
     end
   end
 
@@ -3235,10 +3255,15 @@ defmodule AshSql.Expr do
         acc
       )
 
-    if type do
-      {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
-    else
-      {expr, acc}
+    cond do
+      type && get_path_array_type?(type) ->
+        {expr, acc}
+
+      type ->
+        {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
+
+      true ->
+        {expr, acc}
     end
   end
 
@@ -3365,24 +3390,35 @@ defmodule AshSql.Expr do
   end
 
   defp maybe_type_expr(query, expr, bindings, embedded?, acc, type) do
-    if type do
-      {type, constraints} =
-        case type do
-          {:array, type} -> {{:array, type}, []}
-          {type, constraints} -> {type, constraints}
-          type -> {type, []}
+    cond do
+      type && get_path_array_type?(type) ->
+        case strip_get_path_type(expr) do
+          %GetPath{} = get_path ->
+            get_untyped_get_path_expr(query, get_path, bindings, embedded?, acc)
+
+          _ ->
+            do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
         end
 
-      do_dynamic_expr(
-        query,
-        %Ash.Query.Function.Type{arguments: [expr, type, constraints]},
-        bindings,
-        embedded?,
-        acc,
-        type
-      )
-    else
-      do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
+      type ->
+        {type, constraints} =
+          case type do
+            {:array, type} -> {{:array, type}, []}
+            {type, constraints} -> {type, constraints}
+            type -> {type, []}
+          end
+
+        do_dynamic_expr(
+          query,
+          %Ash.Query.Function.Type{arguments: [expr, type, constraints]},
+          bindings,
+          embedded?,
+          acc,
+          type
+        )
+
+      true ->
+        do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
     end
   end
 
@@ -3433,4 +3469,79 @@ defmodule AshSql.Expr do
   defp cannot_be_boolean?({Ash.Type.Boolean, _}), do: false
   defp cannot_be_boolean?(Ash.Type.Boolean), do: false
   defp cannot_be_boolean?(_), do: true
+
+  defp evaluate_right(query, expr, bindings, embedded?, acc, type) do
+    if type do
+      maybe_type_expr(
+        query,
+        expr,
+        set_location(bindings, :sub_expr),
+        embedded?,
+        acc,
+        type
+      )
+    else
+      do_dynamic_expr(
+        query,
+        expr,
+        set_location(bindings, :sub_expr),
+        embedded?,
+        acc,
+        type
+      )
+    end
+  end
+
+  defp get_untyped_get_path_expr(
+         query,
+         %GetPath{
+           arguments: [%Ref{attribute: %{type: type, constraints: constraints}} = ref, path],
+           embedded?: get_path_embedded?
+         },
+         bindings,
+         embedded?,
+         acc
+       ) do
+    type
+    |> split_at_paths(constraints, path)
+    |> Enum.map(&strip_path_type/1)
+    |> Enum.reduce(
+      do_dynamic_expr(
+        query,
+        ref,
+        set_location(bindings, :sub_expr),
+        embedded?,
+        acc
+      ),
+      fn data, {expr, acc} ->
+        do_get_path(query, expr, data, bindings, embedded?, get_path_embedded?, acc)
+      end
+    )
+  end
+
+  defp get_untyped_get_path_expr(query, other, bindings, embedded?, acc) do
+    evaluate_right(query, other, bindings, embedded?, acc, nil)
+  end
+
+  defp strip_path_type({kind, path, _type, _constraints}) when kind in [:bracket, :dot] do
+    {kind, path, nil, nil}
+  end
+
+  defp strip_get_path_type(%GetPath{} = get_path), do: get_path
+
+  defp strip_get_path_type(%Ash.Query.Function.Type{arguments: [inner | _]}) do
+    strip_get_path_type(inner)
+  end
+
+  defp strip_get_path_type(other), do: other
+
+  defp get_path_array_type?(nil), do: false
+
+  defp get_path_array_type?({{:array, _}, _}), do: true
+
+  defp get_path_array_type?({:array, _}), do: true
+
+  defp get_path_array_type?({type, _}) when is_tuple(type), do: get_path_array_type?(type)
+
+  defp get_path_array_type?(_), do: false
 end
