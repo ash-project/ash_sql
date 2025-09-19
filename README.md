@@ -7,7 +7,7 @@ Shared functionality for ecto-based sql data layers.
 ```elixir
 def deps do
   [
-    {:ash_sql, "~> 0.2.92"}
+    {:ash_sql, "~> 0.2.93"}
   ]
 end
 ```

@@ -5,6 +5,25 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.2.93](https://github.com/ash-project/ash_sql/compare/v0.2.92...v0.2.93) (2025-09-19)
+
+
+
+
+### Bug Fixes:
+
+* include all aggregates in joined query by [@zachdaniel](https://github.com/zachdaniel)
+
+* handle arrays from get_path calls by [@zachdaniel](https://github.com/zachdaniel)
+
+* use `?` operator for `in` in jsonb extract case by [@zachdaniel](https://github.com/zachdaniel)
+
+* match on 4-tuple case for composite types by [@zachdaniel](https://github.com/zachdaniel)
+
+* properly add parent referenced aggregates while joining by [@zachdaniel](https://github.com/zachdaniel)
+
+* properly avoid duplicate distincts applied to queries by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.92](https://github.com/ash-project/ash_sql/compare/v0.2.91...v0.2.92) (2025-09-01)
 
 
