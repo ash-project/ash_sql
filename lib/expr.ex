@@ -3266,8 +3266,6 @@ defmodule AshSql.Expr do
 
   # Returns a row-dependent token to prevent constant-folding for immutable functions, or nil if
   # the repo hasn't opted-in to immutable expr_errors.
-  #
-  # The expression doesn't matter, as long as it depends on the row to avoid constant-folding.
   defp immutable_error_expr_token(query, bindings) do
     resource = query.__ash_bindings__.resource
     repo_config = query.__ash_bindings__.sql_behaviour.repo(resource, :read).config()
@@ -3290,17 +3288,33 @@ defmodule AshSql.Expr do
         end
 
       if ref_binding && attr_names != [] do
-        Enum.reduce(attr_names, Ecto.Query.dynamic(fragment("''::text")), fn attr_name, acc ->
-          value_expr =
+        value_exprs =
+          Enum.map(attr_names, fn attr_name ->
             if bindings[:parent?] &&
                  ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
               Ecto.Query.dynamic(field(parent_as(^ref_binding), ^attr_name))
             else
               Ecto.Query.dynamic(field(as(^ref_binding), ^attr_name))
             end
+          end)
 
-          Ecto.Query.dynamic(fragment("? || '|' || (? )::text", ^acc, ^value_expr))
-        end)
+        row_parts =
+          value_exprs
+          |> Enum.map(&{:casted_expr, &1})
+          |> Enum.intersperse({:raw, ", "})
+
+        {%Ecto.Query.DynamicExpr{} = token, _acc} =
+          dynamic_expr(
+            query,
+            %Ash.Query.Function.Fragment{
+              embedded?: false,
+              arguments: [raw: "ROW("] ++ row_parts ++ [raw: ")"]
+            },
+            set_location(bindings, :sub_expr),
+            false
+          )
+
+        token
       else
         nil
       end
