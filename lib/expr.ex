@@ -715,7 +715,7 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    if bindings.sql_behaviour.equals_any?() do
+    if bindings.sql_behaviour.array_overlap_operator?() do
       # Postgres
       do_dynamic_expr(
         query,
