@@ -666,7 +666,7 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    if bindings.sql_behaviour.ilike?() do
+    if bindings.sql_behaviour.equals_any?() do
       # Postgres
       do_dynamic_expr(
         query,
@@ -715,7 +715,7 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    if bindings.sql_behaviour.ilike?() do
+    if bindings.sql_behaviour.equals_any?() do
       # Postgres
       do_dynamic_expr(
         query,

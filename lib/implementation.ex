@@ -16,6 +16,7 @@ defmodule AshSql.Implementation do
   @callback storage_type(resource :: Ash.Resource.t(), field :: atom()) :: nil | term
 
   @callback ilike?() :: boolean()
+  @callback equals_any?() :: boolean()
 
   @callback determine_types(module, list(term)) :: {list(term), term} | list(term)
   @callback determine_types(module, list(term), returns :: term) ::
@@ -49,6 +50,7 @@ defmodule AshSql.Implementation do
       def require_ash_functions_for_or_and_and?, do: false
       def require_extension_for_citext, do: false
       def ilike?, do: true
+      def equals_any?, do: true
       def storage_type(_, _), do: nil
 
       def type_expr(expr, type) do
@@ -62,7 +64,8 @@ defmodule AshSql.Implementation do
         Ecto.Query.dynamic(type(^expr, ^type))
       end
 
-      defoverridable expr: 6,
+      defoverridable equals_any?: 0,
+                     expr: 6,
                      ilike?: 0,
                      strpos_function: 0,
                      require_ash_functions_for_or_and_and?: 0,
