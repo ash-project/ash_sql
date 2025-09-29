@@ -5,6 +5,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.0](https://github.com/ash-project/ash_sql/compare/v0.2.93...v0.3.0) (2025-09-29)
+
+
+
+
+### Features:
+
+* implemented the SQL translation for Has/Intersects functions (#176) by Abdessabour Moutik [(#176)](https://github.com/ash-project/ash_sql/pull/176)
+
+### Bug Fixes:
+
+* don't add unnecessary option to `relationship_paths` by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.2.93](https://github.com/ash-project/ash_sql/compare/v0.2.92...v0.2.93) (2025-09-19)
 
 
