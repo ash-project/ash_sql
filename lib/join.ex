@@ -84,7 +84,7 @@ defmodule AshSql.Join do
         relationship_paths =
           relationship_paths ||
             filter
-            |> Ash.Filter.relationship_paths(true)
+            |> Ash.Filter.relationship_paths()
             |> to_joins(filter, query.__ash_bindings__.resource)
 
         # Add parent relationship paths from relationship filters with parent expressions
@@ -714,13 +714,15 @@ defmodule AshSql.Join do
             filter = %Ash.Filter{resource: resource, expression: expression}
             used_aggregates = Ash.Filter.used_aggregates(expression, [])
             {:ok, joined_query} = AshSql.Join.join_all_relationships(joined_query, filter)
-            {:ok, joined_query} = AshSql.Aggregate.add_aggregates(
-              joined_query,
-              used_aggregates,
-              resource,
-              false,
-              joined_query.__ash_bindings__.root_binding
-            )
+
+            {:ok, joined_query} =
+              AshSql.Aggregate.add_aggregates(
+                joined_query,
+                used_aggregates,
+                resource,
+                false,
+                joined_query.__ash_bindings__.root_binding
+              )
 
             case AshSql.Expr.dynamic_expr(joined_query, expression, joined_query.__ash_bindings__) do
               {result, _} when is_atom(result) -> {joined_query, []}
