@@ -20,7 +20,9 @@ defmodule AshSql.Expr do
     Fragment,
     FromNow,
     GetPath,
+    Has,
     If,
+    Intersects,
     Lazy,
     Length,
     Now,
@@ -654,6 +656,104 @@ defmodule AshSql.Expr do
       acc,
       type
     )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Has{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    if bindings.sql_behaviour.equals_any?() do
+      # Postgres
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: pred_embedded?,
+          arguments: [
+            raw: "(",
+            expr: right,
+            raw: " = ANY(",
+            expr: left,
+            raw: "))"
+          ]
+        },
+        bindings,
+        embedded?,
+        acc,
+        :boolean
+      )
+    else
+      # SQLite
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: pred_embedded?,
+          arguments: [
+            raw: "EXISTS (SELECT 1 FROM json_each(",
+            expr: left,
+            raw: ") WHERE json_each.value = ",
+            expr: right,
+            raw: ")"
+          ]
+        },
+        bindings,
+        embedded?,
+        acc,
+        :boolean
+      )
+    end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Intersects{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    if bindings.sql_behaviour.array_overlap_operator?() do
+      # Postgres
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: pred_embedded?,
+          arguments: [
+            raw: "((",
+            expr: left,
+            raw: ") && (",
+            expr: right,
+            raw: "))"
+          ]
+        },
+        bindings,
+        embedded?,
+        acc,
+        :boolean
+      )
+    else
+      # SQLite
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: pred_embedded?,
+          arguments: [
+            raw: "EXISTS (SELECT 1 FROM json_each(",
+            expr: left,
+            raw: ") WHERE json_each.value IN (SELECT json_each.value FROM json_each(",
+            expr: right,
+            raw: ")))"
+          ]
+        },
+        bindings,
+        embedded?,
+        acc,
+        :boolean
+      )
+    end
   end
 
   defp default_dynamic_expr(
