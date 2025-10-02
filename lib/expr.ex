@@ -3268,9 +3268,9 @@ defmodule AshSql.Expr do
   # the repo hasn't opted-in to immutable expr_errors.
   defp immutable_error_expr_token(query, bindings) do
     resource = query.__ash_bindings__.resource
-    repo_config = query.__ash_bindings__.sql_behaviour.repo(resource, :read).config()
+    repo = query.__ash_bindings__.sql_behaviour.repo(resource, :read)
 
-    if Keyword.get(repo_config, :immutable_expr_error?, false) do
+    if query.__ash_bindings__.sql_behaviour.immutable_errors?(repo) do
       ref_binding = bindings.root_binding
 
       pk_attr_names = Ash.Resource.Info.primary_key(resource)

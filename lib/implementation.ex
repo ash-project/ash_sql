@@ -32,6 +32,7 @@ defmodule AshSql.Implementation do
   @callback require_extension_for_citext() :: {true, String.t()} | false
   @callback strpos_function() :: String.t()
   @callback type_expr(expr :: term, type :: term) :: term
+  @callback immutable_errors?(repo :: module) :: boolean
 
   @optional_callbacks determine_types: 3
 
@@ -50,6 +51,7 @@ defmodule AshSql.Implementation do
       def require_extension_for_citext, do: false
       def ilike?, do: true
       def storage_type(_, _), do: nil
+      def immutable_errors?(_repo), do: false
 
       def type_expr(expr, type) do
         type =
@@ -70,6 +72,7 @@ defmodule AshSql.Implementation do
                      simple_join_first_aggregates: 1,
                      type_expr: 2,
                      storage_type: 2,
+                     immutable_errors?: 1,
                      list_aggregate: 1,
                      multicolumn_distinct?: 0
     end
