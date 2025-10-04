@@ -1345,33 +1345,31 @@ defmodule AshSql.Expr do
         if operator == :in do
           get_path = strip_get_path_type(right)
 
-          cond do
-            match?(%Ash.Query.Function.GetPath{}, get_path) and get_path_array_type?(right_type) ->
-              context_embedded? = pred_embedded? || embedded?
+          if match?(%Ash.Query.Function.GetPath{}, get_path) and get_path_array_type?(right_type) do
+            context_embedded? = pred_embedded? || embedded?
 
-              {raw_right_expr, acc} =
-                get_untyped_get_path_expr(
-                  query,
-                  get_path,
-                  bindings,
-                  context_embedded?,
-                  acc
-                )
+            {raw_right_expr, acc} =
+              get_untyped_get_path_expr(
+                query,
+                get_path,
+                bindings,
+                context_embedded?,
+                acc
+              )
 
-              {Ecto.Query.dynamic(fragment("(?::jsonb \\? ?)", ^raw_right_expr, ^left_expr)), acc}
+            {Ecto.Query.dynamic(fragment("(?::jsonb \\? ?)", ^raw_right_expr, ^left_expr)), acc}
+          else
+            {right_expr, acc} =
+              evaluate_right(
+                query,
+                right,
+                bindings,
+                pred_embedded? || embedded?,
+                acc,
+                right_type
+              )
 
-            true ->
-              {right_expr, acc} =
-                evaluate_right(
-                  query,
-                  right,
-                  bindings,
-                  pred_embedded? || embedded?,
-                  acc,
-                  right_type
-                )
-
-              {Ecto.Query.dynamic(^left_expr in ^right_expr), acc}
+            {Ecto.Query.dynamic(^left_expr in ^right_expr), acc}
           end
         else
           {right_expr, acc} =
