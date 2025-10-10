@@ -3489,26 +3489,44 @@ defmodule AshSql.Expr do
 
   defp maybe_type_expr(query, expr, bindings, embedded?, acc, type) do
     if type do
-      case strip_get_path_type(expr) do
-        %GetPath{} = get_path ->
-          get_untyped_get_path_expr(query, get_path, bindings, embedded?, acc)
+      if get_path_array_type?(type) do
+        case strip_get_path_type(expr) do
+          %GetPath{} = get_path ->
+            get_untyped_get_path_expr(query, get_path, bindings, embedded?, acc)
 
-        _ ->
-          {type, constraints} =
-            case type do
-              {:array, type} -> {{:array, type}, []}
-              {type, constraints} -> {type, constraints}
-              type -> {type, []}
-            end
+          _ ->
+            {type, constraints} =
+              case type do
+                {:array, type} -> {{:array, type}, []}
+                {type, constraints} -> {type, constraints}
+                type -> {type, []}
+              end
 
-          do_dynamic_expr(
-            query,
-            %Ash.Query.Function.Type{arguments: [expr, type, constraints]},
-            bindings,
-            embedded?,
-            acc,
-            type
-          )
+            do_dynamic_expr(
+              query,
+              %Ash.Query.Function.Type{arguments: [expr, type, constraints]},
+              bindings,
+              embedded?,
+              acc,
+              type
+            )
+        end
+      else
+        {type, constraints} =
+          case type do
+            {:array, type} -> {{:array, type}, []}
+            {type, constraints} -> {type, constraints}
+            type -> {type, []}
+          end
+
+        do_dynamic_expr(
+          query,
+          %Ash.Query.Function.Type{arguments: [expr, type, constraints]},
+          bindings,
+          embedded?,
+          acc,
+          type
+        )
       end
     else
       do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
