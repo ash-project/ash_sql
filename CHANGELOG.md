@@ -5,6 +5,21 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.1](https://github.com/ash-project/ash_sql/compare/v0.3.0...v0.3.1) (2025-10-10)
+
+
+
+
+### Bug Fixes:
+
+* weird typing issue with Postgres. (#178) by James Harton [(#178)](https://github.com/ash-project/ash_sql/pull/178)
+
+### Improvements:
+
+* Support calling immutable version of `ash_raise_error` (#175) by [@stevebrambilla](https://github.com/stevebrambilla) [(#175)](https://github.com/ash-project/ash_sql/pull/175)
+
+* add immutable_errors? to sql behaviour by [@stevebrambilla](https://github.com/stevebrambilla) [(#175)](https://github.com/ash-project/ash_sql/pull/175)
+
 ## [v0.3.0](https://github.com/ash-project/ash_sql/compare/v0.2.93...v0.3.0) (2025-09-29)
 
 
