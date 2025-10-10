@@ -5,6 +5,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.2](https://github.com/ash-project/ash_sql/compare/v0.3.1...v0.3.2) (2025-10-10)
+
+
+
+
+### Bug Fixes:
+
+* only do untyped expressions for array get_path types by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.3.1](https://github.com/ash-project/ash_sql/compare/v0.3.0...v0.3.1) (2025-10-10)
 
 
