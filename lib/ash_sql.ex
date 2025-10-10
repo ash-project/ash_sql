@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshSql do
   @moduledoc false
   def dynamic_repo(resource, sql_behaviour, %{

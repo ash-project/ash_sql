@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshSql.MixProject do
   @moduledoc false
   use Mix.Project
@@ -24,12 +28,19 @@ defmodule AshSql.MixProject do
 
   defp package do
     [
-      name: :ash_sql,
+      maintainers: [
+        "Zach Daniel <zach@zachdaniel.dev>"
+      ],
       licenses: ["MIT"],
       files: ~w(lib .formatter.exs mix.exs README* LICENSE*
       CHANGELOG*),
       links: %{
-        GitHub: "https://github.com/ash-project/ash_sql"
+        "GitHub" => "https://github.com/ash-project/ash_sql",
+        "Changelog" => "https://github.com/ash-project/ash_sql/blob/main/CHANGELOG.md",
+        "Discord" => "https://discord.gg/HTHRaaVPUc",
+        "Website" => "https://ash-hq.org",
+        "Forum" => "https://elixirforum.com/c/elixir-framework-forums/ash-framework-forum",
+        "REUSE Compliance" => "https://api.reuse.software/info/github.com/ash-project/ash_sql"
       }
     ]
   end

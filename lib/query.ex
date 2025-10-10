@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshSql.Query do
   @moduledoc false
   import Ecto.Query, only: [subquery: 1, from: 2]
