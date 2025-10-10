@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2020 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 defmodule AshSql.Implementation do
   @moduledoc false
   @callback table(Ash.Resource.t()) :: String.t()
