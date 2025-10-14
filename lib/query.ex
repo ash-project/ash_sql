@@ -248,6 +248,25 @@ defmodule AshSql.Query do
         query.__ash_bindings__.resource
       )
     end
+    |> case do
+      {:ok, query} ->
+        load_aggs = query.__ash_bindings__[:load_aggregates] || []
+
+        if Enum.empty?(load_aggs) do
+          {:ok, query}
+        else
+          AshSql.Aggregate.add_aggregates(
+            query,
+            load_aggs,
+            resource,
+            true,
+            query.__ash_bindings__.root_binding
+          )
+        end
+
+      {:error, error} ->
+        {:error, error}
+    end
   end
 
   def return_query(query, resource) do
@@ -281,6 +300,7 @@ defmodule AshSql.Query do
                 |> Ecto.Query.exclude(:offset)
 
               from(row in subquery(query_without_limit_and_offset),
+                as: ^0,
                 select: row,
                 order_by: row.__order__
               )
@@ -296,7 +316,8 @@ defmodule AshSql.Query do
                   bindings,
                   %{
                     calculations_require_rewrite: calculations_require_rewrite,
-                    aggregates_require_rewrite: aggregates_require_rewrite
+                    aggregates_require_rewrite: aggregates_require_rewrite,
+                    load_aggregates: query.__ash_bindings__[:load_aggregates]
                   },
                   fn _, v1, v2 -> Map.merge(v1, v2) end
                 )
@@ -332,6 +353,25 @@ defmodule AshSql.Query do
           end
 
         {:ok, query}
+    end
+    |> case do
+      {:ok, query} ->
+        load_aggs = query.__ash_bindings__[:load_aggregates] || []
+
+        if Enum.empty?(load_aggs) do
+          {:ok, query}
+        else
+          AshSql.Aggregate.add_aggregates(
+            query,
+            load_aggs,
+            resource,
+            true,
+            query.__ash_bindings__.root_binding
+          )
+        end
+
+      {:error, error} ->
+        {:error, error}
     end
   end
 

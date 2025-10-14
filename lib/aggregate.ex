@@ -7,7 +7,7 @@ defmodule AshSql.Aggregate do
 
   require Ecto.Query
   require Ash.Query
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query, only: [from: 2, subquery: 1]
 
   @next_aggregate_names Enum.reduce(0..999, %{}, fn i, acc ->
                           Map.put(acc, :"aggregate_#{i}", :"aggregate_#{i + 1}")
@@ -34,6 +34,17 @@ defmodule AshSql.Aggregate do
 
             _ ->
               []
+          end
+
+        query =
+          if (query.limit || query.offset || query.distinct) && root_data_path == [] && select? &&
+               Enum.any?(
+                 aggregates,
+                 &(not optimizable_first_aggregate?(resource, &1, query))
+               ) do
+            wrap_in_subquery_for_aggregates(query)
+          else
+            query
           end
 
         tenant =
@@ -67,12 +78,11 @@ defmodule AshSql.Aggregate do
             end
           )
 
+        # For root level aggregates, reject those already defined (unless we're selecting them)
         aggregates =
-          if root_data_path == [] do
+          if root_data_path == [] && !select? do
             Enum.reject(aggregates, fn aggregate ->
-              if Map.has_key?(query.__ash_bindings__.aggregate_defs, aggregate.name) do
-                true
-              end
+              Map.has_key?(query.__ash_bindings__.aggregate_defs, aggregate.name)
             end)
           else
             aggregates
@@ -93,7 +103,6 @@ defmodule AshSql.Aggregate do
 
         result =
           aggregates
-          |> Enum.reject(&already_added?(&1, query.__ash_bindings__, root_data_path))
           |> Enum.group_by(fn aggregate ->
             {aggregate.relationship_path || [], aggregate.resource, aggregate.join_filters || %{},
              aggregate.query.action.name}
@@ -1160,16 +1169,6 @@ defmodule AshSql.Aggregate do
       {:error, error} ->
         {:error, error}
     end
-  end
-
-  defp already_added?(aggregate, bindings, root_data_path) do
-    Enum.any?(bindings.bindings, fn
-      {_, %{type: :aggregate, aggregates: aggregates}, path: ^root_data_path} ->
-        aggregate in aggregates
-
-      _ ->
-        false
-    end)
   end
 
   defp maybe_filter_subquery(
@@ -2464,5 +2463,55 @@ defmodule AshSql.Aggregate do
     else
       aggregate.field
     end
+  end
+
+  def wrap_in_subquery_for_aggregates(query) do
+    root_binding = query.__ash_bindings__.root_binding
+
+    # Find aggregate bindings and aggregates
+    aggregate_bindings =
+      query.__ash_bindings__.bindings
+      |> Enum.filter(fn
+        {_binding, %{type: :aggregate}} -> true
+        _ -> false
+      end)
+
+    already_computed_aggregates =
+      aggregate_bindings
+      |> Enum.flat_map(fn {_binding, %{aggregates: aggs}} -> aggs end)
+      |> Enum.map(& &1.name)
+      |> MapSet.new()
+
+    query_with_agg_selects =
+      if aggregate_bindings != [] && MapSet.size(already_computed_aggregates) > 0 do
+        Enum.reduce(aggregate_bindings, query, fn {agg_binding, %{aggregates: aggs}}, q ->
+          Enum.reduce(aggs, q, fn agg, q ->
+            from(row in q, select_merge: %{^agg.name => field(as(^agg_binding), ^agg.name)})
+          end)
+        end)
+      else
+        query
+      end
+
+    subquery_query = from(row in subquery(query_with_agg_selects), as: ^root_binding)
+
+    bindings_without_aggregates =
+      query.__ash_bindings__.bindings
+      |> Enum.reject(fn
+        {_binding, %{type: :aggregate}} -> true
+        _ -> false
+      end)
+      |> Map.new()
+
+    new_bindings =
+      query.__ash_bindings__
+      |> Map.put(:bindings, bindings_without_aggregates)
+      |> Map.put(:current, root_binding + 1)
+      |> Map.put(:aggregate_names, %{})
+      |> Map.put(:already_selected_aggregates, already_computed_aggregates)
+      # Clear the flag so windows aren't created after wrapping
+      |> Map.delete(:__order__?)
+
+    Map.put(subquery_query, :__ash_bindings__, new_bindings)
   end
 end
