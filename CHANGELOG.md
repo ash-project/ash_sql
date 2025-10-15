@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.7](https://github.com/ash-project/ash_sql/compare/v0.3.6...v0.3.7) (2025-10-15)
+
+
+
+
+### Improvements:
+
+* update Ash to 3.7 and fix deprecated calls by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.3.6](https://github.com/ash-project/ash_sql/compare/v0.3.5...v0.3.6) (2025-10-15)
 
 
