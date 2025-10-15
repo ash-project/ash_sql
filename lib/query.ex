@@ -13,6 +13,8 @@ defmodule AshSql.Query do
     |> Map.put(:__ash_domain__, domain)
   end
 
+  def combination_acc(query), do: query.__ash_bindings__.current
+
   def combination_of(
         [{:base, first} | combination_of],
         _resource,
@@ -50,7 +52,7 @@ defmodule AshSql.Query do
         500
       else
         if context[:data_layer][:previous_combination] do
-          context[:data_layer][:previous_combination].__ash_bindings__.current
+          context[:data_layer][:previous_combination]
         else
           0
         end
