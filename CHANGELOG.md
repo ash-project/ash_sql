@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.6](https://github.com/ash-project/ash_sql/compare/v0.3.5...v0.3.6) (2025-10-15)
+
+
+
+
+### Improvements:
+
+* support combination_acc/1 function to get current combination accumulator by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.3.5](https://github.com/ash-project/ash_sql/compare/v0.3.4...v0.3.5) (2025-10-15)
 
 

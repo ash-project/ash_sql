@@ -51,10 +51,15 @@ defmodule AshSql.Query do
       if context[:data_layer][:lateral_join_source] do
         500
       else
-        if context[:data_layer][:previous_combination] do
-          context[:data_layer][:previous_combination]
-        else
-          0
+        case context[:data_layer][:previous_combination] do
+          %{__ash_bindings__: %{current: current}} ->
+            current
+
+          current when is_integer(current) ->
+            current
+
+          _ ->
+            0
         end
       end
 
