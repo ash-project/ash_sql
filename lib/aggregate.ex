@@ -68,7 +68,9 @@ defmodule AshSql.Aggregate do
           )
 
         {already_computed_aggregates, remaining_aggregates} =
-          Enum.split_with(aggregates, &already_added?(&1, query.__ash_bindings__, []))
+          aggregates
+          |> Enum.uniq_by(& &1.name)
+          |> Enum.split_with(&already_added?(&1, query.__ash_bindings__, []))
 
         query =
           if Enum.any?(already_computed_aggregates) do
