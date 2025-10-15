@@ -3230,7 +3230,7 @@ defmodule AshSql.Expr do
     end) ||
       Enum.find_value(bindings.bindings, fn {binding, data} ->
         data.type in [:inner, :left, :root] &&
-          Ash.SatSolver.synonymous_relationship_paths?(
+          Ash.Resource.Info.synonymous_relationship_paths?(
             bindings.resource,
             data.path,
             relationship_path
@@ -3259,7 +3259,7 @@ defmodule AshSql.Expr do
 
     Enum.find_value(bindings.bindings, fn {binding, data} ->
       data.type in [:inner, :left, :root] &&
-        Ash.SatSolver.synonymous_relationship_paths?(
+        Ash.Resource.Info.synonymous_relationship_paths?(
           bindings.resource,
           data.path,
           relationship_path

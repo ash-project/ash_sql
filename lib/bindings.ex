@@ -84,7 +84,12 @@ defmodule AshSql.Bindings do
     Enum.find_value(query.__ash_bindings__.bindings, fn
       {binding, %{path: path, source: source, type: type}} ->
         if type in types &&
-             Ash.SatSolver.synonymous_relationship_paths?(resource, path, candidate_path, source) do
+             Ash.Resource.Info.synonymous_relationship_paths?(
+               resource,
+               path,
+               candidate_path,
+               source
+             ) do
           binding
         end
 
