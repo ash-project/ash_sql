@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.5](https://github.com/ash-project/ash_sql/compare/v0.3.4...v0.3.5) (2025-10-15)
+
+
+
+
+### Bug Fixes:
+
+* ensure aggregates are unique by name before adding by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.3.4](https://github.com/ash-project/ash_sql/compare/v0.3.3...v0.3.4) (2025-10-14)
 
 
