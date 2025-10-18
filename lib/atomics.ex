@@ -37,7 +37,12 @@ defmodule AshSql.Atomics do
            ) do
           expr
         else
-          type_cast_unless_list_of_embedded(expr, attribute)
+          maybe_cast_atomic_expr(
+            expr,
+            attribute,
+            query.__ash_bindings__.sql_behaviour,
+            resource
+          )
         end
 
       case AshSql.Expr.dynamic_expr(
@@ -123,34 +128,76 @@ defmodule AshSql.Atomics do
     end
   end
 
-  defp type_cast_unless_list_of_embedded(expr, attribute) do
-    type_cast? =
-      if is_list(expr) do
-        first = Enum.at(expr, 0)
+  defp maybe_cast_atomic_expr(expr, attribute, sql_behaviour, resource) do
+    storage_type = sql_behaviour.storage_type(resource, attribute.name)
 
-        first_embedded? =
-          is_struct(first) and Ash.Resource.Info.resource?(first.__struct__) and
-            Ash.Resource.Info.embedded?(first.__struct__)
+    cond do
+      expr == [] and storage_type == :jsonb ->
+        {:ok, fragment} = Ash.Query.Function.Fragment.new(["'[]'::jsonb"])
+        fragment
 
-        is_map? = attribute.type in [:map, :jsonb, :json]
+      is_list(expr) and typed_struct?(Enum.at(expr, 0)) ->
+        dump_and_encode_typed_struct_array(expr, attribute, storage_type)
 
-        not (first_embedded? && !is_map?)
-      else
-        true
-      end
+      is_list(expr) and not embedded_ash_resource?(Enum.at(expr, 0)) ->
+        {:ok, casted} =
+          Ash.Query.Function.Type.new([expr, attribute.type, attribute.constraints || []])
 
-    if type_cast? do
-      {:ok, expr} =
-        Ash.Query.Function.Type.new([
-          expr,
-          attribute.type,
-          attribute.constraints || []
-        ])
+        casted
 
-      expr
-    else
-      expr
+      true ->
+        expr
     end
+  end
+
+  defp typed_struct?(value) when is_struct(value) do
+    if function_exported?(value.__struct__, :spark_is, 0) do
+      value.__struct__.spark_is() == Ash.TypedStruct
+    else
+      false
+    end
+  end
+
+  defp typed_struct?(_value), do: false
+
+  defp embedded_ash_resource?(value) do
+    is_struct(value) and Ash.Resource.Info.resource?(value.__struct__) and
+      Ash.Resource.Info.embedded?(value.__struct__)
+  end
+
+  defp dump_and_encode_typed_struct_array(
+         expr,
+         %{type: {:array, inner_type}} = attribute,
+         storage_type
+       ) do
+    dumped_list =
+      Enum.map(expr, fn item ->
+        case Ash.Type.dump_to_native(inner_type, item, attribute.constraints[:items] || []) do
+          {:ok, dumped} -> dumped
+          :error -> item
+        end
+      end)
+
+    encode_typed_struct_array(dumped_list, storage_type, attribute)
+  end
+
+  defp encode_typed_struct_array(dumped_list, :jsonb, _attribute) do
+    # Use literal SQL (not parameter binding) to avoid double-quoting
+    json_string = Jason.encode!(dumped_list)
+    escaped_json = String.replace(json_string, "'", "''")
+    {:ok, fragment} = Ash.Query.Function.Fragment.new(["'" <> escaped_json <> "'::jsonb"])
+    fragment
+  end
+
+  defp encode_typed_struct_array(dumped_list, storage_type, attribute) do
+    {:ok, type_expr} =
+      Ash.Query.Function.Type.new([
+        dumped_list,
+        storage_type || attribute.type,
+        attribute.constraints || []
+      ])
+
+    type_expr
   end
 
   # sobelow_skip ["DOS.StringToAtom"]
@@ -247,7 +294,12 @@ defmodule AshSql.Atomics do
              ) do
             expr
           else
-            type_cast_unless_list_of_embedded(expr, attribute)
+            maybe_cast_atomic_expr(
+              expr,
+              attribute,
+              query.__ash_bindings__.sql_behaviour,
+              resource
+            )
           end
 
         case AshSql.Expr.dynamic_expr(
