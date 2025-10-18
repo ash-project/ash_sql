@@ -194,7 +194,7 @@ defmodule AshSql.Atomics do
       Ash.Query.Function.Type.new([
         dumped_list,
         storage_type || attribute.type,
-        attribute.constraints || []
+        attribute.constraints
       ])
 
     type_expr
