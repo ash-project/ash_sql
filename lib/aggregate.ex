@@ -82,9 +82,18 @@ defmodule AshSql.Aggregate do
             |> Enum.reduce(query, fn {agg_binding, %{aggregates: aggs}}, q ->
               Enum.reduce(aggs, q, fn agg, q ->
                 if Enum.any?(already_computed_aggregates, &(&1.name == agg.name)) do
-                  from(row in q,
-                    select_merge: %{^agg.name => field(as(^agg_binding), ^agg.name)}
-                  )
+                  if agg.default_value do
+                    from(row in q,
+                      select_merge: %{
+                        ^agg.name =>
+                          coalesce(field(as(^agg_binding), ^agg.name), ^agg.default_value)
+                      }
+                    )
+                  else
+                    from(row in q,
+                      select_merge: %{^agg.name => field(as(^agg_binding), ^agg.name)}
+                    )
+                  end
                 else
                   q
                 end
