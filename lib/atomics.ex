@@ -132,11 +132,8 @@ defmodule AshSql.Atomics do
     storage_type = sql_behaviour.storage_type(resource, attribute.name)
 
     cond do
-      expr == [] and storage_type == :jsonb ->
-        {:ok, fragment} = Ash.Query.Function.Fragment.new(["'[]'::jsonb"])
-        fragment
-
-      is_list(expr) and typed_struct?(Enum.at(expr, 0)) ->
+      is_list(expr) and typed_struct_attr_type?(attribute.type) and
+          storage_type in [:map, :jsonb, :json] ->
         dump_and_encode_typed_struct_array(expr, attribute, storage_type)
 
       is_list(expr) and not embedded_ash_resource?(Enum.at(expr, 0)) ->
@@ -150,15 +147,13 @@ defmodule AshSql.Atomics do
     end
   end
 
-  defp typed_struct?(value) when is_struct(value) do
-    if function_exported?(value.__struct__, :spark_is, 0) do
-      value.__struct__.spark_is() == Ash.TypedStruct
-    else
-      false
-    end
+  defp typed_struct_attr_type?({:array, attr_type}) do
+    typed_struct_attr_type?(attr_type)
   end
 
-  defp typed_struct?(_value), do: false
+  defp typed_struct_attr_type?(attr_type) do
+    function_exported?(attr_type, :spark_is, 0) and attr_type.spark_is() == Ash.TypedStruct
+  end
 
   defp embedded_ash_resource?(value) do
     is_struct(value) and Ash.Resource.Info.resource?(value.__struct__) and
@@ -178,22 +173,15 @@ defmodule AshSql.Atomics do
         end
       end)
 
-    encode_typed_struct_array(dumped_list, storage_type, attribute)
-  end
+    casting_type =
+      if storage_type in [:map, :jsonb, :json],
+        do: AshSql.TypedStructArrayJsonb,
+        else: storage_type || attribute.type
 
-  defp encode_typed_struct_array(dumped_list, :jsonb, _attribute) do
-    # Use literal SQL (not parameter binding) to avoid double-quoting
-    json_string = Jason.encode!(dumped_list)
-    escaped_json = String.replace(json_string, "'", "''")
-    {:ok, fragment} = Ash.Query.Function.Fragment.new(["'" <> escaped_json <> "'::jsonb"])
-    fragment
-  end
-
-  defp encode_typed_struct_array(dumped_list, storage_type, attribute) do
     {:ok, type_expr} =
       Ash.Query.Function.Type.new([
         dumped_list,
-        storage_type || attribute.type,
+        casting_type,
         attribute.constraints
       ])
 
