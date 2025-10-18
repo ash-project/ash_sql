@@ -1634,12 +1634,6 @@ defmodule AshSql.Expr do
          ) do
       {:ok, expression} ->
         expression =
-          Ash.Filter.move_to_relationship_path(
-            expression,
-            relationship_path
-          )
-
-        expression =
           Ash.Actions.Read.add_calc_context_to_filter(
             expression,
             calculation.context.actor,
@@ -1651,10 +1645,24 @@ defmodule AshSql.Expr do
             parent_stack: query.__ash_bindings__[:parent_resources] || []
           )
 
+        updated_bindings =
+          bindings
+          |> set_location(:sub_expr)
+          |> then(fn bindings ->
+            if Enum.empty?(relationship_path) do
+              bindings
+            else
+              bindings
+              |> Map.put(:refs_at_path, List.wrap(bindings[:refs_at_path]) ++ relationship_path)
+            end
+          end)
+
+        updated_query = %{query | __ash_bindings__: updated_bindings}
+
         do_dynamic_expr(
-          query,
+          updated_query,
           expression,
-          set_location(bindings, :sub_expr),
+          updated_bindings,
           embedded?,
           acc,
           {calculation.type, Map.get(calculation, :constraints, [])}
@@ -2290,7 +2298,9 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    resource = Ash.Resource.Info.related(bindings.resource, at_path)
+    full_at_path = List.wrap(bindings[:refs_at_path]) ++ at_path
+    resource = Ash.Resource.Info.related(bindings.resource, full_at_path)
+
     first_relationship = Ash.Resource.Info.relationship(resource, first)
 
     unless first_relationship do
@@ -2367,8 +2377,9 @@ defmodule AshSql.Expr do
         start_bindings_at: 1,
         select_star?: !Map.get(first_relationship, :manual),
         in_group?: true,
+        refs_at_path: full_at_path,
         parent_resources: [
-          query.__ash_bindings__.resource
+          Ash.Resource.Info.related(resource, at_path)
           | query.__ash_bindings__[:parent_resources] || []
         ],
         return_subquery?: true,
