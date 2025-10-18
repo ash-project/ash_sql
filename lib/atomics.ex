@@ -132,7 +132,7 @@ defmodule AshSql.Atomics do
     storage_type = sql_behaviour.storage_type(resource, attribute.name)
 
     cond do
-      is_list(expr) and typed_struct_attr_type?(attribute.type) and
+      is_list(expr) and typed_struct_array_attr_type?(attribute.type) and
           storage_type in [:map, :jsonb, :json] ->
         dump_and_encode_typed_struct_array(expr, attribute, storage_type)
 
@@ -147,13 +147,11 @@ defmodule AshSql.Atomics do
     end
   end
 
-  defp typed_struct_attr_type?({:array, attr_type}) do
-    typed_struct_attr_type?(attr_type)
-  end
-
-  defp typed_struct_attr_type?(attr_type) do
+  defp typed_struct_array_attr_type?({:array, attr_type}) do
     function_exported?(attr_type, :spark_is, 0) and attr_type.spark_is() == Ash.TypedStruct
   end
+
+  defp typed_struct_array_attr_type?(_attr_type), do: false
 
   defp embedded_ash_resource?(value) do
     is_struct(value) and Ash.Resource.Info.resource?(value.__struct__) and
