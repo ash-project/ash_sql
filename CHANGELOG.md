@@ -11,6 +11,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.8](https://github.com/ash-project/ash_sql/compare/v0.3.7...v0.3.8) (2025-10-19)
+
+
+
+
+### Bug Fixes:
+
+* handle typed struct arrays with storage type :jsonb correctly (#183) by [@Torkan](https://github.com/Torkan) [(#183)](https://github.com/ash-project/ash_sql/pull/183)
+
+* properly handle composition of nested calculation exists by [@zachdaniel](https://github.com/zachdaniel)
+
+* ensure aggregate default values are always applied by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.3.7](https://github.com/ash-project/ash_sql/compare/v0.3.6...v0.3.7) (2025-10-15)
 
 
