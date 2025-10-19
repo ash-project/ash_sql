@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.9](https://github.com/ash-project/ash_sql/compare/v0.3.8...v0.3.9) (2025-10-19)
+
+
+
+
+### Bug Fixes:
+
+* more handling of storage types for typed struct arrays in AshSql by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.3.8](https://github.com/ash-project/ash_sql/compare/v0.3.7...v0.3.8) (2025-10-19)
 
 
