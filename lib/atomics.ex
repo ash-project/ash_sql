@@ -45,13 +45,20 @@ defmodule AshSql.Atomics do
           )
         end
 
+      type =
+        case query.__ash_bindings__.sql_behaviour.storage_type(resource, attribute.name) do
+          nil -> {attribute.type, attribute.constraints}
+          storage_type -> storage_type
+        end
+
       case AshSql.Expr.dynamic_expr(
              query,
              expr,
              Map.merge(query.__ash_bindings__, %{
                location: :update
              }),
-             false
+             false,
+             type
            ) do
         {dynamic, acc} ->
           new_field = String.to_atom("__new_#{field}")
@@ -134,7 +141,12 @@ defmodule AshSql.Atomics do
     cond do
       is_list(expr) and typed_struct_array_attr_type?(attribute.type) and
           storage_type in [:map, :jsonb, :json] ->
-        dump_and_encode_typed_struct_array(expr, attribute, storage_type)
+        dump_and_encode_map_array(expr, attribute)
+
+      is_list(expr) and embedded_ash_resource?(Enum.at(expr, 0)) and
+          storage_type in [:map, :jsonb, :json] ->
+        # Embedded resources with jsonb storage need to be dumped to native format
+        dump_and_encode_map_array(expr, attribute)
 
       is_list(expr) and not embedded_ash_resource?(Enum.at(expr, 0)) ->
         {:ok, casted} =
@@ -158,11 +170,7 @@ defmodule AshSql.Atomics do
       Ash.Resource.Info.embedded?(value.__struct__)
   end
 
-  defp dump_and_encode_typed_struct_array(
-         expr,
-         %{type: {:array, inner_type}} = attribute,
-         storage_type
-       ) do
+  defp dump_and_encode_map_array(expr, %{type: {:array, inner_type}} = attribute) do
     dumped_list =
       Enum.map(expr, fn item ->
         case Ash.Type.dump_to_native(inner_type, item, attribute.constraints[:items] || []) do
@@ -171,15 +179,10 @@ defmodule AshSql.Atomics do
         end
       end)
 
-    casting_type =
-      if storage_type in [:map, :jsonb, :json],
-        do: AshSql.TypedStructArrayJsonb,
-        else: storage_type || attribute.type
-
     {:ok, type_expr} =
       Ash.Query.Function.Type.new([
         dumped_list,
-        casting_type,
+        AshSql.TypedStructArrayJsonb,
         attribute.constraints
       ])
 
@@ -288,13 +291,20 @@ defmodule AshSql.Atomics do
             )
           end
 
+        type =
+          case query.__ash_bindings__.sql_behaviour.storage_type(resource, attribute.name) do
+            nil -> {attribute.type, attribute.constraints}
+            storage_type -> storage_type
+          end
+
         case AshSql.Expr.dynamic_expr(
                query,
                expr,
                Map.merge(query.__ash_bindings__, %{
                  location: :update
                }),
-               false
+               false,
+               type
              ) do
           {dynamic, acc} ->
             {:cont,
