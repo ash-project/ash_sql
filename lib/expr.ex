@@ -2682,8 +2682,18 @@ defmodule AshSql.Expr do
     do_dynamic_expr(query, to_string(value), bindings, embedded?, acc, type)
   end
 
-  defp default_dynamic_expr(_, nil, _, _, acc, _) do
-    {Ecto.Query.dynamic(fragment("NULL")), acc}
+  defp default_dynamic_expr(_query, nil, bindings, _, acc, type) do
+    if type && type != :any do
+      param_type = parameterized_type(bindings.sql_behaviour, type, [], :expr)
+
+      if param_type do
+        {Ecto.Query.dynamic(type(fragment("NULL"), ^param_type)), acc}
+      else
+        {Ecto.Query.dynamic(fragment("NULL")), acc}
+      end
+    else
+      {Ecto.Query.dynamic(fragment("NULL")), acc}
+    end
   end
 
   defp default_dynamic_expr(query, value, bindings, false, acc, type)
