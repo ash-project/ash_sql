@@ -228,6 +228,44 @@ defmodule AshSql.Join do
     end)
   end
 
+  @doc false
+  def extract_parent_referenced_fields(filter) do
+    filter
+    |> Ash.Filter.flat_map(fn
+      %Ash.Query.Parent{expr: expr} ->
+        # Extract field names from the parent expression
+        extract_refs_from_expr(expr)
+
+      _other ->
+        []
+    end)
+    |> Enum.uniq()
+  end
+
+  defp extract_refs_from_expr(attribute)
+       when is_atom(attribute) and not is_nil(attribute) and not is_boolean(attribute) do
+    # parent(field_name) where field_name is an atom
+    [attribute]
+  end
+
+  defp extract_refs_from_expr(%Ash.Query.Ref{attribute: %{name: name}, relationship_path: []}) do
+    # Ref to a direct field with Attribute struct
+    [name]
+  end
+
+  defp extract_refs_from_expr(%Ash.Query.Ref{attribute: attribute, relationship_path: []})
+       when is_atom(attribute) do
+    # Ref to a direct field where attribute is still an atom
+    [attribute]
+  end
+
+  defp extract_refs_from_expr(%Ash.Query.Ref{}) do
+    # Ref with a relationship path - we don't need those
+    []
+  end
+
+  defp extract_refs_from_expr(_other), do: []
+
   defp join_parent_paths(query, filter, nil) do
     case query.__ash_bindings__[:lateral_join_source_query] do
       nil ->
