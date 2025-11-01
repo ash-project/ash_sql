@@ -109,6 +109,26 @@ defmodule AshSql.Aggregate do
                  remaining_aggregates,
                  &(not optimizable_first_aggregate?(resource, &1, query))
                ) do
+            parent_fields =
+              remaining_aggregates
+              |> Enum.flat_map(fn agg ->
+                if agg.query && agg.query.filter do
+                  AshSql.Join.extract_parent_referenced_fields(agg.query.filter)
+                else
+                  []
+                end
+              end)
+              |> Enum.uniq()
+
+            query =
+              if not Enum.empty?(parent_fields) do
+                Enum.reduce(parent_fields, query, fn field, q ->
+                  from(row in q, select_merge: %{^field => field(row, ^field)})
+                end)
+              else
+                query
+              end
+
             wrap_in_subquery_for_aggregates(query)
           else
             query
