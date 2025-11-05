@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.11](https://github.com/ash-project/ash_sql/compare/v0.3.10...v0.3.11) (2025-11-05)
+
+
+
+
+### Bug Fixes:
+
+* properly type-cast NULL values in dynamic SQL expressions (#185) by [@Torkan](https://github.com/Torkan)
+
 ## [v0.3.10](https://github.com/ash-project/ash_sql/compare/v0.3.9...v0.3.10) (2025-10-29)
 
 
