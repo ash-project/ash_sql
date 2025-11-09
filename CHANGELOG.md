@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.12](https://github.com/ash-project/ash_sql/compare/v0.3.11...v0.3.12) (2025-11-09)
+
+
+
+
+### Bug Fixes:
+
+* preserve selected fields when wrapping in subquery for aggregates by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.3.11](https://github.com/ash-project/ash_sql/compare/v0.3.10...v0.3.11) (2025-11-05)
 
 
