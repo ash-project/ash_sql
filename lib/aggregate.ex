@@ -2502,7 +2502,28 @@ defmodule AshSql.Aggregate do
   end
 
   def wrap_in_subquery_for_aggregates(query) do
-    subquery_query = from(row in subquery(query), as: ^query.__ash_bindings__.root_binding)
+    resource = query.__ash_bindings__.resource
+    selected_by_default = Ash.Resource.Info.selected_by_default_attribute_names(resource)
+    selected_fields = extract_selected_fields(query, resource, selected_by_default)
+
+    all_attr_names =
+      resource
+      |> Ash.Resource.Info.attribute_names()
+      |> MapSet.to_list()
+
+    to_select =
+      Enum.reject(all_attr_names, &(&1 in selected_fields))
+
+    query_with_all_attrs =
+      from(row in query,
+        select_merge: struct(row, ^to_select)
+      )
+
+    subquery_query =
+      from(row in subquery(query_with_all_attrs),
+        as: ^query.__ash_bindings__.root_binding,
+        select: struct(row, ^selected_fields)
+      )
 
     bindings_without_aggregates =
       query.__ash_bindings__.bindings
@@ -2518,5 +2539,46 @@ defmodule AshSql.Aggregate do
       |> Map.delete(:__order__?)
 
     Map.put(subquery_query, :__ash_bindings__, new_bindings)
+  end
+
+  # Extract the fields that are actually selected (respects `take` clause)
+  defp extract_selected_fields(
+         %{select: %Ecto.Query.SelectExpr{expr: expr, take: take}},
+         resource,
+         all_attribute_names
+       ) do
+    # If there's a `take` clause, use that instead of parsing the expression
+    case take do
+      %{0 => {:struct, fields}} when is_list(fields) ->
+        fields
+
+      %{0 => {:map, fields}} when is_list(fields) ->
+        fields
+
+      _ ->
+        # No take, extract from expression
+        extract_fields_from_expr(expr, resource, all_attribute_names)
+        |> Enum.uniq()
+    end
+  end
+
+  defp extract_fields_from_expr(expr, resource, all_attribute_names) do
+    case expr do
+      {:&, [], [0]} ->
+        all_attribute_names
+
+      {:%{}, [], fields} ->
+        Enum.map(fields, fn {field_name, _} -> field_name end)
+
+      {:%, [], [_struct, {:%{}, [], fields}]} ->
+        Enum.map(fields, fn {field_name, _} -> field_name end)
+
+      {:merge, _, [sel1, sel2]} ->
+        extract_fields_from_expr(sel1, resource, all_attribute_names) ++
+          extract_fields_from_expr(sel2, resource, all_attribute_names)
+
+      _ ->
+        all_attribute_names
+    end
   end
 end

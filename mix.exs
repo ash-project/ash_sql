@@ -82,7 +82,7 @@ defmodule AshSql.MixProject do
     [
       {:ash, ash_version("~> 3.7")},
       {:ecto_sql, "~> 3.9"},
-      {:ecto, "~> 3.9"},
+      {:ecto, "~> 3.13 and >= 3.13.4"},
       # dev/test dependencies
       {:igniter, "~> 0.5", only: [:dev, :test]},
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
