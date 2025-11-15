@@ -2547,25 +2547,22 @@ defmodule AshSql.Aggregate do
          resource,
          all_attribute_names
        ) do
-    # If there's a `take` clause, use that instead of parsing the expression
-    case take do
-      %{0 => {:struct, fields}} when is_list(fields) ->
-        fields
-
-      %{0 => {:map, fields}} when is_list(fields) ->
-        fields
-
-      _ ->
-        # No take, extract from expression
-        extract_fields_from_expr(expr, resource, all_attribute_names)
-        |> Enum.uniq()
-    end
+    Enum.uniq(extract_fields_from_expr(expr, resource, take, all_attribute_names))
   end
 
-  defp extract_fields_from_expr(expr, resource, all_attribute_names) do
+  defp extract_fields_from_expr(expr, resource, take, all_attribute_names) do
     case expr do
-      {:&, [], [0]} ->
-        all_attribute_names
+      {:&, [], [ix]} ->
+        case take do
+          %{^ix => {:struct, fields}} when is_list(fields) ->
+            fields
+
+          %{^ix => {:map, fields}} when is_list(fields) ->
+            fields
+
+          _ ->
+            []
+        end
 
       {:%{}, [], fields} ->
         Enum.map(fields, fn {field_name, _} -> field_name end)
@@ -2574,10 +2571,12 @@ defmodule AshSql.Aggregate do
         Enum.map(fields, fn {field_name, _} -> field_name end)
 
       {:merge, _, [sel1, sel2]} ->
-        extract_fields_from_expr(sel1, resource, all_attribute_names) ++
-          extract_fields_from_expr(sel2, resource, all_attribute_names)
+        Enum.concat(
+          extract_fields_from_expr(sel1, resource, take, all_attribute_names),
+          extract_fields_from_expr(sel2, resource, take, all_attribute_names)
+        )
 
-      _ ->
+      _other ->
         all_attribute_names
     end
   end
