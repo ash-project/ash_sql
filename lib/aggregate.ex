@@ -2515,9 +2515,28 @@ defmodule AshSql.Aggregate do
       Enum.reject(all_attr_names, &(&1 in selected_fields))
 
     query_with_all_attrs =
-      from(row in query,
-        select_merge: struct(row, ^to_select)
-      )
+      case query.select do
+        %Ecto.Query.SelectExpr{expr: {:merge, _, [l, {:%{}, [], kw}]}} ->
+          put_in(
+            query.select.expr,
+            {:merge, [],
+             [
+               l,
+               {:%{}, [],
+                kw ++
+                  Enum.map(
+                    to_select,
+                    &{&1,
+                     {{:., [], [{:&, [], [query.__ash_bindings__.root_binding]}, &1]}, [], []}}
+                  )}
+             ]}
+          )
+
+        _ ->
+          from(row in query,
+            select_merge: struct(row, ^to_select)
+          )
+      end
 
     subquery_query =
       from(row in subquery(query_with_all_attrs),
