@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.13](https://github.com/ash-project/ash_sql/compare/v0.3.12...v0.3.13) (2025-11-16)
+
+
+
+
+### Bug Fixes:
+
+* correctly extract fields when `take` is present in aggregate by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.3.12](https://github.com/ash-project/ash_sql/compare/v0.3.11...v0.3.12) (2025-11-09)
 
 
