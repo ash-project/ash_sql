@@ -2579,6 +2579,9 @@ defmodule AshSql.Aggregate do
           %{^ix => {:map, fields}} when is_list(fields) ->
             fields
 
+          take when take == %{} ->
+            all_attribute_names
+
           _ ->
             []
         end
