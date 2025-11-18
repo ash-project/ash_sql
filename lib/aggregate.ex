@@ -73,7 +73,7 @@ defmodule AshSql.Aggregate do
           |> Enum.split_with(&already_added?(&1, query.__ash_bindings__, []))
 
         query =
-          if Enum.any?(already_computed_aggregates) do
+          if Enum.any?(already_computed_aggregates) && select? do
             query.__ash_bindings__.bindings
             |> Enum.filter(fn
               {_binding, %{type: :aggregate}} -> true
