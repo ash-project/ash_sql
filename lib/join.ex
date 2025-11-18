@@ -445,17 +445,24 @@ defmodule AshSql.Join do
         )
       end
     end)
-    |> Ash.Query.unset([:sort, :distinct, :select, :limit, :offset])
+    |> Ash.Query.unset([:distinct, :select, :limit, :offset])
     |> handle_attribute_multitenancy(tenant)
     |> hydrate_refs(context[:private][:actor])
     |> then(fn query ->
+      # if the relationship has a sort
+      # unset the sort that may have been added by the read action
+      # and only use the sort on the relationship
       if sort? do
-        Ash.Query.sort(query, relationship.sort)
+        query
+        |> Ash.Query.unset(:sort)
+        |> Ash.Query.sort(relationship.sort)
       else
-        Ash.Query.unset(query, :sort)
+        query
       end
     end)
+    |> Ash.Query.unset([:distinct, :select, :limit, :offset])
     |> set_has_parent_expr_context(relationship)
+    |> Ash.Query.unset([:distinct, :select, :limit, :offset])
     |> case do
       %{valid?: true} = related_query ->
         parent_bindings =
