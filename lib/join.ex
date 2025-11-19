@@ -460,9 +460,7 @@ defmodule AshSql.Join do
         query
       end
     end)
-    |> Ash.Query.unset([:distinct, :select, :limit, :offset])
     |> set_has_parent_expr_context(relationship)
-    |> Ash.Query.unset([:distinct, :select, :limit, :offset])
     |> case do
       %{valid?: true} = related_query ->
         parent_bindings =
