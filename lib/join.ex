@@ -449,15 +449,13 @@ defmodule AshSql.Join do
     |> handle_attribute_multitenancy(tenant)
     |> hydrate_refs(context[:private][:actor])
     |> then(fn query ->
-      # if the relationship has a sort
-      # unset the sort that may have been added by the read action
-      # and only use the sort on the relationship
       if sort? do
         query
         |> Ash.Query.unset(:sort)
-        |> Ash.Query.sort(relationship.sort)
+        |> Ash.Query.sort(relationship.sort || query.sort)
       else
         query
+        |> Ash.Query.unset(:sort)
       end
     end)
     |> set_has_parent_expr_context(relationship)
