@@ -445,14 +445,17 @@ defmodule AshSql.Join do
         )
       end
     end)
-    |> Ash.Query.unset([:sort, :distinct, :select, :limit, :offset])
+    |> Ash.Query.unset([:distinct, :select, :limit, :offset])
     |> handle_attribute_multitenancy(tenant)
     |> hydrate_refs(context[:private][:actor])
     |> then(fn query ->
       if sort? do
-        Ash.Query.sort(query, relationship.sort)
+        query
+        |> Ash.Query.unset(:sort)
+        |> Ash.Query.sort(relationship.sort || query.sort)
       else
-        Ash.Query.unset(query, :sort)
+        query
+        |> Ash.Query.unset(:sort)
       end
     end)
     |> set_has_parent_expr_context(relationship)
