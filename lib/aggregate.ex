@@ -2504,7 +2504,10 @@ defmodule AshSql.Aggregate do
   def wrap_in_subquery_for_aggregates(query) do
     resource = query.__ash_bindings__.resource
     selected_by_default = Ash.Resource.Info.selected_by_default_attribute_names(resource)
-    selected_fields = extract_selected_fields(query, resource, selected_by_default)
+
+    selected_fields =
+      query.__ash_bindings__[:select] ||
+        extract_selected_fields(query, resource, selected_by_default)
 
     all_attr_names =
       resource
@@ -2541,7 +2544,14 @@ defmodule AshSql.Aggregate do
     subquery_query =
       from(row in subquery(query_with_all_attrs),
         as: ^query.__ash_bindings__.root_binding,
-        select: struct(row, ^selected_fields)
+        select:
+          struct(
+            row,
+            ^Enum.concat(
+              selected_fields,
+              query.__ash_bindings__[:select_calculations] || []
+            )
+          )
       )
 
     bindings_without_aggregates =
@@ -2560,7 +2570,6 @@ defmodule AshSql.Aggregate do
     Map.put(subquery_query, :__ash_bindings__, new_bindings)
   end
 
-  # Extract the fields that are actually selected (respects `take` clause)
   defp extract_selected_fields(
          %{select: %Ecto.Query.SelectExpr{expr: expr, take: take}},
          resource,

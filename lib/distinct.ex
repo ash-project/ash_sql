@@ -86,6 +86,14 @@ defmodule AshSql.Distinct do
                    fn ash_bindings ->
                      ash_bindings
                      |> Map.put(:__order__?, query.__ash_bindings__[:__order__?] || false)
+                     |> Map.put(
+                       :select_calculations,
+                       query.__ash_bindings__[:select_calculations]
+                     )
+                     |> Map.put(
+                       :select,
+                       query.__ash_bindings__[:select]
+                     )
                      |> Map.update(
                        :calculations_require_rewrite,
                        calculations_require_rewrite,

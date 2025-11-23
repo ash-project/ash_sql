@@ -324,6 +324,8 @@ defmodule AshSql.Query do
                   %{
                     calculations_require_rewrite: calculations_require_rewrite,
                     aggregates_require_rewrite: aggregates_require_rewrite,
+                    select: query.__ash_bindings__[:select],
+                    select_calculations: query.__ash_bindings__[:select_calculations],
                     load_aggregates: query.__ash_bindings__[:load_aggregates]
                   },
                   fn _, v1, v2 -> Map.merge(v1, v2) end
