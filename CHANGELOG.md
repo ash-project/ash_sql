@@ -11,6 +11,21 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.14](https://github.com/ash-project/ash_sql/compare/v0.3.13...v0.3.14) (2025-11-23)
+
+
+
+
+### Bug Fixes:
+
+* ensure calculations are selected on aggregate subqueries by [@zachdaniel](https://github.com/zachdaniel)
+
+* respect read action sort if relationship does not specify one (#194) by [@barnabasJ](https://github.com/barnabasJ) [(#194)](https://github.com/ash-project/ash_sql/pull/194)
+
+* only merge already-computed aggregates when select? is true (#193) by Alan Heywood [(#193)](https://github.com/ash-project/ash_sql/pull/193)
+
+* extract_fields_from_expr returns [] instead of all_attribute_names when a query selects all fields ({:&, [], [ix]}) but has no take clause (#192) by Daniel Gollings [(#192)](https://github.com/ash-project/ash_sql/pull/192)
+
 ## [v0.3.13](https://github.com/ash-project/ash_sql/compare/v0.3.12...v0.3.13) (2025-11-16)
 
 
