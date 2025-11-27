@@ -212,6 +212,7 @@ defmodule AshSql.Calculation do
       end
 
     query = Ecto.Query.select_merge(query, ^calcs)
-    put_in(query.__ash_bindings__[:select_calculations], Map.keys(calcs))
+    select_calculations = Map.keys(calcs) |> Enum.reject(&(&1 == :calculations))
+    put_in(query.__ash_bindings__[:select_calculations], select_calculations)
   end
 end
