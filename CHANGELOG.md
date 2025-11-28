@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.15](https://github.com/ash-project/ash_sql/compare/v0.3.14...v0.3.15) (2025-11-28)
+
+
+
+
+### Bug Fixes:
+
+* ensure that filtered aggregates are selected in queries by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.3.14](https://github.com/ash-project/ash_sql/compare/v0.3.13...v0.3.14) (2025-11-23)
 
 
