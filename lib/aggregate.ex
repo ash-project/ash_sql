@@ -80,8 +80,15 @@ defmodule AshSql.Aggregate do
               _ -> false
             end)
             |> Enum.reduce(query, fn {agg_binding, %{aggregates: aggs}}, q ->
+              q = update_in(q.__ash_bindings__, &Map.put_new(&1, :select_aggregates, []))
+
               Enum.reduce(aggs, q, fn agg, q ->
                 if Enum.any?(already_computed_aggregates, &(&1.name == agg.name)) do
+                  q =
+                    update_in(q.__ash_bindings__.select_aggregates, fn select_aggs ->
+                      [agg.name | select_aggs]
+                    end)
+
                   if agg.default_value do
                     from(row in q,
                       select_merge: %{
@@ -2547,10 +2554,11 @@ defmodule AshSql.Aggregate do
         select:
           struct(
             row,
-            ^Enum.concat(
+            ^Enum.concat([
               selected_fields,
-              query.__ash_bindings__[:select_calculations] || []
-            )
+              query.__ash_bindings__[:select_calculations] || [],
+              query.__ash_bindings__[:select_aggregates] || []
+            ])
           )
       )
 
