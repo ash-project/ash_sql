@@ -298,8 +298,19 @@ defmodule AshSql.Query do
               {calculations_require_rewrite, aggregates_require_rewrite, query} =
                 rewrite_nested_selects(query)
 
+              parent_ref_attrs =
+                query.__ash_bindings__[:load_aggregates]
+                |> List.wrap()
+                |> extract_aggregate_parent_ref_attributes(resource)
+
+              query_with_parent_refs =
+                Enum.reduce(parent_ref_attrs, query, fn attr, query ->
+                  root_binding = query.__ash_bindings__.root_binding
+                  from(row in query, select_merge: %{^attr => field(as(^root_binding), ^attr)})
+                end)
+
               query_with_order =
-                from(row in query, select_merge: %{__order__: over(row_number(), :order)})
+                from(row in query_with_parent_refs, select_merge: %{__order__: over(row_number(), :order)})
 
               query_without_limit_and_offset =
                 query_with_order
@@ -617,6 +628,46 @@ defmodule AshSql.Query do
         |> Map.put(dest, Map.get(subfield_values, source))
         |> Map.delete(source)
       end)
+    end)
+  end
+
+  defp extract_aggregate_parent_ref_attributes(aggregates, resource) do
+    aggregates
+    |> Enum.flat_map(fn aggregate ->
+      case aggregate.relationship_path do
+        [first_rel_name | _] ->
+          relationship = Ash.Resource.Info.relationship(resource, first_rel_name)
+
+          if relationship && relationship.filter do
+            extract_parent_attrs_from_filter(relationship.filter)
+          else
+            []
+          end
+
+        _ ->
+          []
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  defp extract_parent_attrs_from_filter(filter) do
+    Ash.Filter.flat_map(filter, fn
+      %Ash.Query.Parent{expr: expr} ->
+        expr
+        |> Ash.Filter.list_refs()
+        |> Enum.filter(&Enum.empty?(&1.relationship_path))
+        |> Enum.map(fn ref ->
+          case ref.attribute do
+            %{name: name} -> name
+            name when is_atom(name) -> name
+            _ -> nil
+          end
+        end)
+        |> Enum.reject(&is_nil/1)
+
+      _other ->
+        []
     end)
   end
 end
