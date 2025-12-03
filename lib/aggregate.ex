@@ -2562,17 +2562,15 @@ defmodule AshSql.Aggregate do
           )
       )
 
-    bindings_without_aggregates =
-      query.__ash_bindings__.bindings
-      |> Enum.reject(fn
-        {_binding, %{type: :aggregate}} -> true
-        _ -> false
-      end)
-      |> Map.new()
+    root_binding = query.__ash_bindings__.root_binding
+
+    only_root_binding = %{
+      root_binding => query.__ash_bindings__.bindings[root_binding]
+    }
 
     new_bindings =
       query.__ash_bindings__
-      |> Map.put(:bindings, bindings_without_aggregates)
+      |> Map.put(:bindings, only_root_binding)
       |> Map.delete(:__order__?)
 
     Map.put(subquery_query, :__ash_bindings__, new_bindings)
