@@ -301,7 +301,7 @@ defmodule AshSql.Query do
               parent_ref_attrs =
                 query.__ash_bindings__[:load_aggregates]
                 |> List.wrap()
-                |> extract_aggregate_parent_ref_attributes(resource)
+                |> extract_aggregate_parent_ref_attributes(resource, query)
 
               query_with_parent_refs =
                 Enum.reduce(parent_ref_attrs, query, fn attr, query ->
@@ -310,7 +310,9 @@ defmodule AshSql.Query do
                 end)
 
               query_with_order =
-                from(row in query_with_parent_refs, select_merge: %{__order__: over(row_number(), :order)})
+                from(row in query_with_parent_refs,
+                  select_merge: %{__order__: over(row_number(), :order)}
+                )
 
               query_without_limit_and_offset =
                 query_with_order
@@ -631,18 +633,26 @@ defmodule AshSql.Query do
     end)
   end
 
-  defp extract_aggregate_parent_ref_attributes(aggregates, resource) do
+  defp extract_aggregate_parent_ref_attributes(aggregates, resource, query) do
     aggregates
     |> Enum.flat_map(fn aggregate ->
       case aggregate.relationship_path do
         [first_rel_name | _] ->
           relationship = Ash.Resource.Info.relationship(resource, first_rel_name)
 
+          rel_fields =
+            if !Map.get(relationship, :no_attributes?) && Map.get(relationship, :source_attribute) do
+              [relationship.source_attribute]
+            else
+              []
+            end
+
           if relationship && relationship.filter do
-            extract_parent_attrs_from_filter(relationship.filter)
+            extract_parent_attrs_from_filter(relationship.filter, query)
           else
             []
           end
+          |> Enum.concat(rel_fields)
 
         _ ->
           []
@@ -651,8 +661,18 @@ defmodule AshSql.Query do
     |> Enum.uniq()
   end
 
-  defp extract_parent_attrs_from_filter(filter) do
-    Ash.Filter.flat_map(filter, fn
+  defp extract_parent_attrs_from_filter(filter, query) do
+    filter
+    |> Ash.Actions.Read.add_calc_context_to_filter(
+      query.__ash_bindings__[:context][:private][:actor],
+      query.__ash_bindings__[:context][:private][:authorize?],
+      query.__ash_bindings__[:context][:private][:tenant],
+      query.__ash_bindings__[:context][:private][:tracer],
+      query.__ash_bindings__[:domain],
+      query.__ash_bindings__.resource,
+      parent_stack: query.__ash_bindings__[:parent_resources] || []
+    )
+    |> Ash.Filter.flat_map(fn
       %Ash.Query.Parent{expr: expr} ->
         expr
         |> Ash.Filter.list_refs()
