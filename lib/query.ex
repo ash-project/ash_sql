@@ -521,10 +521,14 @@ defmodule AshSql.Query do
             {String.to_existing_atom("__calculations__#{name}"), name}
           end)
 
-        new_query = %{
-          query
-          | select: %{select | expr: {:merge, [], [merge_base, {:%{}, [], merging}]}}
-        }
+        new_query =
+          %{
+            query
+            | select: %{select | expr: {:merge, [], [merge_base, {:%{}, [], merging}]}}
+          }
+          |> Map.update!(:__ash_bindings__, fn bindings ->
+            Map.update(bindings, :select_calculations, [], &(&1 -- [:calculations]))
+          end)
 
         {calculation_merges, aggregate_merges, new_query}
 
