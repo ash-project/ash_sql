@@ -11,6 +11,21 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.3.16](https://github.com/ash-project/ash_sql/compare/v0.3.15...v0.3.16) (2025-12-24)
+
+
+
+
+### Bug Fixes:
+
+* don't select `:calculations` in subquery if its been merged by [@zachdaniel](https://github.com/zachdaniel)
+
+* expand aggregate expressions for ref finding by [@zachdaniel](https://github.com/zachdaniel)
+
+* aggregate with parent ref in relationship filter and sorting on relationship field (#197) by Alan Heywood [(#197)](https://github.com/ash-project/ash_sql/pull/197)
+
+* binding error when loading aggregate (#196) by Alan Heywood [(#196)](https://github.com/ash-project/ash_sql/pull/196)
+
 ## [v0.3.15](https://github.com/ash-project/ash_sql/compare/v0.3.14...v0.3.15) (2025-11-28)
 
 
