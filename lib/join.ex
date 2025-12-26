@@ -428,7 +428,8 @@ defmodule AshSql.Join do
     |> Ash.Query.set_context(relationship.context)
     |> Ash.Query.do_filter(relationship.filter, parent_stack: parent_resources)
     |> then(fn query ->
-      if Map.get(relationship, :from_many?) && filter_subquery? do
+      if (Map.get(relationship, :from_many?) || not is_nil(Map.get(relationship, :limit))) &&
+           filter_subquery? do
         query
       else
         Ash.Query.do_filter(query, filter, parent_stack: parent_resources)
@@ -568,6 +569,48 @@ defmodule AshSql.Join do
         query
       end
     else
+      if opts[:select_star?] do
+        from(row in Ecto.Query.exclude(query, :select), select: 1)
+      else
+        query
+      end
+    end
+  end
+
+  defp limit_from_many(
+         query,
+         %{limit: limit, destination: destination},
+         filter,
+         filter_subquery?,
+         opts
+       )
+       when is_integer(limit) do
+    # Check if query has parent expressions - if so, we can't wrap in a non-lateral subquery
+    # because parent references won't resolve across the subquery boundary
+    has_parent_expr? = !!query.__ash_bindings__.context[:data_layer][:has_parent_expr?]
+
+    if filter_subquery? && !has_parent_expr? do
+      # Wrap the limited query in a subquery, then apply filter on top
+      query =
+        from(row in Ecto.Query.subquery(from(row in query, limit: ^limit)),
+          as: ^query.__ash_bindings__.root_binding
+        )
+        |> Map.put(:__ash_bindings__, query.__ash_bindings__)
+        |> AshSql.Bindings.default_bindings(
+          destination,
+          query.__ash_bindings__.sql_behaviour
+        )
+
+      {:ok, query} = AshSql.Filter.filter(query, filter, query.__ash_bindings__.resource)
+
+      if opts[:select_star?] do
+        from(row in Ecto.Query.exclude(query, :select), select: 1)
+      else
+        query
+      end
+    else
+      # When has_parent_expr?, we can't apply the limit in exists subquery
+      # Fall through to the default clause which just applies select_star if needed
       if opts[:select_star?] do
         from(row in Ecto.Query.exclude(query, :select), select: 1)
       else
