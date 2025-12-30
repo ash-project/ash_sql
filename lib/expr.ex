@@ -1275,6 +1275,53 @@ defmodule AshSql.Expr do
          embedded?,
          acc,
          type
+       )
+       when mod in [Ash.Query.Operator.DistinctFrom, Ash.Query.Operator.NotDistinctFrom] do
+    {left_expr, acc} =
+      do_dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        type
+      )
+
+    {right_expr, acc} =
+      do_dynamic_expr(
+        query,
+        right,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        type
+      )
+
+    dynamic =
+      case operator do
+        :is_distinct_from ->
+          Ecto.Query.dynamic(fragment("? IS DISTINCT FROM ?", ^left_expr, ^right_expr))
+
+        :is_not_distinct_from ->
+          Ecto.Query.dynamic(fragment("? IS NOT DISTINCT FROM ?", ^left_expr, ^right_expr))
+      end
+
+    {dynamic, acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %mod{
+           __predicate__?: _,
+           left: left,
+           right: right,
+           embedded?: pred_embedded?,
+           operator: operator
+         },
+         bindings,
+         embedded?,
+         acc,
+         type
        ) do
     {[left_type, right_type], type} =
       case operator do
