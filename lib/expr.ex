@@ -230,7 +230,7 @@ defmodule AshSql.Expr do
           Ecto.Query.dynamic(fragment("(? IS DISTINCT FROM ?)", ^left_expr, ^right_expr))
 
         IsNotDistinctFrom ->
-          Ecto.Query.dynamic(fragment("? IS NOT DISTINCT FROM ?", ^left_expr, ^right_expr))
+          Ecto.Query.dynamic(fragment("(? IS NOT DISTINCT FROM ?)", ^left_expr, ^right_expr))
       end
 
     {dynamic, acc}
