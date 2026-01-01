@@ -27,6 +27,8 @@ defmodule AshSql.Expr do
     Has,
     If,
     Intersects,
+    IsDistinctFrom,
+    IsNotDistinctFrom,
     Lazy,
     Length,
     Now,
@@ -193,6 +195,45 @@ defmodule AshSql.Expr do
       )
 
     {Ecto.Query.dynamic(is_nil(^left_expr) == ^right_expr), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %mod{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       )
+       when mod in [IsDistinctFrom, IsNotDistinctFrom] do
+    {left_expr, acc} =
+      do_dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
+
+    {right_expr, acc} =
+      do_dynamic_expr(
+        query,
+        right,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
+
+    dynamic =
+      case mod do
+        IsDistinctFrom ->
+          Ecto.Query.dynamic(fragment("(? IS DISTINCT FROM ?)", ^left_expr, ^right_expr))
+
+        IsNotDistinctFrom ->
+          Ecto.Query.dynamic(fragment("(? IS NOT DISTINCT FROM ?)", ^left_expr, ^right_expr))
+      end
+
+    {dynamic, acc}
   end
 
   defp default_dynamic_expr(
