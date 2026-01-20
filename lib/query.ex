@@ -644,6 +644,10 @@ defmodule AshSql.Query do
         [first_rel_name | _] ->
           relationship = Ash.Resource.Info.relationship(resource, first_rel_name)
 
+          if is_nil(relationship) do
+            raise "No such relationship #{inspect(resource)}.#{relationship}. aggregates: #{inspect(aggregates)}"
+          end
+
           rel_fields =
             if !Map.get(relationship, :no_attributes?) && Map.get(relationship, :source_attribute) do
               [relationship.source_attribute]
@@ -651,7 +655,7 @@ defmodule AshSql.Query do
               []
             end
 
-          if relationship && relationship.filter do
+          if relationship.filter do
             extract_parent_attrs_from_filter(relationship.filter, query)
           else
             []
