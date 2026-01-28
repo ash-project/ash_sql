@@ -2548,6 +2548,24 @@ defmodule AshSql.Aggregate do
           )
       end
 
+    # Flatten nested calculations/aggregates maps before creating subquery
+    # Ecto doesn't allow nested maps in subquery select expressions
+    {calculations_require_rewrite, aggregates_require_rewrite, query_with_all_attrs} =
+      AshSql.Query.rewrite_nested_selects(query_with_all_attrs)
+
+    # After flattening, we need to:
+    # 1. Use the updated select_calculations from the rewritten query (which excludes :calculations)
+    # 2. Add the flattened calculation/aggregate field names to the select
+    flattened_calc_fields = Map.keys(calculations_require_rewrite)
+    flattened_agg_fields = Map.keys(aggregates_require_rewrite)
+
+    # Get select_calculations from the rewritten query (it has :calculations removed)
+    select_calculations =
+      (query_with_all_attrs.__ash_bindings__[:select_calculations] || []) -- [:calculations]
+
+    select_aggregates =
+      (query_with_all_attrs.__ash_bindings__[:select_aggregates] || []) -- [:aggregates]
+
     subquery_query =
       from(row in subquery(query_with_all_attrs),
         as: ^query.__ash_bindings__.root_binding,
@@ -2556,8 +2574,10 @@ defmodule AshSql.Aggregate do
             row,
             ^Enum.concat([
               selected_fields,
-              query.__ash_bindings__[:select_calculations] || [],
-              query.__ash_bindings__[:select_aggregates] || []
+              select_calculations,
+              select_aggregates,
+              flattened_calc_fields,
+              flattened_agg_fields
             ])
           )
       )
@@ -2572,6 +2592,16 @@ defmodule AshSql.Aggregate do
       query.__ash_bindings__
       |> Map.put(:bindings, only_root_binding)
       |> Map.delete(:__order__?)
+      |> Map.update(
+        :calculations_require_rewrite,
+        calculations_require_rewrite,
+        &Map.merge(&1, calculations_require_rewrite)
+      )
+      |> Map.update(
+        :aggregates_require_rewrite,
+        aggregates_require_rewrite,
+        &Map.merge(&1, aggregates_require_rewrite)
+      )
 
     Map.put(subquery_query, :__ash_bindings__, new_bindings)
   end
