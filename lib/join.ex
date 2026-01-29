@@ -1034,7 +1034,7 @@ defmodule AshSql.Join do
           used_aggregates,
           relationship.destination,
           false,
-          initial_ash_bindings.current,
+          initial_ash_bindings.current + 1,
           {query.__ash_bindings__.resource, full_path}
         )
       end
