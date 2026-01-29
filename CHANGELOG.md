@@ -11,6 +11,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.4.1](https://github.com/ash-project/ash_sql/compare/v0.4.0...v0.4.1) (2026-01-29)
+
+
+
+
+### Bug Fixes:
+
+* `has_many` with `limit` and `sort` not respected in `exists` query filters (#198) by sevenseacat [(#198)](https://github.com/ash-project/ash_sql/pull/198)
+
+* issues with multitenancy bypass in related queries (#205) by danielatdpg [(#205)](https://github.com/ash-project/ash_sql/pull/205)
+
 ## [v0.4.0](https://github.com/ash-project/ash_sql/compare/v0.3.16...v0.4.0) (2026-01-29)
 
 
