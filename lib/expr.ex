@@ -2414,7 +2414,7 @@ defmodule AshSql.Expr do
       AshSql.Join.related_subquery(first_relationship, query,
         filter: filter,
         filter_subquery?: true,
-        sort?: Map.get(first_relationship, :from_many?),
+        sort?: Map.get(first_relationship, :from_many?) || not is_nil(first_relationship.sort),
         start_bindings_at: 1,
         select_star?: !Map.get(first_relationship, :manual),
         in_group?: true,
