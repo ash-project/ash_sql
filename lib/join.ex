@@ -407,9 +407,7 @@ defmodule AshSql.Join do
     filter_subquery? = Keyword.get(opts, :filter_subquery?, false)
     parent_resources = Keyword.get(opts, :parent_stack, [relationship.source])
 
-    read_action =
-      relationship.read_action ||
-        Ash.Resource.Info.primary_action!(relationship.destination, :read).name
+    read_action = get_read_action(relationship)
 
     context = Map.delete(query.__ash_bindings__.context, :data_layer)
 
@@ -436,17 +434,17 @@ defmodule AshSql.Join do
     end)
     |> Ash.Query.do_filter(opts[:apply_filter], parent_stack: parent_resources)
     |> then(fn query ->
-      if query.__validated_for_action__ == read_action do
+      if query.__validated_for_action__ == read_action.name do
         query
       else
-        Ash.Query.for_read(query, read_action, %{},
+        Ash.Query.for_read(query, read_action.name, %{},
           actor: context[:private][:actor],
           tenant: context[:private][:tenant]
         )
       end
     end)
     |> Ash.Query.unset([:distinct, :select, :limit, :offset])
-    |> handle_attribute_multitenancy(tenant)
+    |> handle_attribute_multitenancy(tenant, read_action)
     |> hydrate_refs(context[:private][:actor])
     |> then(fn query ->
       if sort? do
@@ -507,8 +505,9 @@ defmodule AshSql.Join do
   end
 
   @doc false
-  def handle_attribute_multitenancy(query, tenant) do
-    if tenant && Ash.Resource.Info.multitenancy_strategy(query.resource) == :attribute do
+  def handle_attribute_multitenancy(query, tenant, read_action \\ nil) do
+    if tenant && Ash.Resource.Info.multitenancy_strategy(query.resource) == :attribute &&
+         (is_nil(read_action) || read_action.multitenancy not in [:bypass, :bypass_all]) do
       multitenancy_attribute = Ash.Resource.Info.multitenancy_attribute(query.resource)
 
       if multitenancy_attribute do
@@ -1366,5 +1365,13 @@ defmodule AshSql.Join do
   def maybe_apply_filter(query, root_query, bindings, filter) do
     {dynamic, acc} = AshSql.Expr.dynamic_expr(root_query, filter, bindings, true)
     {from(row in query, where: ^dynamic), acc}
+  end
+
+  defp get_read_action(%{read_action: nil} = rel) do
+    Ash.Resource.Info.primary_action!(rel.destination, :read)
+  end
+
+  defp get_read_action(rel) do
+    Ash.Resource.Info.action(rel.destination, rel.read_action)
   end
 end
