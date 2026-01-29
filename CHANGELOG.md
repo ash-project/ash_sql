@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.4.2](https://github.com/ash-project/ash_sql/compare/v0.4.1...v0.4.2) (2026-01-29)
+
+
+
+
+### Bug Fixes:
+
+* properly increment aggregate bindings across joins by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.4.1](https://github.com/ash-project/ash_sql/compare/v0.4.0...v0.4.1) (2026-01-29)
 
 
