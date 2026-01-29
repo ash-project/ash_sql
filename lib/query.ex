@@ -645,7 +645,8 @@ defmodule AshSql.Query do
           relationship = Ash.Resource.Info.relationship(resource, first_rel_name)
 
           rel_fields =
-            if !Map.get(relationship, :no_attributes?) && Map.get(relationship, :source_attribute) do
+            if relationship && !Map.get(relationship, :no_attributes?) &&
+                 Map.get(relationship, :source_attribute) do
               [relationship.source_attribute]
             else
               []
