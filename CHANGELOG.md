@@ -11,6 +11,23 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.4.0](https://github.com/ash-project/ash_sql/compare/v0.3.16...v0.4.0) (2026-01-29)
+
+
+
+
+### Features:
+
+* add support for is_distinct_from and is_not_distinct_from functions (#200) by [@jechol](https://github.com/jechol) [(#200)](https://github.com/ash-project/ash_sql/pull/200)
+
+* add SQL generation for is_distinct_from operators by [@jechol](https://github.com/jechol) [(#200)](https://github.com/ash-project/ash_sql/pull/200)
+
+* add support for is_distinct_from and is_not_distinct_from functions by [@jechol](https://github.com/jechol) [(#200)](https://github.com/ash-project/ash_sql/pull/200)
+
+### Bug Fixes:
+
+* flatten nested calculation/aggregate maps before wrapping in subquery for aggregates (#206) by sevenseacat [(#206)](https://github.com/ash-project/ash_sql/pull/206)
+
 ## [v0.3.16](https://github.com/ash-project/ash_sql/compare/v0.3.15...v0.3.16) (2025-12-24)
 
 
