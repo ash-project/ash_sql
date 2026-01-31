@@ -104,6 +104,60 @@ defmodule AshSql.Atomics do
     end
   end
 
+  @doc """
+  Converts atomics to subquery values suitable for insert_all.
+
+  Returns `{:ok, map}` where map contains `{field => subquery}` pairs.
+  Each subquery returns a single value that can be used as a field value in insert_all.
+
+  All changesets in a batch share the same atomics (Ash groups by atomics before dispatch).
+  """
+  def atomics_to_insert_values(_resource, _query, []), do: {:ok, %{}}
+
+  def atomics_to_insert_values(resource, query, atomics) do
+    atomics = type_atomics(query.__ash_bindings__.sql_behaviour, resource, atomics)
+
+    Enum.reduce_while(atomics, {:ok, %{}}, fn {field, expr}, {:ok, acc} ->
+      attribute = Ash.Resource.Info.attribute(resource, field)
+
+      expr = unwrap_type(expr)
+
+      expr =
+        if AshSql.Calculation.map_type?(attribute.type, attribute.constraints || []) do
+          expr
+        else
+          maybe_cast_atomic_expr(
+            expr,
+            attribute,
+            query.__ash_bindings__.sql_behaviour,
+            resource
+          )
+        end
+
+      type =
+        case query.__ash_bindings__.sql_behaviour.storage_type(resource, attribute.name) do
+          nil -> {attribute.type, attribute.constraints}
+          storage_type -> storage_type
+        end
+
+      case AshSql.Expr.dynamic_expr(query, expr, query.__ash_bindings__, false, type) do
+        {dynamic, _acc} ->
+          subquery =
+            Ecto.Query.from(row in fragment("(VALUES(1))"), select: ^dynamic)
+            |> Map.put(:__ash_bindings__, query.__ash_bindings__)
+
+          {:cont, {:ok, Map.put(acc, field, subquery)}}
+
+        other ->
+          {:halt, other}
+      end
+    end)
+  end
+
+  defp unwrap_type(%Ash.Query.Function.Type{arguments: [expr | _]}), do: expr
+  defp unwrap_type(%Ash.Query.Call{name: :type, args: [expr | _]}), do: expr
+  defp unwrap_type(expr), do: expr
+
   def set_subquery_prefix(sub_query, query) do
     %{
       sub_query
