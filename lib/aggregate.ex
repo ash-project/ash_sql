@@ -1890,7 +1890,13 @@ defmodule AshSql.Aggregate do
     has_sort? = has_sort?(aggregate.query)
 
     array_agg =
-      query.__ash_bindings__.sql_behaviour.list_aggregate(aggregate.query.resource)
+      if aggregate.include_nil? do
+        # any_value() ignores NULLs by design in PostgreSQL, so we must use
+        # array_agg with [1] indexing when include_nil? is true
+        "array_agg"
+      else
+        query.__ash_bindings__.sql_behaviour.list_aggregate(aggregate.query.resource)
+      end
 
     {sorted, include_nil_filter_field, query} =
       if has_sort? || first_relationship.sort not in [nil, []] do
