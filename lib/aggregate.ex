@@ -137,7 +137,12 @@ defmodule AshSql.Aggregate do
         result =
           remaining_aggregates
           |> Enum.group_by(fn aggregate ->
-            {aggregate.relationship_path || [], aggregate.resource, aggregate.join_filters || %{},
+            expanded_path =
+              aggregate.resource
+              |> AshSql.Join.relationship_path_to_relationships(aggregate.relationship_path)
+              |> Enum.map(& &1.name)
+
+            {expanded_path || [], aggregate.resource, aggregate.join_filters || %{},
              aggregate.query.action.name}
           end)
           |> Enum.flat_map(fn {{path, resource, join_filters, read_action}, aggregates} ->
