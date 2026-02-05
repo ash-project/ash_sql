@@ -331,7 +331,15 @@ defmodule AshSql.Join do
       raise "no such relationship #{inspect(resource)}.#{name}"
     end
 
-    relationship_path_to_relationships(relationship.destination, rest, [relationship | acc])
+    case Map.get(relationship, :through) do
+      through_path when is_list(through_path) ->
+        relationships = relationship_path_to_relationships(resource, through_path, [])
+        destination = Map.get(List.last(relationships) || relationship, :destination)
+        relationship_path_to_relationships(destination, rest, Enum.reverse(relationships) ++ acc)
+
+      _ ->
+        relationship_path_to_relationships(relationship.destination, rest, [relationship | acc])
+    end
   end
 
   def related_subquery(
@@ -491,9 +499,18 @@ defmodule AshSql.Join do
                 ecto_query
               end
 
+            resource_for_prefix =
+              case relationship do
+                %{type: :many_to_many, through: through} when not is_list(through) ->
+                  through
+
+                _ ->
+                  relationship.destination
+              end
+
             {:ok,
              ecto_query
-             |> set_join_prefix(query, Map.get(relationship, :through, relationship.destination))
+             |> set_join_prefix(query, resource_for_prefix)
              |> Ecto.Query.exclude(:select)}
 
           {:error, error} ->
