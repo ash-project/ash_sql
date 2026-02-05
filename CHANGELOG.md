@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.4.4](https://github.com/ash-project/ash_sql/compare/v0.4.3...v0.4.4) (2026-02-05)
+
+
+
+
+### Bug Fixes:
+
+* use `array_agg` instead of `any_value` when `include_nil?` is true (#210) by sevenseacat [(#210)](https://github.com/ash-project/ash_sql/pull/210)
+
 ## [v0.4.3](https://github.com/ash-project/ash_sql/compare/v0.4.2...v0.4.3) (2026-02-03)
 
 
