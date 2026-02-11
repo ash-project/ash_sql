@@ -523,109 +523,15 @@ defmodule AshSql.Aggregate do
           |> Ecto.Query.select(%{})
 
         subquery =
-          if Map.get(first_relationship, :no_attributes?) do
-            subquery
-          else
-            if first_relationship.type == :many_to_many do
-              join_relationship_struct =
-                Ash.Resource.Info.relationship(
-                  first_relationship.source,
-                  first_relationship.join_relationship
-                )
-
-              {:ok, through} =
-                AshSql.Join.related_subquery(
-                  join_relationship_struct,
-                  query
-                )
-
-              field = first_relationship.source_attribute_on_join_resource
-
-              subquery =
-                from(sub in subquery,
-                  join: through in ^through,
-                  as: ^query.__ash_bindings__.current,
-                  on:
-                    field(
-                      through,
-                      ^first_relationship.destination_attribute_on_join_resource
-                    ) ==
-                      field(sub, ^first_relationship.destination_attribute),
-                  select_merge: map(through, ^[field]),
-                  group_by:
-                    field(
-                      through,
-                      ^first_relationship.source_attribute_on_join_resource
-                    ),
-                  distinct:
-                    field(
-                      through,
-                      ^first_relationship.source_attribute_on_join_resource
-                    ),
-                  where:
-                    field(
-                      parent_as(^source_binding),
-                      ^first_relationship.source_attribute
-                    ) ==
-                      field(
-                        through,
-                        ^first_relationship.source_attribute_on_join_resource
-                      )
-                )
-
-              AshSql.Join.set_join_prefix(
-                subquery,
-                %{query | prefix: tenant},
-                first_relationship.destination
-              )
-            else
-              field = first_relationship.destination_attribute
-
-              if Map.get(first_relationship, :manual) do
-                {module, opts} = first_relationship.manual
-
-                from(row in subquery,
-                  group_by: field(row, ^field),
-                  select_merge: %{^field => field(row, ^field)}
-                )
-
-                subquery =
-                  from(row in subquery, distinct: true)
-
-                {:ok, subquery} =
-                  apply(
-                    module,
-                    query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function(),
-                    [
-                      opts,
-                      source_binding,
-                      current_binding - 1,
-                      subquery
-                    ]
-                  )
-
-                AshSql.Join.set_join_prefix(
-                  subquery,
-                  %{query | prefix: tenant},
-                  first_relationship.destination
-                )
-              else
-                from(row in subquery,
-                  group_by: field(row, ^field),
-                  select_merge: %{^field => field(row, ^field)},
-                  where:
-                    field(
-                      parent_as(^source_binding),
-                      ^first_relationship.source_attribute
-                    ) ==
-                      field(
-                        as(^base_binding),
-                        ^first_relationship.destination_attribute
-                      )
-                )
-              end
-            end
-          end
+          apply_relationship_subquery(
+            subquery,
+            first_relationship,
+            query,
+            tenant,
+            source_binding,
+            current_binding,
+            base_binding
+          )
 
         subquery =
           AshSql.Join.set_join_prefix(
@@ -683,6 +589,144 @@ defmodule AshSql.Aggregate do
           first_relationship
         )
       end
+    )
+  end
+
+  defp apply_relationship_subquery(
+         subquery,
+         %{manual: {module, opts}} = rel,
+         query,
+         tenant,
+         source_binding,
+         current_binding,
+         _base_binding
+       ) do
+    field = rel.destination_attribute
+
+    from(row in subquery,
+      group_by: field(row, ^field),
+      select_merge: %{^field => field(row, ^field)}
+    )
+
+    subquery =
+      from(row in subquery, distinct: true)
+
+    {:ok, subquery} =
+      apply(
+        module,
+        query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function(),
+        [
+          opts,
+          source_binding,
+          current_binding - 1,
+          subquery
+        ]
+      )
+
+    AshSql.Join.set_join_prefix(
+      subquery,
+      %{query | prefix: tenant},
+      rel.destination
+    )
+  end
+
+  defp apply_relationship_subquery(
+         subquery,
+         %{no_attributes?: true},
+         _query,
+         _tenant,
+         _source_binding,
+         _current_binding,
+         _base_binding
+       ) do
+    subquery
+  end
+
+  defp apply_relationship_subquery(
+         subquery,
+         %{type: :many_to_many} = rel,
+         query,
+         tenant,
+         source_binding,
+         _current_binding,
+         _base_binding
+       ) do
+    join_relationship_struct =
+      Ash.Resource.Info.relationship(
+        rel.source,
+        rel.join_relationship
+      )
+
+    {:ok, through} =
+      AshSql.Join.related_subquery(
+        join_relationship_struct,
+        query
+      )
+
+    field = rel.source_attribute_on_join_resource
+
+    subquery =
+      from(sub in subquery,
+        join: through in ^through,
+        as: ^query.__ash_bindings__.current,
+        on:
+          field(
+            through,
+            ^rel.destination_attribute_on_join_resource
+          ) ==
+            field(sub, ^rel.destination_attribute),
+        select_merge: map(through, ^[field]),
+        group_by:
+          field(
+            through,
+            ^rel.source_attribute_on_join_resource
+          ),
+        distinct:
+          field(
+            through,
+            ^rel.source_attribute_on_join_resource
+          ),
+        where:
+          field(
+            parent_as(^source_binding),
+            ^rel.source_attribute
+          ) ==
+            field(
+              through,
+              ^rel.source_attribute_on_join_resource
+            )
+      )
+
+    AshSql.Join.set_join_prefix(
+      subquery,
+      %{query | prefix: tenant},
+      rel.destination
+    )
+  end
+
+  defp apply_relationship_subquery(
+         subquery,
+         rel,
+         _query,
+         _tenant,
+         source_binding,
+         _current_binding,
+         base_binding
+       ) do
+    field = rel.destination_attribute
+
+    from(row in subquery,
+      group_by: field(row, ^field),
+      select_merge: %{^field => field(row, ^field)},
+      where:
+        field(
+          parent_as(^source_binding),
+          ^rel.source_attribute
+        ) ==
+          field(
+            as(^base_binding),
+            ^rel.destination_attribute
+          )
     )
   end
 
