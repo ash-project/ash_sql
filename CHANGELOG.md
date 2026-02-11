@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.4.5](https://github.com/ash-project/ash_sql/compare/v0.4.4...v0.4.5) (2026-02-11)
+
+
+
+
+### Improvements:
+
+* do manual rel subquery regardless of no_attributes for aggregates (#213) by zackattackz [(#213)](https://github.com/ash-project/ash_sql/pull/213)
+
 ## [v0.4.4](https://github.com/ash-project/ash_sql/compare/v0.4.3...v0.4.4) (2026-02-05)
 
 
