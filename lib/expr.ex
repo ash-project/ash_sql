@@ -1344,6 +1344,13 @@ defmodule AshSql.Expr do
           determine_types(bindings.sql_behaviour, mod, [left, right], type)
       end
 
+    bindings =
+      if no_cast_for_native_value?(left, left_type) or no_cast_for_native_value?(right, right_type) do
+        Map.put(bindings, :skip_cast_for_ref?, true)
+      else
+        bindings
+      end
+
     {left_expr, acc} =
       if left_type do
         maybe_type_expr(
@@ -3554,7 +3561,11 @@ defmodule AshSql.Expr do
   end
 
   defp maybe_type_expr(query, expr, bindings, embedded?, acc, type) do
-    if type do
+    skip? =
+      no_cast_for_native_value?(expr, type) or
+        (is_struct(expr, Ash.Query.Ref) and bindings[:skip_cast_for_ref?])
+
+    if type && !skip? do
       if get_path_array_type?(type) do
         case strip_get_path_type(expr) do
           %GetPath{} = get_path ->
@@ -3595,9 +3606,22 @@ defmodule AshSql.Expr do
         )
       end
     else
-      do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
+      do_dynamic_expr(query, expr, Map.put(bindings, :no_cast?, true), embedded?, acc, type)
     end
   end
+
+  defp no_cast_for_native_value?(expr, type) when is_binary(expr) do
+    unwrap_type_for_native_check(type) == Ash.Type.String
+  end
+
+  defp no_cast_for_native_value?(expr, type) when is_integer(expr) do
+    unwrap_type_for_native_check(type) == Ash.Type.Integer
+  end
+
+  defp no_cast_for_native_value?(_, _), do: false
+
+  defp unwrap_type_for_native_check({type, _}), do: type
+  defp unwrap_type_for_native_check(type), do: type
 
   defp cant_return_nil?(%Ash.Query.Ref{attribute: %{allow_nil?: false}, relationship_path: []}) do
     true
