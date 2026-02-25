@@ -349,7 +349,8 @@ defmodule AshSql.Join do
       has_parent_expr? =
         opts[:require_lateral?] ||
           !!query.__ash_bindings__.context[:data_layer][:has_parent_expr?] ||
-          not is_nil(query.limit)
+          not is_nil(query.limit) ||
+          not is_nil(query.offset)
 
       query =
         if has_parent_expr? do
@@ -457,6 +458,13 @@ defmodule AshSql.Join do
         |> Ash.Query.unset(:sort)
       end
     end)
+    |> then(fn query ->
+      if not is_nil(Map.get(relationship, :offset)) do
+        Ash.Query.offset(query, relationship.offset)
+      else
+        query
+      end
+    end)
     |> set_has_parent_expr_context(relationship)
     |> case do
       %{valid?: true} = related_query ->
@@ -544,14 +552,23 @@ defmodule AshSql.Join do
 
   defp limit_from_many(
          query,
-         %{from_many?: true, destination: destination},
+         %{from_many?: true, destination: destination} = relationship,
          filter,
          filter_subquery?,
          opts
        ) do
+    offset = Map.get(relationship, :offset)
+
     if filter_subquery? do
+      inner_query =
+        if offset do
+          from(row in query, limit: 1, offset: ^offset)
+        else
+          from(row in query, limit: 1)
+        end
+
       query =
-        from(row in Ecto.Query.subquery(from(row in query, limit: 1)),
+        from(row in Ecto.Query.subquery(inner_query),
           as: ^query.__ash_bindings__.root_binding
         )
         |> Map.put(:__ash_bindings__, query.__ash_bindings__)
@@ -578,7 +595,7 @@ defmodule AshSql.Join do
 
   defp limit_from_many(
          query,
-         %{limit: limit, destination: destination},
+         %{limit: limit, destination: destination} = relationship,
          filter,
          filter_subquery?,
          opts
@@ -587,11 +604,19 @@ defmodule AshSql.Join do
     # Check if query has parent expressions - if so, we can't wrap in a non-lateral subquery
     # because parent references won't resolve across the subquery boundary
     has_parent_expr? = !!query.__ash_bindings__.context[:data_layer][:has_parent_expr?]
+    offset = Map.get(relationship, :offset)
 
     if filter_subquery? && !has_parent_expr? do
       # Wrap the limited query in a subquery, then apply filter on top
+      inner_query =
+        if offset do
+          from(row in query, limit: ^limit, offset: ^offset)
+        else
+          from(row in query, limit: ^limit)
+        end
+
       query =
-        from(row in Ecto.Query.subquery(from(row in query, limit: ^limit)),
+        from(row in Ecto.Query.subquery(inner_query),
           as: ^query.__ash_bindings__.root_binding
         )
         |> Map.put(:__ash_bindings__, query.__ash_bindings__)
