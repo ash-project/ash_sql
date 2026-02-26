@@ -1345,7 +1345,8 @@ defmodule AshSql.Expr do
       end
 
     bindings =
-      if no_cast_for_native_value?(left, left_type) or no_cast_for_native_value?(right, right_type) do
+      if no_cast_for_native_value?(left, left_type) or
+           no_cast_for_native_value?(right, right_type) do
         Map.put(bindings, :skip_cast_for_ref?, true)
       else
         bindings
