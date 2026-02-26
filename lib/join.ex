@@ -459,10 +459,10 @@ defmodule AshSql.Join do
       end
     end)
     |> then(fn query ->
-      if not is_nil(Map.get(relationship, :offset)) do
-        Ash.Query.offset(query, relationship.offset)
-      else
+      if is_nil(Map.get(relationship, :offset)) do
         query
+      else
+        Ash.Query.offset(query, relationship.offset)
       end
     end)
     |> set_has_parent_expr_context(relationship)
