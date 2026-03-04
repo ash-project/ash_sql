@@ -3064,7 +3064,7 @@ defmodule AshSql.Expr do
 
       :bracket ->
         case first_acc do
-          {:bracket, path, nil, nil} ->
+          {:bracket, path, _, _} ->
             split_at_paths(type, constraints, rest, [
               {bracket_or_dot, [next | path], type, constraints}
               | rest_acc
