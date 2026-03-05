@@ -830,7 +830,7 @@ defmodule AshSql.Aggregate do
          first_relationship,
          join_filters
        ) do
-    case join_filters[[first_relationship]] do
+    case join_filters[[first_relationship.name]] do
       nil ->
         {:ok, agg_root_query, acc}
 
