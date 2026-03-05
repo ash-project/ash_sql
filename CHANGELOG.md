@@ -11,6 +11,27 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.5.0](https://github.com/ash-project/ash_sql/compare/v0.4.5...v0.5.0) (2026-03-05)
+
+
+
+
+### Features:
+
+* support offset option in relationship joins (#214) by [@nallwhy](https://github.com/nallwhy) [(#214)](https://github.com/ash-project/ash_sql/pull/214)
+
+### Bug Fixes:
+
+* special case keyword list values in set statements by [@zachdaniel](https://github.com/zachdaniel)
+
+* select name from first_relationship struct (#218) by Philip Capel [(#218)](https://github.com/ash-project/ash_sql/pull/218)
+
+* Fix CaseClauseError when filtering/sorting on doubly-nested embedded resource fields (#217) by sevenseacat [(#217)](https://github.com/ash-project/ash_sql/pull/217)
+
+### Improvements:
+
+* don't cast integer/string equality check unnecessarily by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.4.5](https://github.com/ash-project/ash_sql/compare/v0.4.4...v0.4.5) (2026-02-11)
 
 
