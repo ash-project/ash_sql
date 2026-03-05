@@ -67,6 +67,13 @@ defmodule AshSql.Implementation do
             type
           end
 
+        expr =
+          if is_list(expr) and expr != [] and Keyword.keyword?(expr) do
+            Map.new(expr)
+          else
+            expr
+          end
+
         Ecto.Query.dynamic(type(^expr, ^type))
       end
 

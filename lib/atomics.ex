@@ -270,7 +270,7 @@ defmodule AshSql.Atomics do
 
     Enum.reduce_while(
       dynamics ++ existing_set,
-      {:ok, query, Map.to_list(updating_one_changes)},
+      {:ok, query, sanitize_keyword_values(Map.to_list(updating_one_changes))},
       fn {key, value}, {:ok, query, set} ->
         case AshSql.Expr.dynamic_expr(query, value, query.__ash_bindings__) do
           {dynamic, acc} ->
@@ -314,7 +314,7 @@ defmodule AshSql.Atomics do
 
     atomics
     |> Enum.reduce_while(
-      {:ok, query, existing_set ++ Map.to_list(updating_one_changes)},
+      {:ok, query, existing_set ++ sanitize_keyword_values(Map.to_list(updating_one_changes))},
       fn {field, expr}, {:ok, query, set} ->
         attribute = Ash.Resource.Info.attribute(resource, field)
 
@@ -379,6 +379,20 @@ defmodule AshSql.Atomics do
       {:error, error} ->
         {:error, error}
     end
+  end
+
+  defp sanitize_keyword_values(keyword_list) do
+    Enum.map(keyword_list, fn
+      {key, value} when is_list(value) and value != [] ->
+        if Keyword.keyword?(value) do
+          {key, Map.new(value)}
+        else
+          {key, value}
+        end
+
+      pair ->
+        pair
+    end)
   end
 
   defp type_atomics(sql_behaviour, resource, atomics) do
