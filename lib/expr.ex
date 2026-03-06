@@ -113,6 +113,21 @@ defmodule AshSql.Expr do
     {other, acc}
   end
 
+  defp default_dynamic_expr(_query, %Filter{expression: nil}, _bindings, _embedded?, acc, _type) do
+    {true, acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Filter{expression: expression},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(query, expression, bindings, embedded?, acc, type)
+  end
+
   defp default_dynamic_expr(query, %Not{expression: expression}, bindings, embedded?, acc, _type) do
     {new_expression, acc} =
       do_dynamic_expr(
