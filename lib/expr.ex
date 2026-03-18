@@ -1678,7 +1678,8 @@ defmodule AshSql.Expr do
              aggregates: %{},
              calculations: %{},
              public?: false,
-             parent_stack: query.__ash_bindings__[:parent_resources] || []
+             parent_stack: query.__ash_bindings__[:parent_resources] || [],
+             source_context: calculation.context.source_context || %{}
            }
          ) do
       {:ok, expression} ->
