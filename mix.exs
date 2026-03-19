@@ -108,11 +108,8 @@ defmodule AshSql.MixProject do
       "main" ->
         [git: "https://github.com/ash-project/ash.git", override: true]
 
-      version when is_binary(version) ->
-        "~> #{version}"
-
       version ->
-        version
+        "~> #{version}"
     end
   end
 
