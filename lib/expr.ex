@@ -2292,7 +2292,7 @@ defmodule AshSql.Expr do
     {:ok, subquery} =
       resource
       |> Ash.Query.new()
-      |> Ash.Query.set_context(bindings.context)
+      |> Ash.Query.set_context(Map.delete(bindings.context, :data_layer))
       |> Ash.Query.set_context(%{
         data_layer: %{
           parent_bindings: query.__ash_bindings__,
