@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.5.1](https://github.com/ash-project/ash_sql/compare/v0.5.0...v0.5.1) (2026-03-22)
+
+
+
+
+### Bug Fixes:
+
+* don't include the data layer in the context of subqueries by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.5.0](https://github.com/ash-project/ash_sql/compare/v0.4.5...v0.5.0) (2026-03-05)
 
 
