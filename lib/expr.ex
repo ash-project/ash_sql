@@ -2071,21 +2071,28 @@ defmodule AshSql.Expr do
 
       validate_type!(query, type, arg1)
 
+      inner_bindings =
+        if is_map(arg1) && not is_struct(arg1) && Ash.Expr.expr?(arg1) do
+          set_location(bindings, :sub_expr)
+        else
+          bindings
+        end
+
       {expr, acc} =
         do_dynamic_expr(
           query,
           arg1,
-          set_location(bindings, :sub_expr),
+          inner_bindings,
           embedded?,
           acc,
           {arg2, constraints}
         )
 
       case {type, expr} do
-        {{:parameterized, Ash.Type.Map.EctoType, _}, %Ecto.Query.DynamicExpr{}} ->
+        {{:parameterized, Ash.Type.Map.EctoType, []}, %Ecto.Query.DynamicExpr{}} ->
           {expr, acc}
 
-        {{:parameterized, {Ash.Type.Map.EctoType, _}}, %Ecto.Query.DynamicExpr{}} ->
+        {{:parameterized, {Ash.Type.Map.EctoType, []}}, %Ecto.Query.DynamicExpr{}} ->
           {expr, acc}
 
         _ ->
@@ -2189,7 +2196,9 @@ defmodule AshSql.Expr do
          type
        ) do
     parent? = Map.get(bindings.parent_bindings, :parent_is_parent_as?, true)
-    new_bindings = set_location(Map.put(bindings.parent_bindings, :parent?, parent?), :sub_expr)
+
+    new_bindings =
+      set_location(Map.put(bindings.parent_bindings, :parent?, parent?), :sub_expr)
 
     do_dynamic_expr(
       %{query | __ash_bindings__: new_bindings},
