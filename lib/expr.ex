@@ -2071,13 +2071,21 @@ defmodule AshSql.Expr do
 
       validate_type!(query, type, arg1)
 
-      {expr, acc} = do_dynamic_expr(query, arg1, bindings, embedded?, acc, {arg2, constraints})
+      {expr, acc} =
+        do_dynamic_expr(
+          query,
+          arg1,
+          set_location(bindings, :sub_expr),
+          embedded?,
+          acc,
+          {arg2, constraints}
+        )
 
       case {type, expr} do
-        {{:parameterized, Ash.Type.Map.EctoType, []}, %Ecto.Query.DynamicExpr{}} ->
+        {{:parameterized, Ash.Type.Map.EctoType, _}, %Ecto.Query.DynamicExpr{}} ->
           {expr, acc}
 
-        {{:parameterized, {Ash.Type.Map.EctoType, []}}, %Ecto.Query.DynamicExpr{}} ->
+        {{:parameterized, {Ash.Type.Map.EctoType, _}}, %Ecto.Query.DynamicExpr{}} ->
           {expr, acc}
 
         _ ->
