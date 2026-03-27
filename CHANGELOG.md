@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.5.2](https://github.com/ash-project/ash_sql/compare/v0.5.1...v0.5.2) (2026-03-27)
+
+
+
+
+### Bug Fixes:
+
+* properly avoid type casts on maps w/ fields by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.5.1](https://github.com/ash-project/ash_sql/compare/v0.5.0...v0.5.1) (2026-03-22)
 
 
