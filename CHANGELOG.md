@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.5.4](https://github.com/ash-project/ash_sql/compare/v0.5.3...v0.5.4) (2026-03-31)
+
+
+
+
+### Bug Fixes:
+
+* properly type cast inpust to intersects function by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.5.3](https://github.com/ash-project/ash_sql/compare/v0.5.2...v0.5.3) (2026-03-27)
 
 
