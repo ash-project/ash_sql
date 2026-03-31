@@ -762,23 +762,57 @@ defmodule AshSql.Expr do
        ) do
     if bindings.sql_behaviour.array_overlap_operator?() do
       # Postgres
-      do_dynamic_expr(
-        query,
-        %Fragment{
-          embedded?: pred_embedded?,
-          arguments: [
-            raw: "((",
-            expr: left,
-            raw: ") && (",
-            expr: right,
-            raw: "))"
-          ]
-        },
-        bindings,
-        embedded?,
-        acc,
-        :boolean
-      )
+      {[left_type, right_type], _type} =
+        determine_types(
+          bindings.sql_behaviour,
+          Ash.Query.Function.Intersects,
+          [left, right],
+          :boolean
+        )
+
+      {left_expr, acc} =
+        if left_type do
+          maybe_type_expr(
+            query,
+            left,
+            set_location(bindings, :sub_expr),
+            pred_embedded? || embedded?,
+            acc,
+            left_type
+          )
+        else
+          do_dynamic_expr(
+            query,
+            left,
+            set_location(bindings, :sub_expr),
+            pred_embedded? || embedded?,
+            acc,
+            nil
+          )
+        end
+
+      {right_expr, acc} =
+        if right_type do
+          maybe_type_expr(
+            query,
+            right,
+            set_location(bindings, :sub_expr),
+            pred_embedded? || embedded?,
+            acc,
+            right_type
+          )
+        else
+          do_dynamic_expr(
+            query,
+            right,
+            set_location(bindings, :sub_expr),
+            pred_embedded? || embedded?,
+            acc,
+            nil
+          )
+        end
+
+      {Ecto.Query.dynamic(fragment("(? && ?)", ^left_expr, ^right_expr)), acc}
     else
       # SQLite
       do_dynamic_expr(
