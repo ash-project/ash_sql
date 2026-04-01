@@ -206,23 +206,55 @@ defmodule AshSql.Expr do
          _type
        )
        when mod in [IsDistinctFrom, IsNotDistinctFrom] do
-    {left_expr, acc} =
-      do_dynamic_expr(
-        query,
-        left,
-        set_location(bindings, :sub_expr),
-        pred_embedded? || embedded?,
-        acc
+    {[left_type, right_type], _type} =
+      determine_types(
+        bindings.sql_behaviour,
+        mod,
+        [left, right],
+        :boolean
       )
 
+    {left_expr, acc} =
+      if left_type do
+        maybe_type_expr(
+          query,
+          left,
+          set_location(bindings, :sub_expr),
+          pred_embedded? || embedded?,
+          acc,
+          left_type
+        )
+      else
+        do_dynamic_expr(
+          query,
+          left,
+          set_location(bindings, :sub_expr),
+          pred_embedded? || embedded?,
+          acc,
+          nil
+        )
+      end
+
     {right_expr, acc} =
-      do_dynamic_expr(
-        query,
-        right,
-        set_location(bindings, :sub_expr),
-        pred_embedded? || embedded?,
-        acc
-      )
+      if right_type do
+        maybe_type_expr(
+          query,
+          right,
+          set_location(bindings, :sub_expr),
+          pred_embedded? || embedded?,
+          acc,
+          right_type
+        )
+      else
+        do_dynamic_expr(
+          query,
+          right,
+          set_location(bindings, :sub_expr),
+          pred_embedded? || embedded?,
+          acc,
+          nil
+        )
+      end
 
     dynamic =
       case mod do
