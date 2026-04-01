@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.5.5](https://github.com/ash-project/ash_sql/compare/v0.5.4...v0.5.5) (2026-04-01)
+
+
+
+
+### Bug Fixes:
+
+* ensure IsDistinctFrom and IsNotDistinctFrom have their arguments typed by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.5.4](https://github.com/ash-project/ash_sql/compare/v0.5.3...v0.5.4) (2026-03-31)
 
 
