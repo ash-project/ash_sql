@@ -143,21 +143,39 @@ defmodule AshSql.Query do
           |> case do
             {:ok, lateral_join_source_query} ->
               lateral_join_source_query =
-                if Enum.count(path) == 2 do
+                if Enum.count(path) >= 2 do
+                  through_entries = Enum.drop(path, 1)
+
                   Map.update!(lateral_join_source_query, :__ash_bindings__, fn bindings ->
-                    bindings
-                    |> Map.put(:lateral_join_bindings, [start_bindings + 1])
-                    |> Map.update!(:bindings, fn bindings ->
-                      Map.put(
-                        bindings,
-                        start_bindings + 1,
-                        %{
-                          source: path |> Enum.at(1) |> elem(3) |> Map.get(:source),
-                          path: [path |> Enum.at(1) |> elem(3) |> Map.get(:name)],
-                          type: :inner
-                        }
-                      )
-                    end)
+                    {updated_bindings, _} =
+                      Enum.reduce(through_entries, {bindings, start_bindings + 1}, fn entry,
+                                                                                      {acc_bindings,
+                                                                                       binding_idx} ->
+                        rel = elem(entry, 3)
+
+                        acc_bindings =
+                          acc_bindings
+                          |> Map.update(
+                            :lateral_join_bindings,
+                            [binding_idx],
+                            &(&1 ++ [binding_idx])
+                          )
+                          |> Map.update!(:bindings, fn b ->
+                            Map.put(
+                              b,
+                              binding_idx,
+                              %{
+                                source: Map.get(rel, :source),
+                                path: [Map.get(rel, :name)],
+                                type: :inner
+                              }
+                            )
+                          end)
+
+                        {acc_bindings, binding_idx + 1}
+                      end)
+
+                    updated_bindings
                   end)
                 else
                   lateral_join_source_query
