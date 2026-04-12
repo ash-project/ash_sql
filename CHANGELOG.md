@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.6.0](https://github.com/ash-project/ash_sql/compare/v0.5.5...v0.6.0) (2026-04-12)
+
+
+
+
+### Features:
+
+* support relationship through (#212) by Kenneth Kostrešević [(#212)](https://github.com/ash-project/ash_sql/pull/212)
+
 ## [v0.5.5](https://github.com/ash-project/ash_sql/compare/v0.5.4...v0.5.5) (2026-04-01)
 
 
