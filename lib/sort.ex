@@ -163,7 +163,7 @@ defmodule AshSql.Sort do
         left_only?: true
       )
 
-    case AshSql.Aggregate.add_aggregates(query, used_aggregates, resource, false, 0) do
+    case AshSql.Aggregate.add_aggregates(query, used_aggregates, resource, false, binding) do
       {:error, error} ->
         {:error, error}
 
