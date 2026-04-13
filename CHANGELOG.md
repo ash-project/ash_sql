@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.6.1](https://github.com/ash-project/ash_sql/compare/v0.6.0...v0.6.1) (2026-04-13)
+
+
+
+
+### Bug Fixes:
+
+* use binding instead of 0 in add_aggregates (#226) by StephanH90 [(#226)](https://github.com/ash-project/ash_sql/pull/226)
+
 ## [v0.6.0](https://github.com/ash-project/ash_sql/compare/v0.5.5...v0.6.0) (2026-04-12)
 
 
