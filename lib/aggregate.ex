@@ -112,6 +112,7 @@ defmodule AshSql.Aggregate do
 
         query =
           if (query.limit || query.offset || query.distinct) && root_data_path == [] && select? &&
+               !query.__ash_bindings__[:lateral_join?] &&
                Enum.any?(
                  remaining_aggregates,
                  &(not optimizable_first_aggregate?(resource, &1, query))
