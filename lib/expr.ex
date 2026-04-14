@@ -504,7 +504,7 @@ defmodule AshSql.Expr do
         :integer
       )
 
-    {Ecto.Query.dynamic(fragment("(?)", datetime_add(^date, ^amount, ^to_string(interval)))), acc}
+    {Ecto.Query.dynamic(fragment("(?)", date_add(^date, ^amount, ^to_string(interval)))), acc}
   end
 
   defp default_dynamic_expr(
