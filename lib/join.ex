@@ -142,17 +142,33 @@ defmodule AshSql.Join do
 
             # We can't reuse joins if we're adding filters/have a separate parent binding
             if is_nil(join_filters) && is_nil(parent_query) && binding do
-              case join_all_relationships(
+              full_path = Enum.map(current_path, & &1.name)
+              used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
+
+              case AshSql.Aggregate.add_aggregates(
                      query,
-                     filter,
-                     opts,
-                     [{join_type, rest_rels}],
-                     current_path,
-                     source,
-                     sort?
+                     used_aggregates,
+                     relationship.destination,
+                     false,
+                     binding,
+                     {query.__ash_bindings__.resource, full_path}
                    ) do
                 {:ok, query} ->
-                  {:cont, {:ok, query}}
+                  case join_all_relationships(
+                         query,
+                         filter,
+                         opts,
+                         [{join_type, rest_rels}],
+                         current_path,
+                         source,
+                         sort?
+                       ) do
+                    {:ok, query} ->
+                      {:cont, {:ok, query}}
+
+                    {:error, error} ->
+                      {:halt, {:error, error}}
+                  end
 
                 {:error, error} ->
                   {:halt, {:error, error}}
