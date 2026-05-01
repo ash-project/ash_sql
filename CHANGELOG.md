@@ -11,6 +11,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.6.2](https://github.com/ash-project/ash_sql/compare/v0.6.1...v0.6.2) (2026-05-01)
+
+
+
+
+### Bug Fixes:
+
+* ensure aggregates are threaded through already joined paths by Zach Daniel
+
+* use `date_add` instead of `datetime_add` when adding dates by Zach Daniel
+
+* don't wrap in subquery if in a lateral join by Zach Daniel
+
 ## [v0.6.1](https://github.com/ash-project/ash_sql/compare/v0.6.0...v0.6.1) (2026-04-13)
 
 
