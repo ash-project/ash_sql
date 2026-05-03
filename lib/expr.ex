@@ -36,10 +36,12 @@ defmodule AshSql.Expr do
     Round,
     StartOfDay,
     StringDowncase,
+    StringEndsWith,
     StringJoin,
     StringLength,
     StringPosition,
     StringSplit,
+    StringStartsWith,
     StringTrim,
     Today,
     Type
@@ -726,6 +728,200 @@ defmodule AshSql.Expr do
           raw: "), (",
           expr: right,
           raw: ")) > 0)"
+        ]
+      },
+      bindings,
+      embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StringStartsWith{
+           arguments: [left, %Ash.CiString{} = right],
+           embedded?: pred_embedded?
+         },
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    if bindings.sql_behaviour.ilike?() do
+      text = escape_starts_with(right.string)
+
+      {left, acc} =
+        AshSql.Expr.dynamic_expr(
+          query,
+          left,
+          set_location(bindings, :sub_expr),
+          pred_embedded? || embedded?,
+          :string,
+          acc
+        )
+
+      {Ecto.Query.dynamic(ilike(^left, ^text)), acc}
+    else
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: pred_embedded?,
+          arguments: [
+            raw: "#{bindings.sql_behaviour.strpos_function()}((",
+            expr: left,
+            raw: "), (",
+            expr: right,
+            raw: ")) = 1"
+          ]
+        },
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
+    end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StringStartsWith{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       )
+       when is_binary(right) do
+    text = escape_starts_with(right)
+
+    {left, acc} =
+      AshSql.Expr.dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        :string,
+        acc
+      )
+
+    {Ecto.Query.dynamic(like(^left, ^text)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StringStartsWith{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(
+      query,
+      %Fragment{
+        embedded?: pred_embedded?,
+        arguments: [
+          raw: "(#{bindings.sql_behaviour.strpos_function()}((",
+          expr: left,
+          raw: "), (",
+          expr: right,
+          raw: ")) = 1)"
+        ]
+      },
+      bindings,
+      embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StringEndsWith{
+           arguments: [left, %Ash.CiString{} = right],
+           embedded?: pred_embedded?
+         },
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    if bindings.sql_behaviour.ilike?() do
+      text = escape_ends_with(right.string)
+
+      {left, acc} =
+        AshSql.Expr.dynamic_expr(
+          query,
+          left,
+          set_location(bindings, :sub_expr),
+          pred_embedded? || embedded?,
+          :string,
+          acc
+        )
+
+      {Ecto.Query.dynamic(ilike(^left, ^text)), acc}
+    else
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: pred_embedded?,
+          arguments: [
+            raw: "(",
+            expr: left,
+            raw: ") LIKE ('%' || ",
+            expr: right,
+            raw: ")"
+          ]
+        },
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
+    end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StringEndsWith{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       )
+       when is_binary(right) do
+    text = escape_ends_with(right)
+
+    {left, acc} =
+      AshSql.Expr.dynamic_expr(
+        query,
+        left,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        :string,
+        acc
+      )
+
+    {Ecto.Query.dynamic(like(^left, ^text)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StringEndsWith{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(
+      query,
+      %Fragment{
+        embedded?: pred_embedded?,
+        arguments: [
+          raw: "((",
+          expr: left,
+          raw: ") LIKE ('%' || (",
+          expr: right,
+          raw: ")))"
         ]
       },
       bindings,
@@ -3626,6 +3822,14 @@ defmodule AshSql.Expr do
 
   defp escape_contains(text) do
     "%" <> String.replace(text, ~r/([\%_])/u, "\\\\\\0") <> "%"
+  end
+
+  defp escape_starts_with(text) do
+    String.replace(text, ~r/([\%_])/u, "\\\\\\0") <> "%"
+  end
+
+  defp escape_ends_with(text) do
+    "%" <> String.replace(text, ~r/([\%_])/u, "\\\\\\0")
   end
 
   defp determine_types(sql_behaviour, mod, args, returns) do

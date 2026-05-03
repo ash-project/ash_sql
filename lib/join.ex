@@ -32,9 +32,11 @@ defmodule AshSql.Join do
     Ash.Query.Function.Minus,
     Ash.Query.Function.Round,
     Ash.Query.Function.StringDowncase,
+    Ash.Query.Function.StringEndsWith,
     Ash.Query.Function.StringJoin,
     Ash.Query.Function.StringLength,
     Ash.Query.Function.StringSplit,
+    Ash.Query.Function.StringStartsWith,
     Ash.Query.Function.StringTrim
   ]
 
