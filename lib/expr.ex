@@ -2635,20 +2635,10 @@ defmodule AshSql.Expr do
 
     cond do
       is_nil(first_relationship) and not is_nil(embedded_resource) ->
-        if rest != [] do
-          raise Ash.Error.Framework.AssumptionFailed,
-            message: """
-            Nested embedded array exists is not yet supported (Phase 3+).
-
-            in exists expression: `#{inspect(exists)}`
-            """
-        end
-
         embedded_array_exists_dynamic(
           query,
           resource,
-          first,
-          embedded_resource,
+          [first | rest],
           full_at_path,
           expr,
           bindings,
@@ -3177,22 +3167,41 @@ defmodule AshSql.Expr do
     {Ecto.Query.dynamic(exists(subquery)), acc}
   end
 
+  # Compile `exists(<dotted-embedded-array-path>, predicate)` into an
+  # `EXISTS (SELECT 1 FROM jsonb_array_elements(<source>) AS opt(elem) ...
+  # WHERE <predicate>)` fragment.
+  #
+  # For multi-segment paths each intermediate level is unnested via a chained
+  # `jsonb_array_elements`; intermediate aliases are `outer_0`, `outer_1`, ...
+  # and the innermost alias is always `opt` so the marker compilation
+  # (`(opt.elem ->> 'field')::type`) is unchanged regardless of nesting depth.
   defp embedded_array_exists_dynamic(
          query,
-         resource,
-         attr_name,
-         embedded_resource,
+         source_resource,
+         [first_segment | rest_segments] = segments,
          full_at_path,
          inner_expr,
          bindings,
          embedded?,
          acc
        ) do
-    # 1. Compile the source jsonb array column (e.g., t0.options) into an
-    #    Ecto dynamic, by routing through do_dynamic_expr for a synthetic Ref.
-    #    `no_cast?` so the source column is left as-is (jsonb, not `<X>[]`).
+    # 1. Walk the path: verify all segments are embedded-array attrs and find
+    #    the innermost embedded resource (used for AST rewrite).
+    innermost_resource = resolve_embedded_array_path(source_resource, segments)
+
+    if is_nil(innermost_resource) do
+      raise Ash.Error.Framework.AssumptionFailed,
+        message: """
+        Path `#{Enum.join(segments, ".")}` for `exists/2` mixes
+        relationships with embedded arrays, or contains a segment that is
+        neither. Mixed paths are not yet supported.
+        """
+    end
+
+    # 2. Compile the source jsonb column (parent's first-segment attribute)
+    #    via a synthetic Ref. `:no_cast?` keeps it as raw jsonb.
     source_ref = %Ref{
-      attribute: Ash.Resource.Info.attribute(resource, attr_name),
+      attribute: Ash.Resource.Info.attribute(source_resource, first_segment),
       relationship_path: full_at_path,
       resource: bindings.resource
     }
@@ -3200,28 +3209,87 @@ defmodule AshSql.Expr do
     {source_dyn, acc} =
       do_dynamic_expr(query, source_ref, Map.put(bindings, :no_cast?, true), embedded?, acc)
 
-    # 2. Rewrite Refs in the inner expression so fields of the embedded
-    #    resource become EmbeddedArrayElementField markers. The marker
-    #    compiles to a fragment referencing `opt.elem` (the alias bound in
-    #    the EXISTS subquery below).
+    # 3. Rewrite Refs in the inner predicate so fields of the innermost
+    #    embedded resource become `EmbeddedArrayElementField` markers (which
+    #    compile to `(opt.elem ->> 'field')::type` fragments).
     rewritten_expr =
-      Ash.Filter.rewrite_for_embedded_array_scope(inner_expr, embedded_resource)
+      Ash.Filter.rewrite_for_embedded_array_scope(inner_expr, innermost_resource)
 
-    # 3. Compile the rewritten inner expression into an Ecto dynamic.
+    # Provide `parent_bindings` so `parent/1` inside the predicate resolves to
+    # the outer query's table — our EXISTS lives inline in the same query, so
+    # the "parent" of the EXISTS scope is the current bindings themselves.
+    # `parent_is_parent_as?: false` makes refs emit `field(as(^binding), ...)`
+    # instead of `parent_as(^binding)` (no separate Ecto subquery exists).
+    parent_bindings =
+      Map.put(query.__ash_bindings__, :parent_is_parent_as?, false)
+
+    inner_bindings = Map.put(bindings, :parent_bindings, parent_bindings)
+
     {inner_dyn, acc} =
-      do_dynamic_expr(query, rewritten_expr, bindings, embedded?, acc, :boolean)
+      do_dynamic_expr(query, rewritten_expr, inner_bindings, embedded?, acc, :boolean)
 
-    # 4. Build the EXISTS fragment that unnests the source jsonb array.
-    dynamic =
-      Ecto.Query.dynamic(
-        fragment(
-          "EXISTS (SELECT 1 FROM jsonb_array_elements(?) AS opt(elem) WHERE ?)",
-          ^source_dyn,
-          ^inner_dyn
-        )
-      )
+    # 4. Build the EXISTS fragment with one `jsonb_array_elements` per segment.
+    fragment_args =
+      build_embedded_array_exists_fragment_args(source_dyn, rest_segments, inner_dyn)
 
-    {dynamic, acc}
+    do_dynamic_expr(
+      query,
+      %Fragment{embedded?: true, arguments: fragment_args},
+      bindings,
+      embedded?,
+      acc
+    )
+  end
+
+  defp build_embedded_array_exists_fragment_args(source_dyn, [], inner_dyn) do
+    [
+      raw: "EXISTS (SELECT 1 FROM jsonb_array_elements(",
+      casted_expr: source_dyn,
+      raw: ") AS opt(elem) WHERE ",
+      casted_expr: inner_dyn,
+      raw: ")"
+    ]
+  end
+
+  defp build_embedded_array_exists_fragment_args(source_dyn, rest_segments, inner_dyn) do
+    # `rest_segments` has N elements; we need N additional `jsonb_array_elements`
+    # entries. Innermost alias is `opt`; intermediates are `outer_0`..`outer_{N-1}`.
+    last_index = length(rest_segments) - 1
+
+    chain_sql =
+      rest_segments
+      |> Enum.with_index()
+      |> Enum.map_join("", fn {field, i} ->
+        prev = "outer_#{i}"
+
+        next =
+          if i == last_index do
+            "opt"
+          else
+            "outer_#{i + 1}"
+          end
+
+        ", jsonb_array_elements(#{prev}.elem -> '#{to_string(field)}') AS #{next}(elem)"
+      end)
+
+    # Single contiguous `raw` between the two `casted_expr` parts — Ecto's
+    # query inspector chokes on consecutive raw fragments.
+    [
+      {:raw, "EXISTS (SELECT 1 FROM jsonb_array_elements("},
+      {:casted_expr, source_dyn},
+      {:raw, ") AS outer_0(elem)" <> chain_sql <> " WHERE "},
+      {:casted_expr, inner_dyn},
+      {:raw, ")"}
+    ]
+  end
+
+  defp resolve_embedded_array_path(resource, segments) do
+    Enum.reduce_while(segments, resource, fn segment, current ->
+      case embedded_array_attribute_resource(current, segment) do
+        nil -> {:halt, nil}
+        next -> {:cont, next}
+      end
+    end)
   end
 
   defp embedded_array_attribute_resource(resource, segment) do
