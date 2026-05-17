@@ -2655,17 +2655,48 @@ defmodule AshSql.Expr do
           """
 
       true ->
-        do_relationship_exists_dynamic(
-          query,
-          exists,
-          first_relationship,
-          rest,
-          full_at_path,
-          at_path,
-          expr,
-          bindings,
-          acc
-        )
+        # Mixed path? Walk the relationship prefix; if it ends at an
+        # embedded-array segment, split into outer relationship Exists +
+        # inner embedded-array Exists. The outer's regular subquery
+        # construction handles the join chain; the inner runs as our
+        # `jsonb_array_elements` fragment against the subquery's table.
+        case split_at_first_embedded_array(resource, [first | rest]) do
+          :no_split ->
+            do_relationship_exists_dynamic(
+              query,
+              exists,
+              first_relationship,
+              rest,
+              full_at_path,
+              at_path,
+              expr,
+              bindings,
+              acc
+            )
+
+          {:split, rel_prefix, embedded_suffix} ->
+            inner_exists = %Exists{
+              at_path: [],
+              path: embedded_suffix,
+              expr: expr,
+              related?: true
+            }
+
+            [outer_first | outer_rest] = rel_prefix
+            outer_relationship = Ash.Resource.Info.relationship(resource, outer_first)
+
+            do_relationship_exists_dynamic(
+              query,
+              %{exists | path: rel_prefix, expr: inner_exists},
+              outer_relationship,
+              outer_rest,
+              full_at_path,
+              at_path,
+              inner_exists,
+              bindings,
+              acc
+            )
+        end
     end
   end
 
@@ -3215,13 +3246,25 @@ defmodule AshSql.Expr do
     rewritten_expr =
       Ash.Filter.rewrite_for_embedded_array_scope(inner_expr, innermost_resource)
 
-    # Provide `parent_bindings` so `parent/1` inside the predicate resolves to
-    # the outer query's table — our EXISTS lives inline in the same query, so
-    # the "parent" of the EXISTS scope is the current bindings themselves.
-    # `parent_is_parent_as?: false` makes refs emit `field(as(^binding), ...)`
-    # instead of `parent_as(^binding)` (no separate Ecto subquery exists).
+    # Provide `parent_bindings` so `parent/1` inside the predicate resolves
+    # correctly.
+    #
+    # - Top-level (no enclosing subquery): the EXISTS lives inline in the
+    #   outer query, so "parent" is the current bindings. We force
+    #   `parent_is_parent_as?: false` so refs emit `field(as(^binding), ...)`
+    #   rather than `parent_as(^binding)` (no Ecto subquery to be the parent of).
+    #
+    # - Inside a relationship subquery (e.g. when a mixed-path Exists was
+    #   split into outer relationship-Exists + inner embedded-array-Exists):
+    #   the inner predicate's `parent/1` should reach the *outermost* query,
+    #   not the relationship subquery. Pass through `bindings.parent_bindings`
+    #   as-is — it was set by `related_subquery` to point to the outer query
+    #   via `parent_as`.
     parent_bindings =
-      Map.put(query.__ash_bindings__, :parent_is_parent_as?, false)
+      case Map.get(bindings, :parent_bindings) do
+        nil -> Map.put(query.__ash_bindings__, :parent_is_parent_as?, false)
+        existing -> existing
+      end
 
     inner_bindings = Map.put(bindings, :parent_bindings, parent_bindings)
 
@@ -3290,6 +3333,38 @@ defmodule AshSql.Expr do
         next -> {:cont, next}
       end
     end)
+  end
+
+  # Walk `segments` from `resource`. As long as each segment is a relationship,
+  # advance to its destination and accumulate the prefix. The moment we hit a
+  # segment that is not a relationship, return one of:
+  #
+  #   * `:no_split` — there's no embedded-array segment to split on, either
+  #     because the entire path is relationships, or because the first
+  #     non-relationship segment isn't an embedded array either (let the
+  #     downstream relationship dispatch raise its existing error).
+  #
+  #   * `{:split, rel_prefix, embedded_suffix}` — the first non-relationship
+  #     segment is an embedded-array attribute. Caller should re-lower the
+  #     Exists as a relationship Exists over `rel_prefix` whose inner
+  #     predicate is another Exists over `embedded_suffix`.
+  defp split_at_first_embedded_array(resource, segments) do
+    do_split_at_first_embedded_array(resource, segments, [])
+  end
+
+  defp do_split_at_first_embedded_array(_resource, [], _acc), do: :no_split
+
+  defp do_split_at_first_embedded_array(resource, [segment | rest], acc) do
+    case Ash.Resource.Info.relationship(resource, segment) do
+      %{destination: dest} ->
+        do_split_at_first_embedded_array(dest, rest, [segment | acc])
+
+      nil ->
+        case embedded_array_attribute_resource(resource, segment) do
+          nil -> :no_split
+          _embedded -> {:split, Enum.reverse(acc), [segment | rest]}
+        end
+    end
   end
 
   defp embedded_array_attribute_resource(resource, segment) do
