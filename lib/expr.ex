@@ -3216,6 +3216,25 @@ defmodule AshSql.Expr do
          embedded?,
          acc
        ) do
+    # 0. Check that the data layer supports this lowering. We emit
+    #    Postgres-specific SQL (`jsonb_array_elements`), so other SQL data
+    #    layers (e.g. AshSqlite) must opt in via `{:exists, :embedded_array}`.
+    unless Ash.DataLayer.data_layer_can?(bindings.resource, {:exists, :embedded_array}) do
+      raise Ash.Error.Query.InvalidExpression,
+        expression: inner_expr,
+        message: """
+        `exists/2` over an `{:array, EmbeddedResource}` attribute is not \
+        supported by this data layer (#{inspect(Ash.DataLayer.data_layer(bindings.resource))}).
+
+        Path: #{Enum.join(segments, ".")}
+
+        Currently only AshPostgres supports this lowering. The Postgres \
+        data layer declares `can?(:_, {:exists, :embedded_array})`; other \
+        data layers need to either add that capability and implement the \
+        unnesting, or refuse such expressions earlier in the query pipeline.
+        """
+    end
+
     # 1. Walk the path: verify all segments are embedded-array attrs and find
     #    the innermost embedded resource (used for AST rewrite).
     innermost_resource = resolve_embedded_array_path(source_resource, segments)
