@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.6.4](https://github.com/ash-project/ash_sql/compare/v0.6.3...v0.6.4) (2026-05-28)
+
+
+
+
+### Bug Fixes:
+
+* properly cast calculations in all sub-expressions by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.6.3](https://github.com/ash-project/ash_sql/compare/v0.6.2...v0.6.3) (2026-05-03)
 
 
