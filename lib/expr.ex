@@ -1960,6 +1960,8 @@ defmodule AshSql.Expr do
         updated_bindings =
           bindings
           |> set_location(:sub_expr)
+          |> Map.delete(:no_cast?)
+          |> Map.delete(:skip_cast_for_ref?)
           |> then(fn bindings ->
             if Enum.empty?(relationship_path) do
               bindings
