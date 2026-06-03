@@ -4,21 +4,31 @@
 
 defmodule AshSql do
   @moduledoc false
-  def dynamic_repo(resource, sql_behaviour, %{
-        __ash_bindings__: %{context: %{data_layer: %{repo: repo}}}
-      }) do
-    repo || sql_behaviour.repo(resource, :read)
+  def dynamic_repo(
+        resource,
+        sql_behaviour,
+        %{
+          __ash_bindings__: %{context: %{data_layer: %{repo: repo}}}
+        } = query
+      ) do
+    repo || sql_behaviour.repo(resource, repo_type(query))
   end
 
-  def dynamic_repo(resource, sql_behaviour, %struct{context: %{data_layer: %{repo: repo}}}) do
-    type = struct_to_repo_type(struct)
-
-    repo || sql_behaviour.repo(resource, type)
+  def dynamic_repo(
+        resource,
+        sql_behaviour,
+        %_{context: %{data_layer: %{repo: repo}}} = query
+      ) do
+    repo || sql_behaviour.repo(resource, repo_type(query))
   end
 
-  def dynamic_repo(resource, sql_behaviour, %struct{}) do
-    sql_behaviour.repo(resource, struct_to_repo_type(struct))
+  def dynamic_repo(resource, sql_behaviour, query) do
+    sql_behaviour.repo(resource, repo_type(query))
   end
+
+  defp repo_type(%{lock: lock}) when not is_nil(lock), do: :mutate
+  defp repo_type(%struct{}), do: struct_to_repo_type(struct)
+  defp repo_type(_), do: :read
 
   def repo_opts(_repo, sql_behaviour, timeout, tenant, resource) do
     if Ash.Resource.Info.multitenancy_strategy(resource) == :context do
