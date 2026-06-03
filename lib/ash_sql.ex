@@ -17,7 +17,7 @@ defmodule AshSql do
   def dynamic_repo(
         resource,
         sql_behaviour,
-        %struct{context: %{data_layer: %{repo: repo}}} = query
+        %_{context: %{data_layer: %{repo: repo}}} = query
       ) do
     repo || sql_behaviour.repo(resource, repo_type(query))
   end
