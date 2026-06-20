@@ -11,6 +11,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.6.5](https://github.com/ash-project/ash_sql/compare/v0.6.4...v0.6.5) (2026-06-20)
+
+
+
+
+### Bug Fixes:
+
+* use tenant from root query when setting lateral join prefix by [@zachdaniel](https://github.com/zachdaniel)
+
+* use mutate repo for queries with locks (#234) by Jesse Williams [(#234)](https://github.com/ash-project/ash_sql/pull/234)
+
 ## [v0.6.4](https://github.com/ash-project/ash_sql/compare/v0.6.3...v0.6.4) (2026-05-28)
 
 
