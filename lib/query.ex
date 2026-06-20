@@ -417,7 +417,11 @@ defmodule AshSql.Query do
 
   defp set_lateral_join_prefix(ash_query, query) do
     if Ash.Resource.Info.multitenancy_strategy(ash_query.resource) == :context do
-      Ash.Query.set_tenant(ash_query, query.prefix)
+      tenant = query.prefix || ash_query.to_tenant
+
+      ash_query
+      |> Ash.Query.set_tenant(tenant)
+      |> Ash.Query.set_context(%{private: %{tenant: tenant}})
     else
       ash_query
     end
