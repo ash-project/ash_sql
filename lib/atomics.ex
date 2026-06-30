@@ -318,6 +318,21 @@ defmodule AshSql.Atomics do
       fn {field, expr}, {:ok, query, set} ->
         attribute = Ash.Resource.Info.attribute(resource, field)
 
+        context = query.__ash_bindings__[:context] || %{}
+
+        expr =
+          Ash.Actions.Read.add_calc_context_to_filter(
+            expr,
+            context[:private][:actor],
+            context[:private][:authorize?],
+            context[:private][:tenant],
+            context[:private][:tracer],
+            query.__ash_bindings__[:domain],
+            resource,
+            parent_stack: query.__ash_bindings__[:parent_resources] || [],
+            as_of: context[:private][:as_of]
+          )
+
         expr =
           case expr do
             %Ash.Query.Function.Type{arguments: [expr | _]} ->

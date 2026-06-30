@@ -32,6 +32,7 @@ defmodule AshSql.Expr do
     Lazy,
     Length,
     Now,
+    RangeOverlaps,
     Rem,
     Round,
     StartOfDay,
@@ -101,6 +102,10 @@ defmodule AshSql.Expr do
 
   def dynamic_expr(query, expression, bindings, embedded?, type, acc) do
     do_dynamic_expr(query, expression, bindings, embedded?, acc, type)
+  end
+
+  defp as_of_or_now(query) do
+    get_in(query.__ash_bindings__, [:context, :private, :as_of]) || DateTime.utc_now()
   end
 
   defp do_dynamic_expr(query, expr, bindings, embedded?, acc, type \\ nil) do
@@ -301,7 +306,7 @@ defmodule AshSql.Expr do
       )
 
     {Ecto.Query.dynamic(
-       fragment("(?)", datetime_add(^DateTime.utc_now(), ^left * -1, ^to_string(right)))
+       fragment("(?)", datetime_add(^as_of_or_now(query), ^left * -1, ^to_string(right)))
      ), acc}
   end
 
@@ -442,7 +447,7 @@ defmodule AshSql.Expr do
       )
 
     {Ecto.Query.dynamic(
-       fragment("(?)", datetime_add(^DateTime.utc_now(), ^left, ^to_string(right)))
+       fragment("(?)", datetime_add(^as_of_or_now(query), ^left, ^to_string(right)))
      ), acc}
   end
 
@@ -1954,7 +1959,8 @@ defmodule AshSql.Expr do
             calculation.context.tracer,
             query.__ash_bindings__[:domain],
             resource,
-            parent_stack: query.__ash_bindings__[:parent_resources] || []
+            parent_stack: query.__ash_bindings__[:parent_resources] || [],
+            as_of: query.__ash_bindings__[:context][:private][:as_of]
           )
 
         updated_bindings =
@@ -2127,7 +2133,8 @@ defmodule AshSql.Expr do
               Map.get(aggregate.context, :tracer),
               query.__ash_bindings__[:domain],
               resource,
-              parent_stack: query.__ash_bindings__[:parent_resources] || []
+              parent_stack: query.__ash_bindings__[:parent_resources] || [],
+              as_of: query.__ash_bindings__[:context][:private][:as_of]
             )
 
           {value, acc} = do_dynamic_expr(query, ref, query.__ash_bindings__, false, acc)
@@ -2417,6 +2424,34 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
+         %RangeOverlaps{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    # Infer each operand's range type (so a literal range picks up the column's
+    # type, including its inner_type, and dumps to a native range).
+    {[left_type, right_type], _} =
+      determine_types(bindings.sql_behaviour, RangeOverlaps, [left, right], :boolean)
+
+    {left_expr, acc} =
+      type_or_dynamic_expr(query, left, set_location(bindings, :sub_expr), pred_embedded? || embedded?, acc, left_type)
+
+    {right_expr, acc} =
+      type_or_dynamic_expr(query, right, set_location(bindings, :sub_expr), pred_embedded? || embedded?, acc, right_type)
+
+    {Ecto.Query.dynamic(fragment("(? && ?)", ^left_expr, ^right_expr)), acc}
+  end
+
+  defp type_or_dynamic_expr(query, expr, bindings, embedded?, acc, nil),
+    do: do_dynamic_expr(query, expr, bindings, embedded?, acc, nil)
+
+  defp type_or_dynamic_expr(query, expr, bindings, embedded?, acc, type),
+    do: maybe_type_expr(query, expr, bindings, embedded?, acc, type)
+
+  defp default_dynamic_expr(
+         query,
          %Now{embedded?: pred_embedded?},
          bindings,
          embedded?,
@@ -2425,7 +2460,7 @@ defmodule AshSql.Expr do
        ) do
     do_dynamic_expr(
       query,
-      DateTime.utc_now(),
+      as_of_or_now(query),
       bindings,
       embedded? || pred_embedded?,
       acc,

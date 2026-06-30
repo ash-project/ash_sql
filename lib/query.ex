@@ -701,7 +701,8 @@ defmodule AshSql.Query do
       query.__ash_bindings__[:context][:private][:tracer],
       query.__ash_bindings__[:domain],
       query.__ash_bindings__.resource,
-      parent_stack: query.__ash_bindings__[:parent_resources] || []
+      parent_stack: query.__ash_bindings__[:parent_resources] || [],
+      as_of: query.__ash_bindings__[:context][:private][:as_of]
     )
     |> Ash.Filter.flat_map(fn
       %Ash.Query.Parent{expr: expr} ->
