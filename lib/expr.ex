@@ -2625,7 +2625,7 @@ defmodule AshSql.Expr do
          query,
          %Exists{at_path: at_path, path: [first | rest], expr: expr} = exists,
          bindings,
-         _embedded?,
+         embedded?,
          acc,
          _type
        ) do
@@ -2633,175 +2633,73 @@ defmodule AshSql.Expr do
     resource = Ash.Resource.Info.related(bindings.resource, full_at_path)
 
     first_relationship = Ash.Resource.Info.relationship(resource, first)
+    embedded_resource = embedded_array_attribute_resource(resource, first)
 
-    unless first_relationship do
-      raise Ash.Error.Framework.AssumptionFailed,
-        message: """
-        Unknown relationship #{inspect(bindings.resource)}.#{first}
+    cond do
+      is_nil(first_relationship) and not is_nil(embedded_resource) ->
+        embedded_array_exists_dynamic(
+          query,
+          resource,
+          [first | rest],
+          full_at_path,
+          expr,
+          bindings,
+          embedded?,
+          acc
+        )
 
-        in exists expression: `#{inspect(exists)}`
-        """
-    end
+      is_nil(first_relationship) ->
+        raise Ash.Error.Framework.AssumptionFailed,
+          message: """
+          Unknown relationship #{inspect(bindings.resource)}.#{first}
 
-    filter = Ash.Filter.move_to_relationship_path(expr, rest)
+          in exists expression: `#{inspect(exists)}`
+          """
 
-    filter =
-      exists
-      |> Map.get(:__join_filters__, %{})
-      |> Map.fetch([first_relationship.name])
-      |> case do
-        {:ok, join_filter} ->
-          Ash.Query.BooleanExpression.optimized_new(
-            :and,
-            filter,
-            Ash.Filter.move_to_relationship_path(
-              join_filter,
-              rest ++ [first_relationship.name]
+      true ->
+        # Mixed path? Walk the relationship prefix; if it ends at an
+        # embedded-array segment, split into outer relationship Exists +
+        # inner embedded-array Exists. The outer's regular subquery
+        # construction handles the join chain; the inner runs as our
+        # `jsonb_array_elements` fragment against the subquery's table.
+        case split_at_first_embedded_array(resource, [first | rest]) do
+          :no_split ->
+            do_relationship_exists_dynamic(
+              query,
+              exists,
+              first_relationship,
+              rest,
+              full_at_path,
+              at_path,
+              expr,
+              bindings,
+              acc
             )
-          )
 
-        :error ->
-          filter
-      end
+          {:split, rel_prefix, embedded_suffix} ->
+            inner_exists = %Exists{
+              at_path: [],
+              path: embedded_suffix,
+              expr: expr,
+              related?: true
+            }
 
-    filter =
-      exists
-      |> Map.get(:__join_filters__, %{})
-      |> Map.delete([first_relationship.name])
-      |> Enum.reduce(filter, fn {path, path_filter}, filter ->
-        path = Enum.drop(path, 1)
-        parent_path = :lists.droplast(path)
+            [outer_first | outer_rest] = rel_prefix
+            outer_relationship = Ash.Resource.Info.relationship(resource, outer_first)
 
-        Ash.Query.BooleanExpression.optimized_new(
-          :and,
-          filter,
-          Ash.Filter.move_to_relationship_path(path_filter, path)
-        )
-        |> Ash.Filter.map(fn
-          %Ash.Query.Parent{expr: expr} ->
-            {:halt, Ash.Filter.move_to_relationship_path(expr, parent_path)}
-
-          other ->
-            other
-        end)
-      end)
-
-    query =
-      if first_relationship.type == :many_to_many do
-        put_in(query.__ash_bindings__[:lateral_join_bindings], [:join_source])
-        |> AshSql.Bindings.explicitly_set_binding(
-          %{
-            type: :left,
-            path: [first_relationship.join_relationship]
-          },
-          :join_source
-        )
-      else
-        query
-      end
-
-    {:ok, subquery} =
-      AshSql.Join.related_subquery(first_relationship, query,
-        filter: filter,
-        filter_subquery?: true,
-        sort?: Map.get(first_relationship, :from_many?) || not is_nil(first_relationship.sort),
-        start_bindings_at: 1,
-        select_star?: !Map.get(first_relationship, :manual),
-        in_group?: true,
-        refs_at_path: full_at_path,
-        parent_resources: [
-          Ash.Resource.Info.related(resource, at_path)
-          | query.__ash_bindings__[:parent_resources] || []
-        ],
-        return_subquery?: true,
-        on_subquery: fn subquery ->
-          subquery =
-            Ecto.Query.from(row in subquery, select: row)
-            |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
-
-          cond do
-            Map.get(first_relationship, :manual) ->
-              {module, opts} = first_relationship.manual
-
-              source_binding =
-                ref_binding(
-                  %Ref{
-                    attribute:
-                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
-                    relationship_path: at_path,
-                    resource: resource
-                  },
-                  bindings
-                )
-
-              {:ok, subquery} =
-                apply(
-                  module,
-                  query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function(),
-                  [
-                    opts,
-                    source_binding,
-                    1,
-                    subquery
-                  ]
-                )
-
-              subquery
-
-            Map.get(first_relationship, :no_attributes?) ->
-              subquery
-
-            first_relationship.type == :many_to_many ->
-              source_ref =
-                ref_binding(
-                  %Ref{
-                    attribute:
-                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
-                    relationship_path: at_path,
-                    resource: resource
-                  },
-                  bindings
-                )
-
-              through_relationship =
-                Ash.Resource.Info.relationship(resource, first_relationship.join_relationship)
-
-              {:ok, through} =
-                AshSql.Join.related_subquery(through_relationship, query)
-
-              Ecto.Query.from(destination in subquery,
-                join: through in ^through,
-                as: ^:join_source,
-                on:
-                  field(through, ^first_relationship.destination_attribute_on_join_resource) ==
-                    field(destination, ^first_relationship.destination_attribute),
-                on:
-                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
-                    field(through, ^first_relationship.source_attribute_on_join_resource)
-              )
-
-            true ->
-              source_ref =
-                ref_binding(
-                  %Ref{
-                    attribute:
-                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
-                    relationship_path: at_path,
-                    resource: resource
-                  },
-                  bindings
-                )
-
-              Ecto.Query.from(destination in subquery,
-                where:
-                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
-                    field(destination, ^first_relationship.destination_attribute)
-              )
-          end
+            do_relationship_exists_dynamic(
+              query,
+              %{exists | path: rel_prefix, expr: inner_exists},
+              outer_relationship,
+              outer_rest,
+              full_at_path,
+              at_path,
+              inner_exists,
+              bindings,
+              acc
+            )
         end
-      )
-
-    {Ecto.Query.dynamic(exists(subquery)), acc}
+    end
   end
 
   defp default_dynamic_expr(
@@ -2919,6 +2817,49 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(_query, %Ash.Vector{} = value, _bindings, _embedded?, acc, _type) do
     {value, acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Ash.Query.EmbeddedArrayElementField{
+           field: field,
+           type: type,
+           constraints: constraints
+         },
+         bindings,
+         embedded?,
+         acc,
+         _expr_type
+       ) do
+    parameterized_type =
+      parameterized_type(bindings.sql_behaviour, type, constraints || [], :expr)
+
+    field_str = to_string(field)
+
+    {expr, acc} =
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: true,
+          arguments: [
+            raw: "(opt.elem ->> '#{field_str}')"
+          ]
+        },
+        bindings,
+        embedded?,
+        acc
+      )
+
+    cond do
+      parameterized_type && get_path_array_type?(parameterized_type) ->
+        {expr, acc}
+
+      parameterized_type ->
+        {query.__ash_bindings__.sql_behaviour.type_expr(expr, parameterized_type), acc}
+
+      true ->
+        {expr, acc}
+    end
   end
 
   defp default_dynamic_expr(query, value, bindings, embedded?, acc, type)
@@ -3082,6 +3023,380 @@ defmodule AshSql.Expr do
             {value, acc}
         end
       end
+    end
+  end
+
+  defp do_relationship_exists_dynamic(
+         query,
+         exists,
+         first_relationship,
+         rest,
+         full_at_path,
+         at_path,
+         expr,
+         bindings,
+         acc
+       ) do
+    resource = Ash.Resource.Info.related(bindings.resource, full_at_path)
+
+    filter = Ash.Filter.move_to_relationship_path(expr, rest)
+
+    filter =
+      exists
+      |> Map.get(:__join_filters__, %{})
+      |> Map.fetch([first_relationship.name])
+      |> case do
+        {:ok, join_filter} ->
+          Ash.Query.BooleanExpression.optimized_new(
+            :and,
+            filter,
+            Ash.Filter.move_to_relationship_path(
+              join_filter,
+              rest ++ [first_relationship.name]
+            )
+          )
+
+        :error ->
+          filter
+      end
+
+    filter =
+      exists
+      |> Map.get(:__join_filters__, %{})
+      |> Map.delete([first_relationship.name])
+      |> Enum.reduce(filter, fn {path, path_filter}, filter ->
+        path = Enum.drop(path, 1)
+        parent_path = :lists.droplast(path)
+
+        Ash.Query.BooleanExpression.optimized_new(
+          :and,
+          filter,
+          Ash.Filter.move_to_relationship_path(path_filter, path)
+        )
+        |> Ash.Filter.map(fn
+          %Ash.Query.Parent{expr: expr} ->
+            {:halt, Ash.Filter.move_to_relationship_path(expr, parent_path)}
+
+          other ->
+            other
+        end)
+      end)
+
+    query =
+      if first_relationship.type == :many_to_many do
+        put_in(query.__ash_bindings__[:lateral_join_bindings], [:join_source])
+        |> AshSql.Bindings.explicitly_set_binding(
+          %{
+            type: :left,
+            path: [first_relationship.join_relationship]
+          },
+          :join_source
+        )
+      else
+        query
+      end
+
+    {:ok, subquery} =
+      AshSql.Join.related_subquery(first_relationship, query,
+        filter: filter,
+        filter_subquery?: true,
+        sort?: Map.get(first_relationship, :from_many?) || not is_nil(first_relationship.sort),
+        start_bindings_at: 1,
+        select_star?: !Map.get(first_relationship, :manual),
+        in_group?: true,
+        refs_at_path: full_at_path,
+        parent_resources: [
+          Ash.Resource.Info.related(resource, at_path)
+          | query.__ash_bindings__[:parent_resources] || []
+        ],
+        return_subquery?: true,
+        on_subquery: fn subquery ->
+          subquery =
+            Ecto.Query.from(row in subquery, select: row)
+            |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
+
+          cond do
+            Map.get(first_relationship, :manual) ->
+              {module, opts} = first_relationship.manual
+
+              source_binding =
+                ref_binding(
+                  %Ref{
+                    attribute:
+                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                    relationship_path: at_path,
+                    resource: resource
+                  },
+                  bindings
+                )
+
+              {:ok, subquery} =
+                apply(
+                  module,
+                  query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function(),
+                  [
+                    opts,
+                    source_binding,
+                    1,
+                    subquery
+                  ]
+                )
+
+              subquery
+
+            Map.get(first_relationship, :no_attributes?) ->
+              subquery
+
+            first_relationship.type == :many_to_many ->
+              source_ref =
+                ref_binding(
+                  %Ref{
+                    attribute:
+                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                    relationship_path: at_path,
+                    resource: resource
+                  },
+                  bindings
+                )
+
+              through_relationship =
+                Ash.Resource.Info.relationship(resource, first_relationship.join_relationship)
+
+              {:ok, through} =
+                AshSql.Join.related_subquery(through_relationship, query)
+
+              Ecto.Query.from(destination in subquery,
+                join: through in ^through,
+                as: ^:join_source,
+                on:
+                  field(through, ^first_relationship.destination_attribute_on_join_resource) ==
+                    field(destination, ^first_relationship.destination_attribute),
+                on:
+                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
+                    field(through, ^first_relationship.source_attribute_on_join_resource)
+              )
+
+            true ->
+              source_ref =
+                ref_binding(
+                  %Ref{
+                    attribute:
+                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                    relationship_path: at_path,
+                    resource: resource
+                  },
+                  bindings
+                )
+
+              Ecto.Query.from(destination in subquery,
+                where:
+                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
+                    field(destination, ^first_relationship.destination_attribute)
+              )
+          end
+        end
+      )
+
+    {Ecto.Query.dynamic(exists(subquery)), acc}
+  end
+
+  # Compile `exists(<dotted-embedded-array-path>, predicate)` into an
+  # `EXISTS (SELECT 1 FROM jsonb_array_elements(<source>) AS opt(elem) ...
+  # WHERE <predicate>)` fragment.
+  #
+  # For multi-segment paths each intermediate level is unnested via a chained
+  # `jsonb_array_elements`; intermediate aliases are `outer_0`, `outer_1`, ...
+  # and the innermost alias is always `opt` so the marker compilation
+  # (`(opt.elem ->> 'field')::type`) is unchanged regardless of nesting depth.
+  defp embedded_array_exists_dynamic(
+         query,
+         source_resource,
+         [first_segment | rest_segments] = segments,
+         full_at_path,
+         inner_expr,
+         bindings,
+         embedded?,
+         acc
+       ) do
+    # 0. Check that the data layer supports this lowering. We emit
+    #    Postgres-specific SQL (`jsonb_array_elements`), so other SQL data
+    #    layers (e.g. AshSqlite) must opt in via `{:exists, :embedded_array}`.
+    unless Ash.DataLayer.data_layer_can?(bindings.resource, {:exists, :embedded_array}) do
+      raise Ash.Error.Query.InvalidExpression,
+        expression: inner_expr,
+        message: """
+        `exists/2` over an `{:array, EmbeddedResource}` attribute is not \
+        supported by this data layer (#{inspect(Ash.DataLayer.data_layer(bindings.resource))}).
+
+        Path: #{Enum.join(segments, ".")}
+
+        Currently only AshPostgres supports this lowering. The Postgres \
+        data layer declares `can?(:_, {:exists, :embedded_array})`; other \
+        data layers need to either add that capability and implement the \
+        unnesting, or refuse such expressions earlier in the query pipeline.
+        """
+    end
+
+    # 1. Walk the path: verify all segments are embedded-array attrs and find
+    #    the innermost embedded resource (used for AST rewrite).
+    innermost_resource = resolve_embedded_array_path(source_resource, segments)
+
+    if is_nil(innermost_resource) do
+      raise Ash.Error.Framework.AssumptionFailed,
+        message: """
+        Path `#{Enum.join(segments, ".")}` for `exists/2` mixes
+        relationships with embedded arrays, or contains a segment that is
+        neither. Mixed paths are not yet supported.
+        """
+    end
+
+    # 2. Compile the source jsonb column (parent's first-segment attribute)
+    #    via a synthetic Ref. `:no_cast?` keeps it as raw jsonb.
+    source_ref = %Ref{
+      attribute: Ash.Resource.Info.attribute(source_resource, first_segment),
+      relationship_path: full_at_path,
+      resource: bindings.resource
+    }
+
+    {source_dyn, acc} =
+      do_dynamic_expr(query, source_ref, Map.put(bindings, :no_cast?, true), embedded?, acc)
+
+    # 3. Rewrite Refs in the inner predicate so fields of the innermost
+    #    embedded resource become `EmbeddedArrayElementField` markers (which
+    #    compile to `(opt.elem ->> 'field')::type` fragments).
+    rewritten_expr =
+      Ash.Filter.rewrite_for_embedded_array_scope(inner_expr, innermost_resource)
+
+    # Provide `parent_bindings` so `parent/1` inside the predicate resolves
+    # correctly.
+    #
+    # - Top-level (no enclosing subquery): the EXISTS lives inline in the
+    #   outer query, so "parent" is the current bindings. We force
+    #   `parent_is_parent_as?: false` so refs emit `field(as(^binding), ...)`
+    #   rather than `parent_as(^binding)` (no Ecto subquery to be the parent of).
+    #
+    # - Inside a relationship subquery (e.g. when a mixed-path Exists was
+    #   split into outer relationship-Exists + inner embedded-array-Exists):
+    #   the inner predicate's `parent/1` should reach the *outermost* query,
+    #   not the relationship subquery. Pass through `bindings.parent_bindings`
+    #   as-is — it was set by `related_subquery` to point to the outer query
+    #   via `parent_as`.
+    parent_bindings =
+      case Map.get(bindings, :parent_bindings) do
+        nil -> Map.put(query.__ash_bindings__, :parent_is_parent_as?, false)
+        existing -> existing
+      end
+
+    inner_bindings = Map.put(bindings, :parent_bindings, parent_bindings)
+
+    {inner_dyn, acc} =
+      do_dynamic_expr(query, rewritten_expr, inner_bindings, embedded?, acc, :boolean)
+
+    # 4. Build the EXISTS fragment with one `jsonb_array_elements` per segment.
+    fragment_args =
+      build_embedded_array_exists_fragment_args(source_dyn, rest_segments, inner_dyn)
+
+    do_dynamic_expr(
+      query,
+      %Fragment{embedded?: true, arguments: fragment_args},
+      bindings,
+      embedded?,
+      acc
+    )
+  end
+
+  defp build_embedded_array_exists_fragment_args(source_dyn, [], inner_dyn) do
+    [
+      raw: "EXISTS (SELECT 1 FROM jsonb_array_elements(",
+      casted_expr: source_dyn,
+      raw: ") AS opt(elem) WHERE ",
+      casted_expr: inner_dyn,
+      raw: ")"
+    ]
+  end
+
+  defp build_embedded_array_exists_fragment_args(source_dyn, rest_segments, inner_dyn) do
+    # `rest_segments` has N elements; we need N additional `jsonb_array_elements`
+    # entries. Innermost alias is `opt`; intermediates are `outer_0`..`outer_{N-1}`.
+    last_index = length(rest_segments) - 1
+
+    chain_sql =
+      rest_segments
+      |> Enum.with_index()
+      |> Enum.map_join("", fn {field, i} ->
+        prev = "outer_#{i}"
+
+        next =
+          if i == last_index do
+            "opt"
+          else
+            "outer_#{i + 1}"
+          end
+
+        ", jsonb_array_elements(#{prev}.elem -> '#{to_string(field)}') AS #{next}(elem)"
+      end)
+
+    # Single contiguous `raw` between the two `casted_expr` parts — Ecto's
+    # query inspector chokes on consecutive raw fragments.
+    [
+      {:raw, "EXISTS (SELECT 1 FROM jsonb_array_elements("},
+      {:casted_expr, source_dyn},
+      {:raw, ") AS outer_0(elem)" <> chain_sql <> " WHERE "},
+      {:casted_expr, inner_dyn},
+      {:raw, ")"}
+    ]
+  end
+
+  defp resolve_embedded_array_path(resource, segments) do
+    Enum.reduce_while(segments, resource, fn segment, current ->
+      case embedded_array_attribute_resource(current, segment) do
+        nil -> {:halt, nil}
+        next -> {:cont, next}
+      end
+    end)
+  end
+
+  # Walk `segments` from `resource`. As long as each segment is a relationship,
+  # advance to its destination and accumulate the prefix. The moment we hit a
+  # segment that is not a relationship, return one of:
+  #
+  #   * `:no_split` — there's no embedded-array segment to split on, either
+  #     because the entire path is relationships, or because the first
+  #     non-relationship segment isn't an embedded array either (let the
+  #     downstream relationship dispatch raise its existing error).
+  #
+  #   * `{:split, rel_prefix, embedded_suffix}` — the first non-relationship
+  #     segment is an embedded-array attribute. Caller should re-lower the
+  #     Exists as a relationship Exists over `rel_prefix` whose inner
+  #     predicate is another Exists over `embedded_suffix`.
+  defp split_at_first_embedded_array(resource, segments) do
+    do_split_at_first_embedded_array(resource, segments, [])
+  end
+
+  defp do_split_at_first_embedded_array(_resource, [], _acc), do: :no_split
+
+  defp do_split_at_first_embedded_array(resource, [segment | rest], acc) do
+    case Ash.Resource.Info.relationship(resource, segment) do
+      %{destination: dest} ->
+        do_split_at_first_embedded_array(dest, rest, [segment | acc])
+
+      nil ->
+        case embedded_array_attribute_resource(resource, segment) do
+          nil -> :no_split
+          _embedded -> {:split, Enum.reverse(acc), [segment | rest]}
+        end
+    end
+  end
+
+  defp embedded_array_attribute_resource(resource, segment) do
+    case Ash.Resource.Info.attribute(resource, segment) do
+      %{type: {:array, item_type}} ->
+        if is_atom(item_type) and Ash.Resource.Info.embedded?(item_type) do
+          item_type
+        end
+
+      _ ->
+        nil
     end
   end
 
