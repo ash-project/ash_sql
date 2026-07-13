@@ -465,7 +465,10 @@ defmodule AshSql.Join do
       if query.__validated_for_action__ == read_action.name do
         query
       else
-        Ash.Query.for_read(query, read_action.name, %{},
+        Ash.Query.for_read(
+          query,
+          read_action.name,
+          Map.get(relationship, :read_action_arguments, %{}),
           actor: context[:private][:actor],
           tenant: context[:private][:tenant]
         )
