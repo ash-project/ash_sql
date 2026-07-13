@@ -99,16 +99,8 @@ defmodule AshSql.Query do
         {data, path} ->
           lateral_join_source_query = path |> List.first() |> elem(0)
 
-          lateral_join_source_query.resource
-          |> Ash.Query.set_context(%{
-            :data_layer =>
-              Map.put(
-                lateral_join_source_query.context[:data_layer] || %{},
-                :no_inner_join?,
-                true
-              )
-              |> Map.delete(:lateral_join_source)
-          })
+          lateral_join_source_query
+          |> rebuild_lateral_join_source_query()
           |> Ash.Query.set_tenant(lateral_join_source_query.tenant)
           |> set_lateral_join_prefix(data_layer_query)
           |> filter_for_records(data)
@@ -223,6 +215,18 @@ defmodule AshSql.Query do
             {:ok, %{data_layer_query | __ash_bindings__: ash_bindings}}
         end
     end
+  end
+
+  @doc false
+  def rebuild_lateral_join_source_query(lateral_join_source_query) do
+    lateral_join_source_query.resource
+    |> Ash.Query.set_context(Map.take(lateral_join_source_query.context, [:shared]))
+    |> Ash.Query.set_context(%{
+      data_layer:
+        (lateral_join_source_query.context[:data_layer] || %{})
+        |> Map.put(:no_inner_join?, true)
+        |> Map.delete(:lateral_join_source)
+    })
   end
 
   defp filter_for_records(query, records) do
