@@ -188,7 +188,11 @@ defmodule AshSql.Aggregate do
                         raise "No such relationship #{inspect(resource)}.#{first_relationship}. aggregates: #{inspect(aggregates)}"
 
                       first_relationship ->
-                        {first_relationship, rest}
+                        if rest == [] do
+                          {override_read_action(first_relationship, read_action.name), rest}
+                        else
+                          {first_relationship, rest}
+                        end
                     end
                 end
 
@@ -1561,7 +1565,7 @@ defmodule AshSql.Aggregate do
 
   defp join_all_relationships(
          agg_root_query,
-         _aggregates,
+         aggregates,
          relationship_path,
          first_relationship,
          _is_single?,
@@ -1579,16 +1583,17 @@ defmodule AshSql.Aggregate do
           end
         end)
 
+      relationships =
+        first_relationship.destination
+        |> AshSql.Join.relationship_path_to_relationships(relationship_path)
+        |> List.update_at(-1, &override_read_action(&1, hd(aggregates).query.action.name))
+
       AshSql.Join.join_all_relationships(
         agg_root_query,
         Map.values(join_filters),
         [],
         [
-          {:inner,
-           AshSql.Join.relationship_path_to_relationships(
-             first_relationship.destination,
-             relationship_path
-           )}
+          {:inner, relationships}
         ],
         [],
         nil,
@@ -1707,7 +1712,7 @@ defmodule AshSql.Aggregate do
           relationship_path: relationship_path,
           join_filters: join_filters,
           field: %Ash.Query.Calculation{} = field
-        },
+        } = aggregate,
         _
       ) do
     ref =
@@ -1719,7 +1724,8 @@ defmodule AshSql.Aggregate do
 
     with true <- join_filters == %{},
          [] <- Ash.Filter.used_aggregates(ref, :all),
-         [] <- Ash.Filter.relationship_paths(ref) do
+         [] <- Ash.Filter.relationship_paths(ref),
+         true <- read_action_matches_relationship_default?(resource, aggregate) do
       true
     else
       _ ->
@@ -1767,7 +1773,8 @@ defmodule AshSql.Aggregate do
           }
 
         with [] <- Ash.Filter.used_aggregates(ref, :all),
-             [] <- Ash.Filter.relationship_paths(ref) do
+             [] <- Ash.Filter.relationship_paths(ref),
+             true <- read_action_matches_relationship_default?(resource, aggregate) do
           true
         else
           _ ->
@@ -1778,9 +1785,10 @@ defmodule AshSql.Aggregate do
         false
 
       _ ->
-        name in query.__ash_bindings__.sql_behaviour.simple_join_first_aggregates(resource) ||
-          (join_filters in [nil, %{}, []] &&
-             single_path?(resource, relationship_path))
+        (name in query.__ash_bindings__.sql_behaviour.simple_join_first_aggregates(resource) ||
+           (join_filters in [nil, %{}, []] &&
+              single_path?(resource, relationship_path))) &&
+          read_action_matches_relationship_default?(resource, aggregate)
     end
   end
 
@@ -2486,6 +2494,34 @@ defmodule AshSql.Aggregate do
         other ->
           other
       end
+    end
+  end
+
+  defp read_action_matches_relationship_default?(_resource, %{relationship_path: []}), do: true
+
+  defp read_action_matches_relationship_default?(resource, aggregate) do
+    last_relationship =
+      resource
+      |> AshSql.Join.relationship_path_to_relationships(aggregate.relationship_path)
+      |> List.last()
+
+    default_action_name =
+      last_relationship.read_action ||
+        Ash.Resource.Info.primary_action!(last_relationship.destination, :read).name
+
+    case aggregate.query && aggregate.query.action do
+      nil -> true
+      action -> action.name == default_action_name
+    end
+  end
+
+  defp override_read_action(relationship, action_name) do
+    if relationship.read_action == action_name do
+      relationship
+    else
+      relationship
+      |> Map.put(:read_action, action_name)
+      |> Map.replace(:read_action_arguments, %{})
     end
   end
 
