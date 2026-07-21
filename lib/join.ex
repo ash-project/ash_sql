@@ -556,17 +556,20 @@ defmodule AshSql.Join do
   def handle_attribute_multitenancy(query, tenant, read_action \\ nil) do
     if tenant && Ash.Resource.Info.multitenancy_strategy(query.resource) == :attribute &&
          (is_nil(read_action) || read_action.multitenancy not in [:bypass, :bypass_all]) do
-      multitenancy_attribute = Ash.Resource.Info.multitenancy_attribute(query.resource)
+      case Ash.Resource.Info.multitenancy_attribute_values(
+             query.resource,
+             tenant,
+             query.to_tenant
+           ) do
+        [] ->
+          query
 
-      if multitenancy_attribute do
-        {m, f, a} = Ash.Resource.Info.multitenancy_parse_attribute(query.resource)
-        attribute_value = apply(m, f, [query.to_tenant | a])
+        attribute_values ->
+          query = Ash.Query.set_tenant(query, tenant)
 
-        query
-        |> Ash.Query.set_tenant(tenant)
-        |> Ash.Query.filter(^Ash.Expr.ref(multitenancy_attribute) == ^attribute_value)
-      else
-        query
+          Enum.reduce(attribute_values, query, fn {attribute, value}, query ->
+            Ash.Query.filter(query, ^Ash.Expr.ref(attribute) == ^value)
+          end)
       end
     else
       query
