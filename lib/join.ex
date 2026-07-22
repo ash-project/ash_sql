@@ -400,7 +400,8 @@ defmodule AshSql.Join do
         if opts[:return_subquery?] do
           subquery(query)
         else
-          if Enum.empty?(query.joins) && Enum.empty?(query.order_bys) && Enum.empty?(query.wheres) do
+          if Enum.empty?(query.joins) && Enum.empty?(query.order_bys) && Enum.empty?(query.wheres) &&
+               Enum.empty?(query.group_bys) && is_nil(query.limit) do
             query
           else
             from(row in subquery(query), as: ^(opts[:start_bindings_at] || 0))

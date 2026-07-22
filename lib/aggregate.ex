@@ -517,31 +517,40 @@ defmodule AshSql.Aggregate do
          tenant,
          join_filters
        ) do
+    limited? = limited_relationship?(first_relationship)
+
     AshSql.Join.related_subquery(
       first_relationship,
       tmp_query,
       start_bindings_at: start_bindings_at,
       refs_at_path: root_data_path,
       skip_distinct_for_first_rel?: true,
+      sort?: limited?,
       on_subquery: fn subquery ->
         base_binding = subquery.__ash_bindings__.root_binding
         current_binding = subquery.__ash_bindings__.current
 
         subquery =
-          subquery
-          |> Ecto.Query.exclude(:select)
-          |> Ecto.Query.select(%{})
-
-        subquery =
-          apply_relationship_subquery(
-            subquery,
-            first_relationship,
-            query,
-            tenant,
-            source_binding,
-            current_binding,
-            base_binding
-          )
+          if limited? do
+            apply_limited_relationship_subquery(
+              subquery,
+              first_relationship,
+              source_binding,
+              base_binding
+            )
+          else
+            subquery
+            |> Ecto.Query.exclude(:select)
+            |> Ecto.Query.select(%{})
+            |> apply_relationship_subquery(
+              first_relationship,
+              query,
+              tenant,
+              source_binding,
+              current_binding,
+              base_binding
+            )
+          end
 
         subquery =
           AshSql.Join.set_join_prefix(
@@ -600,6 +609,63 @@ defmodule AshSql.Aggregate do
         )
       end
     )
+  end
+
+  # Relationships that declare a `limit` (or `offset`) need the limit applied
+  # to the correlated rows *before* the aggregation's `GROUP BY`, otherwise the
+  # limit caps the number of groups (always 1 in a lateral join) instead of the
+  # number of rows per group.
+  defp limited_relationship?(relationship) do
+    (is_integer(Map.get(relationship, :limit)) or
+       (Map.get(relationship, :offset) || 0) > 0) and
+      is_nil(Map.get(relationship, :manual)) and
+      !Map.get(relationship, :no_attributes?) and
+      relationship.type != :many_to_many
+  end
+
+  # Builds:
+  #
+  #     SELECT ... FROM (
+  #       SELECT * FROM destination
+  #       WHERE destination.destination_attribute = parent.source_attribute
+  #       ORDER BY <relationship sort> LIMIT <relationship limit>
+  #     ) AS <base_binding>
+  #     GROUP BY destination_attribute
+  #
+  # The correlation, sort and limit all live in the inner subquery so that the
+  # limit bounds the rows per parent, and the aggregate functions fold the
+  # already-limited rows.
+  defp apply_limited_relationship_subquery(subquery, rel, source_binding, base_binding) do
+    field = rel.destination_attribute
+
+    inner =
+      from(row in subquery,
+        where:
+          field(
+            parent_as(^source_binding),
+            ^rel.source_attribute
+          ) ==
+            field(
+              as(^base_binding),
+              ^rel.destination_attribute
+            )
+      )
+
+    inner =
+      case Map.get(rel, :limit) do
+        limit when is_integer(limit) -> Ecto.Query.limit(inner, ^limit)
+        _ -> inner
+      end
+
+    from(row in subquery(inner), as: ^base_binding)
+    |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
+    |> Ecto.Query.select(%{})
+    |> then(fn wrapped ->
+      from(row in wrapped,
+        group_by: field(row, ^field),
+        select_merge: %{^field => field(row, ^field)}
+      )
+    end)
   end
 
   defp apply_relationship_subquery(
