@@ -11,6 +11,23 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.6.6](https://github.com/ash-project/ash_sql/compare/v0.6.5...v0.6.6) (2026-07-22)
+
+
+
+
+### Bug Fixes:
+
+* ensure limits/offsets are applied in all aggregates by [@zachdaniel](https://github.com/zachdaniel)
+
+* use aggregate read_action instead of using default relationship read (#239) by averypeck [(#239)](https://github.com/ash-project/ash_sql/pull/239)
+
+* preserve shared context in lateral join source queries (#238) by [@nallwhy](https://github.com/nallwhy) [(#238)](https://github.com/ash-project/ash_sql/pull/238)
+
+### Improvements:
+
+* Use relationship read action arguments in joins (#237) by [@jechol](https://github.com/jechol) [(#237)](https://github.com/ash-project/ash_sql/pull/237)
+
 ## [v0.6.5](https://github.com/ash-project/ash_sql/compare/v0.6.4...v0.6.5) (2026-06-20)
 
 
