@@ -22,6 +22,18 @@ defmodule AshSql.Query do
         _domain \\ nil
       ) do
     Enum.reduce(combination_of, subquery(first), fn {type, combination_of}, query ->
+      # Each part applies to the result of everything before it. Appending
+      # straight onto the accumulated query would build one flat chain of set
+      # operations, and SQL's own precedence would then decide the grouping —
+      # `INTERSECT` binds tighter than `UNION`/`EXCEPT`, so a part could end up
+      # applied to its predecessor rather than to the whole. Nesting what has
+      # accumulated keeps the order the parts were given in.
+      query =
+        case query do
+          %Ecto.SubQuery{} -> query
+          query -> subquery(query)
+        end
+
       case type do
         :union ->
           Ecto.Query.union(query, ^combination_of)
