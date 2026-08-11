@@ -565,7 +565,7 @@ defmodule AshSql.Query do
             | select: %{select | expr: {:merge, [], [merge_base, {:%{}, [], merging}]}}
           }
           |> Map.update!(:__ash_bindings__, fn bindings ->
-            Map.update(bindings, :select_calculations, [], &(&1 -- [:calculations]))
+            Map.update(bindings, :select_calculations, [], &((&1 || []) -- [:calculations]))
           end)
 
         {calculation_merges, aggregate_merges, new_query}

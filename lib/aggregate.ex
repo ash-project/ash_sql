@@ -2679,8 +2679,20 @@ defmodule AshSql.Aggregate do
       |> Ash.Resource.Info.attribute_names()
       |> MapSet.to_list()
 
+    # An upgraded combination query's source only exposes the default
+    # attributes plus the combination fieldset; others can't be re-selected.
+    available_attr_names =
+      if query.__ash_bindings__[:subquery_upgrade?] do
+        MapSet.union(
+          selected_by_default,
+          MapSet.new(query.__ash_bindings__[:already_selected] || [])
+        )
+      else
+        MapSet.new(all_attr_names)
+      end
+
     to_select =
-      Enum.reject(all_attr_names, &(&1 in selected_fields))
+      Enum.reject(all_attr_names, &(&1 in selected_fields or &1 not in available_attr_names))
 
     query_with_all_attrs =
       case query.select do
@@ -2724,21 +2736,36 @@ defmodule AshSql.Aggregate do
     select_aggregates =
       (query_with_all_attrs.__ash_bindings__[:select_aggregates] || []) -- [:aggregates]
 
+    reselected_fields =
+      Enum.concat([
+        selected_fields,
+        select_calculations,
+        select_aggregates,
+        flattened_calc_fields,
+        flattened_agg_fields
+      ])
+
+    # Upgraded combination queries return maps, which `struct/2` rejects, and
+    # `map/2` would drop field type info — merge each field explicitly instead.
     subquery_query =
-      from(row in subquery(query_with_all_attrs),
-        as: ^query.__ash_bindings__.root_binding,
-        select:
-          struct(
-            row,
-            ^Enum.concat([
-              selected_fields,
-              select_calculations,
-              select_aggregates,
-              flattened_calc_fields,
-              flattened_agg_fields
-            ])
+      if query.__ash_bindings__[:subquery_upgrade?] do
+        root_binding = query.__ash_bindings__.root_binding
+
+        base =
+          from(row in subquery(query_with_all_attrs),
+            as: ^root_binding,
+            select: %{}
           )
-      )
+
+        Enum.reduce(reselected_fields, base, fn field, q ->
+          from(row in q, select_merge: %{^field => field(as(^root_binding), ^field)})
+        end)
+      else
+        from(row in subquery(query_with_all_attrs),
+          as: ^query.__ash_bindings__.root_binding,
+          select: struct(row, ^reselected_fields)
+        )
+      end
 
     root_binding = query.__ash_bindings__.root_binding
 
