@@ -11,6 +11,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.6.7](https://github.com/ash-project/ash_sql/compare/v0.6.6...v0.6.7) (2026-08-11)
+
+
+
+
+### Bug Fixes:
+
+* fix aggregate references inside of unions by [@zachdaniel](https://github.com/zachdaniel)
+
+* apply each combination part to the whole of what precedes it by [@matt-beanland](https://github.com/matt-beanland) [(#244)](https://github.com/ash-project/ash_sql/pull/244)
+
 ## [v0.6.6](https://github.com/ash-project/ash_sql/compare/v0.6.5...v0.6.6) (2026-07-22)
 
 
