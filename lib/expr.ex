@@ -307,6 +307,27 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
+         %Ago{arguments: [duration], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {duration, acc} =
+      do_dynamic_expr(
+        query,
+        duration,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :duration
+      )
+
+    {Ecto.Query.dynamic(fragment("(?::timestamp - ?)", ^DateTime.utc_now(), ^duration)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
          %StartOfDay{arguments: [value], embedded?: pred_embedded?},
          bindings,
          embedded?,
@@ -448,6 +469,27 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
+         %FromNow{arguments: [duration], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {duration, acc} =
+      do_dynamic_expr(
+        query,
+        duration,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :duration
+      )
+
+    {Ecto.Query.dynamic(fragment("(?::timestamp + ?)", ^DateTime.utc_now(), ^duration)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
          %DateTimeAdd{arguments: [datetime, amount, interval], embedded?: pred_embedded?},
          bindings,
          embedded?,
@@ -480,6 +522,36 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
+         %DateTimeAdd{arguments: [datetime, duration], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {datetime, acc} =
+      do_dynamic_expr(
+        query,
+        datetime,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
+
+    {duration, acc} =
+      do_dynamic_expr(
+        query,
+        duration,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :duration
+      )
+
+    {Ecto.Query.dynamic(fragment("(?::timestamp + ?)", ^datetime, ^duration)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
          %DateAdd{arguments: [date, amount, interval], embedded?: pred_embedded?},
          bindings,
          embedded?,
@@ -507,6 +579,38 @@ defmodule AshSql.Expr do
       )
 
     {Ecto.Query.dynamic(fragment("(?)", date_add(^date, ^amount, ^to_string(interval)))), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %DateAdd{arguments: [date, duration], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {date, acc} =
+      do_dynamic_expr(
+        query,
+        date,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
+
+    {duration, acc} =
+      do_dynamic_expr(
+        query,
+        duration,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :duration
+      )
+
+    # `date + interval` is a timestamp in Postgres, so cast back, as Ecto's own
+    # `date_add/3` does.
+    {Ecto.Query.dynamic(fragment("((?::date + ?)::date)", ^date, ^duration)), acc}
   end
 
   defp default_dynamic_expr(
