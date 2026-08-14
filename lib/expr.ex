@@ -2424,16 +2424,29 @@ defmodule AshSql.Expr do
       )
 
     if type do
-      bindings =
+      {bindings, cast_type} =
         case arg1 do
-          %Ash.Query.Ref{attribute: %Ash.Resource.Attribute{}} ->
-            Map.put(bindings, :no_cast?, true)
+          %Ash.Query.Ref{
+            attribute: %Ash.Resource.Attribute{type: attr_type, constraints: attr_constraints}
+          } ->
+            # only remap the cast for refs being cast to their own type —
+            # cross-type casts (e.g. a usec column cast to second precision)
+            # must keep their requested target
+            cast_type =
+              if type ==
+                   parameterized_type(bindings.sql_behaviour, attr_type, attr_constraints, :expr) do
+                bindings.sql_behaviour.ref_cast_type(type)
+              else
+                type
+              end
+
+            {Map.put(bindings, :no_cast?, true), cast_type}
 
           _ ->
             if Ash.Expr.expr?(arg1) do
-              bindings
+              {bindings, type}
             else
-              Map.put(bindings, :no_cast?, true)
+              {Map.put(bindings, :no_cast?, true), type}
             end
         end
 
@@ -2464,7 +2477,7 @@ defmodule AshSql.Expr do
           {expr, acc}
 
         _ ->
-          {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
+          {query.__ash_bindings__.sql_behaviour.type_expr(expr, cast_type), acc}
       end
     else
       do_dynamic_expr(query, arg1, bindings, embedded?, acc, arg2)
@@ -2990,7 +3003,10 @@ defmodule AshSql.Expr do
               Ecto.Query.dynamic(field(as(^ref_binding), ^name))
             end
 
-          query.__ash_bindings__.sql_behaviour.type_expr(ref_dynamic, type)
+          query.__ash_bindings__.sql_behaviour.type_expr(
+            ref_dynamic,
+            query.__ash_bindings__.sql_behaviour.ref_cast_type(type)
+          )
       end
 
     {expr, acc}
