@@ -11,6 +11,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.6.8](https://github.com/ash-project/ash_sql/compare/v0.6.7...v0.6.8) (2026-08-14)
+
+
+
+
+### Improvements:
+
+* support a cast mechanism when casting refs by [@zachdaniel](https://github.com/zachdaniel)
+
+* support the Duration form of ago, from_now, datetime_addâ¦ by [@zachdaniel](https://github.com/zachdaniel) [(#245)](https://github.com/ash-project/ash_sql/pull/245)
+
+* support the Duration form of ago, from_now, datetime_add and date_add by [@matt-beanland](https://github.com/matt-beanland) [(#245)](https://github.com/ash-project/ash_sql/pull/245)
+
 ## [v0.6.7](https://github.com/ash-project/ash_sql/compare/v0.6.6...v0.6.7) (2026-08-11)
 
 
