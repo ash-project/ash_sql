@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.6.9](https://github.com/ash-project/ash_sql/compare/v0.6.8...v0.6.9) (2026-08-16)
+
+
+
+
+### Improvements:
+
+* add Implementation.list_expr/6 so adapters can render list literals by [@zachdaniel](https://github.com/zachdaniel) [(#247)](https://github.com/ash-project/ash_sql/pull/247)
+
 ## [v0.6.8](https://github.com/ash-project/ash_sql/compare/v0.6.7...v0.6.8) (2026-08-14)
 
 
