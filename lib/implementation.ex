@@ -9,6 +9,20 @@ defmodule AshSql.Implementation do
   @callback repo(Ash.Resource.t(), :mutate | :read) :: module
   @callback expr(Ecto.Query.t(), Ash.Expr.t(), map, boolean, AshSql.Expr.ExprInfo.t(), term) ::
               {:ok, term, AshSql.Expr.ExprInfo.t()} | {:error, term} | :error
+
+  @doc """
+  Render a list literal that has to be encoded, i.e. one holding maps, lists or expressions.
+
+  `AshSql.Expr` renders those as `ARRAY[...]` (or `array_to_json(ARRAY[...])`), which is
+  Postgres syntax. Implementations whose database has no array constructor override this to
+  render the list themselves. Returning `:error`, which is the default, keeps the `ARRAY[...]`
+  rendering.
+
+  The value is passed after embedded resources have been dumped, so it is a plain list.
+  """
+  @callback list_expr(Ecto.Query.t(), list(), map, boolean, AshSql.Expr.ExprInfo.t(), term) ::
+              {:ok, term, AshSql.Expr.ExprInfo.t()} | {:error, term} | :error
+
   @callback simple_join_first_aggregates(Ash.Resource.t()) :: list(atom)
 
   @callback parameterized_type(
@@ -50,6 +64,7 @@ defmodule AshSql.Implementation do
       def strpos_function, do: "strpos"
 
       def expr(_, _, _, _, _, _), do: :error
+      def list_expr(_, _, _, _, _, _), do: :error
       def simple_join_first_aggregates(_), do: []
       def list_aggregate(_), do: nil
       def multicolumn_distinct?, do: true
@@ -88,6 +103,7 @@ defmodule AshSql.Implementation do
       defoverridable array_overlap_operator?: 0,
                      equals_any?: 0,
                      expr: 6,
+                     list_expr: 6,
                      ilike?: 0,
                      strpos_function: 0,
                      require_ash_functions_for_or_and_and?: 0,
