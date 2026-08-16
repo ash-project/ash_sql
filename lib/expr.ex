@@ -3510,54 +3510,69 @@ defmodule AshSql.Expr do
           value
         end
 
-      element_type =
-        case type do
-          {{:array, type}, _} -> type
-          {{:in, type}, _} -> type
-          _ -> nil
-        end
+      case bindings.sql_behaviour.list_expr(query, value, bindings, embedded?, acc, type) do
+        {:ok, expr, acc} ->
+          {expr, acc}
 
-      elements =
-        Enum.map(value, fn list_item ->
-          if type do
-            {:expr, %Ash.Query.Function.Type{arguments: [list_item, element_type, []]}}
-          else
-            {:expr, list_item}
-          end
-        end)
-        |> Enum.intersperse({:raw, ","})
+        {:error, error} ->
+          raise "Error while building list expression: #{error}"
 
-      if is_map? do
-        do_dynamic_expr(
-          query,
-          %Fragment{
-            embedded?: embedded?,
-            arguments:
-              [
-                raw: "array_to_json(ARRAY["
-              ] ++ elements ++ [raw: "])"]
-          },
-          bindings,
-          embedded?,
-          acc,
-          type
-        )
-      else
-        do_dynamic_expr(
-          query,
-          %Fragment{
-            embedded?: embedded?,
-            arguments:
-              [
-                raw: "ARRAY["
-              ] ++ elements ++ [raw: "]"]
-          },
-          bindings,
-          embedded?,
-          acc,
-          type
-        )
+        :error ->
+          default_encode_list(query, value, bindings, embedded?, acc, type, is_map?)
       end
+    end
+  end
+
+  # `ARRAY[...]` is Postgres syntax. It stays the default so implementations that do not
+  # override `list_expr/6` render exactly as they did before.
+  defp default_encode_list(query, value, bindings, embedded?, acc, type, is_map?) do
+    element_type =
+      case type do
+        {{:array, type}, _} -> type
+        {{:in, type}, _} -> type
+        _ -> nil
+      end
+
+    elements =
+      Enum.map(value, fn list_item ->
+        if type do
+          {:expr, %Ash.Query.Function.Type{arguments: [list_item, element_type, []]}}
+        else
+          {:expr, list_item}
+        end
+      end)
+      |> Enum.intersperse({:raw, ","})
+
+    if is_map? do
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: embedded?,
+          arguments:
+            [
+              raw: "array_to_json(ARRAY["
+            ] ++ elements ++ [raw: "])"]
+        },
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
+    else
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: embedded?,
+          arguments:
+            [
+              raw: "ARRAY["
+            ] ++ elements ++ [raw: "]"]
+        },
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
     end
   end
 
