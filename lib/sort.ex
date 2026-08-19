@@ -43,52 +43,15 @@ defmodule AshSql.Sort do
               {calculation, val}
 
             %Ash.Resource.Aggregate{} = aggregate ->
-              related = Ash.Resource.Info.related(resource, aggregate.relationship_path)
+              case AshSql.Aggregate.resource_aggregate_to_aggregate(resource, aggregate,
+                     actor: query.__ash_bindings__.context[:private][:actor],
+                     tenant: query.__ash_bindings__.context[:private][:tenant]
+                   ) do
+                {:ok, agg} ->
+                  {agg, val}
 
-              read_action =
-                aggregate.read_action ||
-                  Ash.Resource.Info.primary_action!(
-                    related,
-                    :read
-                  ).name
-
-              with %{valid?: true} = aggregate_query <- Ash.Query.for_read(related, read_action),
-                   %{valid?: true} = aggregate_query <-
-                     Ash.Query.build(aggregate_query,
-                       filter: aggregate.filter,
-                       sort: aggregate.sort
-                     ) do
-                case Ash.Query.Aggregate.new(
-                       resource,
-                       aggregate.name,
-                       aggregate.kind,
-                       path: aggregate.relationship_path,
-                       query: aggregate_query,
-                       field: aggregate.field,
-                       default: aggregate.default,
-                       filterable?: aggregate.filterable?,
-                       type: aggregate.type,
-                       sortable?: aggregate.filterable?,
-                       include_nil?: aggregate.include_nil?,
-                       constraints: aggregate.constraints,
-                       implementation: aggregate.implementation,
-                       uniq?: aggregate.uniq?,
-                       read_action:
-                         aggregate.read_action ||
-                           Ash.Resource.Info.primary_action!(
-                             Ash.Resource.Info.related(resource, aggregate.relationship_path),
-                             :read
-                           ).name,
-                       authorize?: aggregate.authorize?
-                     ) do
-                  {:ok, agg} ->
-                    {agg, val}
-
-                  {:error, error} ->
-                    raise Ash.Error.to_ash_error(error)
-                end
-              else
-                %{errors: errors} -> raise Ash.Error.to_ash_error(errors)
+                {:error, error} ->
+                  raise Ash.Error.to_ash_error(error)
               end
 
             _ ->
