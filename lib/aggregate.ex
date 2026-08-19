@@ -969,41 +969,11 @@ defmodule AshSql.Aggregate do
         {:cont, {:ok, [aggregate | aggregates]}}
 
       aggregate, {:ok, aggregates} ->
-        related = Ash.Resource.Info.related(resource, aggregate.relationship_path)
-
-        read_action =
-          aggregate.read_action || Ash.Resource.Info.primary_action!(related, :read).name
-
-        with %{valid?: true} = aggregate_query <- Ash.Query.for_read(related, read_action),
-             %{valid?: true} = aggregate_query <-
-               Ash.Query.build(aggregate_query, filter: aggregate.filter, sort: aggregate.sort) do
-          Ash.Query.Aggregate.new(
-            resource,
-            aggregate.name,
-            aggregate.kind,
-            path: aggregate.relationship_path,
-            query: aggregate_query,
-            field: aggregate.field,
-            default: aggregate.default,
-            filterable?: aggregate.filterable?,
-            type: aggregate.type,
-            sortable?: aggregate.filterable?,
-            include_nil?: aggregate.include_nil?,
-            constraints: aggregate.constraints,
-            implementation: aggregate.implementation,
-            uniq?: aggregate.uniq?,
-            read_action:
-              aggregate.read_action ||
-                Ash.Resource.Info.primary_action!(
-                  Ash.Resource.Info.related(resource, aggregate.relationship_path),
-                  :read
-                ).name,
-            authorize?: aggregate.authorize?
-          )
-        else
-          %{errors: errors} ->
-            {:error, errors}
-        end
+        resource
+        |> resource_aggregate_to_aggregate(aggregate,
+          actor: private_context[:actor],
+          tenant: private_context[:tenant]
+        )
         |> case do
           {:ok, aggregate} ->
             aggregate =
@@ -1025,6 +995,44 @@ defmodule AshSql.Aggregate do
             {:halt, {:error, error}}
         end
     end)
+  end
+
+  @doc false
+  def resource_aggregate_to_aggregate(resource, aggregate, opts \\ []) do
+    related = Ash.Resource.Info.related(resource, aggregate.relationship_path)
+
+    read_action =
+      aggregate.read_action || Ash.Resource.Info.primary_action!(related, :read).name
+
+    with %{valid?: true} = aggregate_query <-
+           Ash.Query.for_read(related, read_action, %{},
+             actor: opts[:actor],
+             tenant: opts[:tenant]
+           ),
+         %{valid?: true} = aggregate_query <-
+           Ash.Query.build(aggregate_query, filter: aggregate.filter, sort: aggregate.sort) do
+      Ash.Query.Aggregate.new(
+        resource,
+        aggregate.name,
+        aggregate.kind,
+        path: aggregate.relationship_path,
+        query: aggregate_query,
+        field: aggregate.field,
+        default: aggregate.default,
+        filterable?: aggregate.filterable?,
+        type: aggregate.type,
+        sortable?: aggregate.filterable?,
+        include_nil?: aggregate.include_nil?,
+        constraints: aggregate.constraints,
+        implementation: aggregate.implementation,
+        uniq?: aggregate.uniq?,
+        read_action: read_action,
+        authorize?: aggregate.authorize?
+      )
+    else
+      %{errors: errors} ->
+        {:error, errors}
+    end
   end
 
   defp add_first_join_aggregate(
