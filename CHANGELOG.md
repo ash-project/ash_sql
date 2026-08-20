@@ -11,6 +11,27 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.7.0](https://github.com/ash-project/ash_sql/compare/v0.6.9...v0.7.0) (2026-08-20)
+
+
+
+
+### Features:
+
+* render the range expressions to their Postgres operators by [@zachdaniel](https://github.com/zachdaniel) [(#248)](https://github.com/ash-project/ash_sql/pull/248)
+
+* render the range expressions to their Postgres operators by [@matt-beanland](https://github.com/matt-beanland) [(#248)](https://github.com/ash-project/ash_sql/pull/248)
+
+### Bug Fixes:
+
+* pass actor to Ash.Query.for_read for aggregate and sort by [@zachdaniel](https://github.com/zachdaniel) [(#250)](https://github.com/ash-project/ash_sql/pull/250)
+
+* respect opts[:left_only?] argument passed to join_all_relationships by [@zachdaniel](https://github.com/zachdaniel) [(#249)](https://github.com/ash-project/ash_sql/pull/249)
+
+* pass actor to Ash.Query.for_read for aggregate and sort by Jonas Cosandey [(#250)](https://github.com/ash-project/ash_sql/pull/250)
+
+* respect opts[:left_only?] argument passed to join_all_relationships by Jonas Cosandey [(#249)](https://github.com/ash-project/ash_sql/pull/249)
+
 ## [v0.6.9](https://github.com/ash-project/ash_sql/compare/v0.6.8...v0.6.9) (2026-08-16)
 
 
