@@ -82,8 +82,7 @@ defmodule AshSql.Join do
         parent_query,
         no_inner_join?
       ) do
-    no_inner_join? =
-      no_inner_join? || query.__ash_bindings__.context[:data_layer][:no_inner_join?]
+    no_inner_join? = left_join_only?(query, opts, no_inner_join?)
 
     case join_parent_paths(query, filter, relationship_paths) do
       {:ok, query} ->
@@ -226,6 +225,12 @@ defmodule AshSql.Join do
       {:error, error} ->
         {:error, error}
     end
+  end
+
+  @doc false
+  def left_join_only?(query, opts, explicit?) do
+    explicit? || query.__ash_bindings__.context[:data_layer][:no_inner_join?] ||
+      opts[:left_only?] || false
   end
 
   @doc false
