@@ -1293,9 +1293,11 @@ defmodule AshSql.Expr do
       %Fragment{
         embedded?: pred_embedded?,
         arguments: [
-          raw: "array_length((",
+          raw: "coalesce(array_length((",
           expr: list,
-          raw: "), 1)"
+          raw: "), 1), cardinality((",
+          expr: list,
+          raw: ")))"
         ]
       },
       bindings,
