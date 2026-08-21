@@ -2453,15 +2453,15 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    precision = Enum.at(rest, 0) || 1
+    precision = Enum.at(rest, 0) || 0
 
     frag =
       %Fragment{
         embedded?: pred_embedded?,
         arguments: [
-          raw: "ROUND(",
+          raw: "ROUND((",
           expr: num,
-          raw: ", ",
+          raw: ")::numeric, ",
           expr: precision,
           raw: ")"
         ]
