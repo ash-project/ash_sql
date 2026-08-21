@@ -1462,11 +1462,11 @@ defmodule AshSql.Expr do
       %Fragment{
         embedded?: pred_embedded?,
         arguments: [
-          raw: "#{bindings.sql_behaviour.strpos_function()}((",
+          raw: "(NULLIF(#{bindings.sql_behaviour.strpos_function()}((",
           expr: left,
           raw: "), (",
           expr: right,
-          raw: "))"
+          raw: ")), 0) - 1)"
         ]
       },
       bindings,
