@@ -3523,6 +3523,8 @@ defmodule AshSql.Expr do
         :bracket
       end
 
+    declared_field = type && field_constraints(constraints, next)
+
     {next, type, constraints} =
       cond do
         type && Ash.Type.embedded_type?(type) ->
@@ -3558,6 +3560,10 @@ defmodule AshSql.Expr do
             {name, type, constraints} ->
               {name, type, constraints}
           end
+
+        declared_field ->
+          {field_type, field_constraints} = declared_field
+          {next, field_type, field_constraints}
 
         true ->
           {next, nil, nil}
@@ -3599,6 +3605,20 @@ defmodule AshSql.Expr do
               first_acc | rest_acc
             ])
         end
+    end
+  end
+
+  # The type a `fields` constraint declares for `next`, if it declares one.
+  defp field_constraints(constraints, next) do
+    with true <- Keyword.keyword?(constraints || []),
+         fields when is_list(fields) <- constraints[:fields],
+         {_name, config} <-
+           Enum.find(fields, fn {name, _config} ->
+             if is_binary(next), do: to_string(name) == next, else: name == next
+           end) do
+      {config[:type], config[:constraints] || []}
+    else
+      _ -> nil
     end
   end
 
