@@ -11,6 +11,77 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.7.0](https://github.com/ash-project/ash_sql/compare/v0.6.9...v0.7.0) (2026-08-20)
+
+
+
+
+### Features:
+
+* render the range expressions to their Postgres operators by [@zachdaniel](https://github.com/zachdaniel) [(#248)](https://github.com/ash-project/ash_sql/pull/248)
+
+* render the range expressions to their Postgres operators by [@matt-beanland](https://github.com/matt-beanland) [(#248)](https://github.com/ash-project/ash_sql/pull/248)
+
+### Bug Fixes:
+
+* pass actor to Ash.Query.for_read for aggregate and sort by [@zachdaniel](https://github.com/zachdaniel) [(#250)](https://github.com/ash-project/ash_sql/pull/250)
+
+* respect opts[:left_only?] argument passed to join_all_relationships by [@zachdaniel](https://github.com/zachdaniel) [(#249)](https://github.com/ash-project/ash_sql/pull/249)
+
+* pass actor to Ash.Query.for_read for aggregate and sort by Jonas Cosandey [(#250)](https://github.com/ash-project/ash_sql/pull/250)
+
+* respect opts[:left_only?] argument passed to join_all_relationships by Jonas Cosandey [(#249)](https://github.com/ash-project/ash_sql/pull/249)
+
+## [v0.6.9](https://github.com/ash-project/ash_sql/compare/v0.6.8...v0.6.9) (2026-08-16)
+
+
+
+
+### Improvements:
+
+* add Implementation.list_expr/6 so adapters can render list literals by [@zachdaniel](https://github.com/zachdaniel) [(#247)](https://github.com/ash-project/ash_sql/pull/247)
+
+## [v0.6.8](https://github.com/ash-project/ash_sql/compare/v0.6.7...v0.6.8) (2026-08-14)
+
+
+
+
+### Improvements:
+
+* support a cast mechanism when casting refs by [@zachdaniel](https://github.com/zachdaniel)
+
+* support the Duration form of ago, from_now, datetime_addâ¦ by [@zachdaniel](https://github.com/zachdaniel) [(#245)](https://github.com/ash-project/ash_sql/pull/245)
+
+* support the Duration form of ago, from_now, datetime_add and date_add by [@matt-beanland](https://github.com/matt-beanland) [(#245)](https://github.com/ash-project/ash_sql/pull/245)
+
+## [v0.6.7](https://github.com/ash-project/ash_sql/compare/v0.6.6...v0.6.7) (2026-08-11)
+
+
+
+
+### Bug Fixes:
+
+* fix aggregate references inside of unions by [@zachdaniel](https://github.com/zachdaniel)
+
+* apply each combination part to the whole of what precedes it by [@matt-beanland](https://github.com/matt-beanland) [(#244)](https://github.com/ash-project/ash_sql/pull/244)
+
+## [v0.6.6](https://github.com/ash-project/ash_sql/compare/v0.6.5...v0.6.6) (2026-07-22)
+
+
+
+
+### Bug Fixes:
+
+* ensure limits/offsets are applied in all aggregates by [@zachdaniel](https://github.com/zachdaniel)
+
+* use aggregate read_action instead of using default relationship read (#239) by averypeck [(#239)](https://github.com/ash-project/ash_sql/pull/239)
+
+* preserve shared context in lateral join source queries (#238) by [@nallwhy](https://github.com/nallwhy) [(#238)](https://github.com/ash-project/ash_sql/pull/238)
+
+### Improvements:
+
+* Use relationship read action arguments in joins (#237) by [@jechol](https://github.com/jechol) [(#237)](https://github.com/ash-project/ash_sql/pull/237)
+
 ## [v0.6.5](https://github.com/ash-project/ash_sql/compare/v0.6.4...v0.6.5) (2026-06-20)
 
 

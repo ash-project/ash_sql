@@ -188,7 +188,11 @@ defmodule AshSql.Aggregate do
                         raise "No such relationship #{inspect(resource)}.#{first_relationship}. aggregates: #{inspect(aggregates)}"
 
                       first_relationship ->
-                        {first_relationship, rest}
+                        if rest == [] do
+                          {override_read_action(first_relationship, read_action.name), rest}
+                        else
+                          {first_relationship, rest}
+                        end
                     end
                 end
 
@@ -513,31 +517,40 @@ defmodule AshSql.Aggregate do
          tenant,
          join_filters
        ) do
+    limited? = limited_relationship?(first_relationship)
+
     AshSql.Join.related_subquery(
       first_relationship,
       tmp_query,
       start_bindings_at: start_bindings_at,
       refs_at_path: root_data_path,
       skip_distinct_for_first_rel?: true,
+      sort?: limited?,
       on_subquery: fn subquery ->
         base_binding = subquery.__ash_bindings__.root_binding
         current_binding = subquery.__ash_bindings__.current
 
         subquery =
-          subquery
-          |> Ecto.Query.exclude(:select)
-          |> Ecto.Query.select(%{})
-
-        subquery =
-          apply_relationship_subquery(
-            subquery,
-            first_relationship,
-            query,
-            tenant,
-            source_binding,
-            current_binding,
-            base_binding
-          )
+          if limited? do
+            apply_limited_relationship_subquery(
+              subquery,
+              first_relationship,
+              source_binding,
+              base_binding
+            )
+          else
+            subquery
+            |> Ecto.Query.exclude(:select)
+            |> Ecto.Query.select(%{})
+            |> apply_relationship_subquery(
+              first_relationship,
+              query,
+              tenant,
+              source_binding,
+              current_binding,
+              base_binding
+            )
+          end
 
         subquery =
           AshSql.Join.set_join_prefix(
@@ -596,6 +609,63 @@ defmodule AshSql.Aggregate do
         )
       end
     )
+  end
+
+  # Relationships that declare a `limit` (or `offset`) need the limit applied
+  # to the correlated rows *before* the aggregation's `GROUP BY`, otherwise the
+  # limit caps the number of groups (always 1 in a lateral join) instead of the
+  # number of rows per group.
+  defp limited_relationship?(relationship) do
+    (is_integer(Map.get(relationship, :limit)) or
+       (Map.get(relationship, :offset) || 0) > 0) and
+      is_nil(Map.get(relationship, :manual)) and
+      !Map.get(relationship, :no_attributes?) and
+      relationship.type != :many_to_many
+  end
+
+  # Builds:
+  #
+  #     SELECT ... FROM (
+  #       SELECT * FROM destination
+  #       WHERE destination.destination_attribute = parent.source_attribute
+  #       ORDER BY <relationship sort> LIMIT <relationship limit>
+  #     ) AS <base_binding>
+  #     GROUP BY destination_attribute
+  #
+  # The correlation, sort and limit all live in the inner subquery so that the
+  # limit bounds the rows per parent, and the aggregate functions fold the
+  # already-limited rows.
+  defp apply_limited_relationship_subquery(subquery, rel, source_binding, base_binding) do
+    field = rel.destination_attribute
+
+    inner =
+      from(row in subquery,
+        where:
+          field(
+            parent_as(^source_binding),
+            ^rel.source_attribute
+          ) ==
+            field(
+              as(^base_binding),
+              ^rel.destination_attribute
+            )
+      )
+
+    inner =
+      case Map.get(rel, :limit) do
+        limit when is_integer(limit) -> Ecto.Query.limit(inner, ^limit)
+        _ -> inner
+      end
+
+    from(row in subquery(inner), as: ^base_binding)
+    |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
+    |> Ecto.Query.select(%{})
+    |> then(fn wrapped ->
+      from(row in wrapped,
+        group_by: field(row, ^field),
+        select_merge: %{^field => field(row, ^field)}
+      )
+    end)
   end
 
   defp apply_relationship_subquery(
@@ -899,41 +969,11 @@ defmodule AshSql.Aggregate do
         {:cont, {:ok, [aggregate | aggregates]}}
 
       aggregate, {:ok, aggregates} ->
-        related = Ash.Resource.Info.related(resource, aggregate.relationship_path)
-
-        read_action =
-          aggregate.read_action || Ash.Resource.Info.primary_action!(related, :read).name
-
-        with %{valid?: true} = aggregate_query <- Ash.Query.for_read(related, read_action),
-             %{valid?: true} = aggregate_query <-
-               Ash.Query.build(aggregate_query, filter: aggregate.filter, sort: aggregate.sort) do
-          Ash.Query.Aggregate.new(
-            resource,
-            aggregate.name,
-            aggregate.kind,
-            path: aggregate.relationship_path,
-            query: aggregate_query,
-            field: aggregate.field,
-            default: aggregate.default,
-            filterable?: aggregate.filterable?,
-            type: aggregate.type,
-            sortable?: aggregate.filterable?,
-            include_nil?: aggregate.include_nil?,
-            constraints: aggregate.constraints,
-            implementation: aggregate.implementation,
-            uniq?: aggregate.uniq?,
-            read_action:
-              aggregate.read_action ||
-                Ash.Resource.Info.primary_action!(
-                  Ash.Resource.Info.related(resource, aggregate.relationship_path),
-                  :read
-                ).name,
-            authorize?: aggregate.authorize?
-          )
-        else
-          %{errors: errors} ->
-            {:error, errors}
-        end
+        resource
+        |> resource_aggregate_to_aggregate(aggregate,
+          actor: private_context[:actor],
+          tenant: private_context[:tenant]
+        )
         |> case do
           {:ok, aggregate} ->
             aggregate =
@@ -955,6 +995,44 @@ defmodule AshSql.Aggregate do
             {:halt, {:error, error}}
         end
     end)
+  end
+
+  @doc false
+  def resource_aggregate_to_aggregate(resource, aggregate, opts \\ []) do
+    related = Ash.Resource.Info.related(resource, aggregate.relationship_path)
+
+    read_action =
+      aggregate.read_action || Ash.Resource.Info.primary_action!(related, :read).name
+
+    with %{valid?: true} = aggregate_query <-
+           Ash.Query.for_read(related, read_action, %{},
+             actor: opts[:actor],
+             tenant: opts[:tenant]
+           ),
+         %{valid?: true} = aggregate_query <-
+           Ash.Query.build(aggregate_query, filter: aggregate.filter, sort: aggregate.sort) do
+      Ash.Query.Aggregate.new(
+        resource,
+        aggregate.name,
+        aggregate.kind,
+        path: aggregate.relationship_path,
+        query: aggregate_query,
+        field: aggregate.field,
+        default: aggregate.default,
+        filterable?: aggregate.filterable?,
+        type: aggregate.type,
+        sortable?: aggregate.filterable?,
+        include_nil?: aggregate.include_nil?,
+        constraints: aggregate.constraints,
+        implementation: aggregate.implementation,
+        uniq?: aggregate.uniq?,
+        read_action: read_action,
+        authorize?: aggregate.authorize?
+      )
+    else
+      %{errors: errors} ->
+        {:error, errors}
+    end
   end
 
   defp add_first_join_aggregate(
@@ -1561,7 +1639,7 @@ defmodule AshSql.Aggregate do
 
   defp join_all_relationships(
          agg_root_query,
-         _aggregates,
+         aggregates,
          relationship_path,
          first_relationship,
          _is_single?,
@@ -1579,16 +1657,17 @@ defmodule AshSql.Aggregate do
           end
         end)
 
+      relationships =
+        first_relationship.destination
+        |> AshSql.Join.relationship_path_to_relationships(relationship_path)
+        |> List.update_at(-1, &override_read_action(&1, hd(aggregates).query.action.name))
+
       AshSql.Join.join_all_relationships(
         agg_root_query,
         Map.values(join_filters),
         [],
         [
-          {:inner,
-           AshSql.Join.relationship_path_to_relationships(
-             first_relationship.destination,
-             relationship_path
-           )}
+          {:inner, relationships}
         ],
         [],
         nil,
@@ -1707,7 +1786,7 @@ defmodule AshSql.Aggregate do
           relationship_path: relationship_path,
           join_filters: join_filters,
           field: %Ash.Query.Calculation{} = field
-        },
+        } = aggregate,
         _
       ) do
     ref =
@@ -1719,7 +1798,8 @@ defmodule AshSql.Aggregate do
 
     with true <- join_filters == %{},
          [] <- Ash.Filter.used_aggregates(ref, :all),
-         [] <- Ash.Filter.relationship_paths(ref) do
+         [] <- Ash.Filter.relationship_paths(ref),
+         true <- read_action_matches_relationship_default?(resource, aggregate) do
       true
     else
       _ ->
@@ -1767,7 +1847,8 @@ defmodule AshSql.Aggregate do
           }
 
         with [] <- Ash.Filter.used_aggregates(ref, :all),
-             [] <- Ash.Filter.relationship_paths(ref) do
+             [] <- Ash.Filter.relationship_paths(ref),
+             true <- read_action_matches_relationship_default?(resource, aggregate) do
           true
         else
           _ ->
@@ -1778,9 +1859,10 @@ defmodule AshSql.Aggregate do
         false
 
       _ ->
-        name in query.__ash_bindings__.sql_behaviour.simple_join_first_aggregates(resource) ||
-          (join_filters in [nil, %{}, []] &&
-             single_path?(resource, relationship_path))
+        (name in query.__ash_bindings__.sql_behaviour.simple_join_first_aggregates(resource) ||
+           (join_filters in [nil, %{}, []] &&
+              single_path?(resource, relationship_path))) &&
+          read_action_matches_relationship_default?(resource, aggregate)
     end
   end
 
@@ -2489,6 +2571,34 @@ defmodule AshSql.Aggregate do
     end
   end
 
+  defp read_action_matches_relationship_default?(_resource, %{relationship_path: []}), do: true
+
+  defp read_action_matches_relationship_default?(resource, aggregate) do
+    last_relationship =
+      resource
+      |> AshSql.Join.relationship_path_to_relationships(aggregate.relationship_path)
+      |> List.last()
+
+    default_action_name =
+      last_relationship.read_action ||
+        Ash.Resource.Info.primary_action!(last_relationship.destination, :read).name
+
+    case aggregate.query && aggregate.query.action do
+      nil -> true
+      action -> action.name == default_action_name
+    end
+  end
+
+  defp override_read_action(relationship, action_name) do
+    if relationship.read_action == action_name do
+      relationship
+    else
+      relationship
+      |> Map.put(:read_action, action_name)
+      |> Map.replace(:read_action_arguments, %{})
+    end
+  end
+
   defp single_path?(_, []), do: true
 
   defp single_path?(resource, [relationship | rest]) do
@@ -2577,8 +2687,20 @@ defmodule AshSql.Aggregate do
       |> Ash.Resource.Info.attribute_names()
       |> MapSet.to_list()
 
+    # An upgraded combination query's source only exposes the default
+    # attributes plus the combination fieldset; others can't be re-selected.
+    available_attr_names =
+      if query.__ash_bindings__[:subquery_upgrade?] do
+        MapSet.union(
+          selected_by_default,
+          MapSet.new(query.__ash_bindings__[:already_selected] || [])
+        )
+      else
+        MapSet.new(all_attr_names)
+      end
+
     to_select =
-      Enum.reject(all_attr_names, &(&1 in selected_fields))
+      Enum.reject(all_attr_names, &(&1 in selected_fields or &1 not in available_attr_names))
 
     query_with_all_attrs =
       case query.select do
@@ -2622,21 +2744,36 @@ defmodule AshSql.Aggregate do
     select_aggregates =
       (query_with_all_attrs.__ash_bindings__[:select_aggregates] || []) -- [:aggregates]
 
+    reselected_fields =
+      Enum.concat([
+        selected_fields,
+        select_calculations,
+        select_aggregates,
+        flattened_calc_fields,
+        flattened_agg_fields
+      ])
+
+    # Upgraded combination queries return maps, which `struct/2` rejects, and
+    # `map/2` would drop field type info — merge each field explicitly instead.
     subquery_query =
-      from(row in subquery(query_with_all_attrs),
-        as: ^query.__ash_bindings__.root_binding,
-        select:
-          struct(
-            row,
-            ^Enum.concat([
-              selected_fields,
-              select_calculations,
-              select_aggregates,
-              flattened_calc_fields,
-              flattened_agg_fields
-            ])
+      if query.__ash_bindings__[:subquery_upgrade?] do
+        root_binding = query.__ash_bindings__.root_binding
+
+        base =
+          from(row in subquery(query_with_all_attrs),
+            as: ^root_binding,
+            select: %{}
           )
-      )
+
+        Enum.reduce(reselected_fields, base, fn field, q ->
+          from(row in q, select_merge: %{^field => field(as(^root_binding), ^field)})
+        end)
+      else
+        from(row in subquery(query_with_all_attrs),
+          as: ^query.__ash_bindings__.root_binding,
+          select: struct(row, ^reselected_fields)
+        )
+      end
 
     root_binding = query.__ash_bindings__.root_binding
 

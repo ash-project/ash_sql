@@ -32,7 +32,11 @@ defmodule AshSql.Expr do
     Lazy,
     Length,
     Now,
+    RangeAdjacent,
+    RangeContains,
+    RangeLower,
     RangeOverlaps,
+    RangeUpper,
     Rem,
     Round,
     StartOfDay,
@@ -312,6 +316,27 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
+         %Ago{arguments: [duration], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {duration, acc} =
+      do_dynamic_expr(
+        query,
+        duration,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :duration
+      )
+
+    {Ecto.Query.dynamic(fragment("(?::timestamp - ?)", ^DateTime.utc_now(), ^duration)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
          %StartOfDay{arguments: [value], embedded?: pred_embedded?},
          bindings,
          embedded?,
@@ -453,6 +478,27 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
+         %FromNow{arguments: [duration], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {duration, acc} =
+      do_dynamic_expr(
+        query,
+        duration,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :duration
+      )
+
+    {Ecto.Query.dynamic(fragment("(?::timestamp + ?)", ^DateTime.utc_now(), ^duration)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
          %DateTimeAdd{arguments: [datetime, amount, interval], embedded?: pred_embedded?},
          bindings,
          embedded?,
@@ -485,6 +531,36 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
+         %DateTimeAdd{arguments: [datetime, duration], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {datetime, acc} =
+      do_dynamic_expr(
+        query,
+        datetime,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
+
+    {duration, acc} =
+      do_dynamic_expr(
+        query,
+        duration,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :duration
+      )
+
+    {Ecto.Query.dynamic(fragment("(?::timestamp + ?)", ^datetime, ^duration)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
          %DateAdd{arguments: [date, amount, interval], embedded?: pred_embedded?},
          bindings,
          embedded?,
@@ -512,6 +588,38 @@ defmodule AshSql.Expr do
       )
 
     {Ecto.Query.dynamic(fragment("(?)", date_add(^date, ^amount, ^to_string(interval)))), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %DateAdd{arguments: [date, duration], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {date, acc} =
+      do_dynamic_expr(
+        query,
+        date,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc
+      )
+
+    {duration, acc} =
+      do_dynamic_expr(
+        query,
+        duration,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        :duration
+      )
+
+    # `date + interval` is a timestamp in Postgres, so cast back, as Ecto's own
+    # `date_add/3` does.
+    {Ecto.Query.dynamic(fragment("((?::date + ?)::date)", ^date, ^duration)), acc}
   end
 
   defp default_dynamic_expr(
@@ -1070,6 +1178,114 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
+         %RangeOverlaps{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {[left_type, right_type], _type} =
+      determine_types(bindings.sql_behaviour, RangeOverlaps, [left, right], :boolean)
+
+    {left_expr, acc} =
+      range_operand(query, left, left_type, bindings, pred_embedded? || embedded?, acc)
+
+    {right_expr, acc} =
+      range_operand(query, right, right_type, bindings, pred_embedded? || embedded?, acc)
+
+    {Ecto.Query.dynamic(fragment("(? && ?)", ^left_expr, ^right_expr)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %RangeContains{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {[left_type, right_type], _type} =
+      determine_types(bindings.sql_behaviour, RangeContains, [left, right], :boolean)
+
+    {left_expr, acc} =
+      range_operand(query, left, left_type, bindings, pred_embedded? || embedded?, acc)
+
+    {right_expr, acc} =
+      range_operand(query, right, right_type, bindings, pred_embedded? || embedded?, acc)
+
+    {Ecto.Query.dynamic(fragment("(? @> ?)", ^left_expr, ^right_expr)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %RangeAdjacent{arguments: [left, right], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    {[left_type, right_type], _type} =
+      determine_types(bindings.sql_behaviour, RangeAdjacent, [left, right], :boolean)
+
+    {left_expr, acc} =
+      range_operand(query, left, left_type, bindings, pred_embedded? || embedded?, acc)
+
+    {right_expr, acc} =
+      range_operand(query, right, right_type, bindings, pred_embedded? || embedded?, acc)
+
+    {Ecto.Query.dynamic(fragment("(? -|- ?)", ^left_expr, ^right_expr)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %RangeLower{arguments: [range], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    {[determined_type], type} =
+      determine_types(bindings.sql_behaviour, RangeLower, [range], type)
+
+    {range_expr, acc} =
+      do_dynamic_expr(
+        query,
+        range,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        determined_type || type
+      )
+
+    {Ecto.Query.dynamic(fragment("lower(?)", ^range_expr)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %RangeUpper{arguments: [range], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    {[determined_type], type} =
+      determine_types(bindings.sql_behaviour, RangeUpper, [range], type)
+
+    {range_expr, acc} =
+      do_dynamic_expr(
+        query,
+        range,
+        set_location(bindings, :sub_expr),
+        pred_embedded? || embedded?,
+        acc,
+        determined_type || type
+      )
+
+    {Ecto.Query.dynamic(fragment("upper(?)", ^range_expr)), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
          %Length{arguments: [list], embedded?: pred_embedded?},
          bindings,
          embedded?,
@@ -1081,9 +1297,11 @@ defmodule AshSql.Expr do
       %Fragment{
         embedded?: pred_embedded?,
         arguments: [
-          raw: "array_length((",
+          raw: "coalesce(array_length((",
           expr: list,
-          raw: "), 1)"
+          raw: "), 1), cardinality((",
+          expr: list,
+          raw: ")))"
         ]
       },
       bindings,
@@ -1250,11 +1468,11 @@ defmodule AshSql.Expr do
       %Fragment{
         embedded?: pred_embedded?,
         arguments: [
-          raw: "#{bindings.sql_behaviour.strpos_function()}((",
+          raw: "(NULLIF(#{bindings.sql_behaviour.strpos_function()}((",
           expr: left,
           raw: "), (",
           expr: right,
-          raw: "))"
+          raw: ")), 0) - 1)"
         ]
       },
       bindings,
@@ -2243,15 +2461,15 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    precision = Enum.at(rest, 0) || 1
+    precision = Enum.at(rest, 0) || 0
 
     frag =
       %Fragment{
         embedded?: pred_embedded?,
         arguments: [
-          raw: "ROUND(",
+          raw: "ROUND((",
           expr: num,
-          raw: ", ",
+          raw: ")::numeric, ",
           expr: precision,
           raw: ")"
         ]
@@ -2327,16 +2545,29 @@ defmodule AshSql.Expr do
       )
 
     if type do
-      bindings =
+      {bindings, cast_type} =
         case arg1 do
-          %Ash.Query.Ref{attribute: %Ash.Resource.Attribute{}} ->
-            Map.put(bindings, :no_cast?, true)
+          %Ash.Query.Ref{
+            attribute: %Ash.Resource.Attribute{type: attr_type, constraints: attr_constraints}
+          } ->
+            # only remap the cast for refs being cast to their own type —
+            # cross-type casts (e.g. a usec column cast to second precision)
+            # must keep their requested target
+            cast_type =
+              if type ==
+                   parameterized_type(bindings.sql_behaviour, attr_type, attr_constraints, :expr) do
+                bindings.sql_behaviour.ref_cast_type(type)
+              else
+                type
+              end
+
+            {Map.put(bindings, :no_cast?, true), cast_type}
 
           _ ->
             if Ash.Expr.expr?(arg1) do
-              bindings
+              {bindings, type}
             else
-              Map.put(bindings, :no_cast?, true)
+              {Map.put(bindings, :no_cast?, true), type}
             end
         end
 
@@ -2367,7 +2598,7 @@ defmodule AshSql.Expr do
           {expr, acc}
 
         _ ->
-          {query.__ash_bindings__.sql_behaviour.type_expr(expr, type), acc}
+          {query.__ash_bindings__.sql_behaviour.type_expr(expr, cast_type), acc}
       end
     else
       do_dynamic_expr(query, arg1, bindings, embedded?, acc, arg2)
@@ -2421,34 +2652,6 @@ defmodule AshSql.Expr do
 
     {query.__ash_bindings__.sql_behaviour.type_expr(frag, type), acc}
   end
-
-  defp default_dynamic_expr(
-         query,
-         %RangeOverlaps{arguments: [left, right], embedded?: pred_embedded?},
-         bindings,
-         embedded?,
-         acc,
-         _type
-       ) do
-    # Infer each operand's range type (so a literal range picks up the column's
-    # type, including its inner_type, and dumps to a native range).
-    {[left_type, right_type], _} =
-      determine_types(bindings.sql_behaviour, RangeOverlaps, [left, right], :boolean)
-
-    {left_expr, acc} =
-      type_or_dynamic_expr(query, left, set_location(bindings, :sub_expr), pred_embedded? || embedded?, acc, left_type)
-
-    {right_expr, acc} =
-      type_or_dynamic_expr(query, right, set_location(bindings, :sub_expr), pred_embedded? || embedded?, acc, right_type)
-
-    {Ecto.Query.dynamic(fragment("(? && ?)", ^left_expr, ^right_expr)), acc}
-  end
-
-  defp type_or_dynamic_expr(query, expr, bindings, embedded?, acc, nil),
-    do: do_dynamic_expr(query, expr, bindings, embedded?, acc, nil)
-
-  defp type_or_dynamic_expr(query, expr, bindings, embedded?, acc, type),
-    do: maybe_type_expr(query, expr, bindings, embedded?, acc, type)
 
   defp default_dynamic_expr(
          query,
@@ -2921,7 +3124,10 @@ defmodule AshSql.Expr do
               Ecto.Query.dynamic(field(as(^ref_binding), ^name))
             end
 
-          query.__ash_bindings__.sql_behaviour.type_expr(ref_dynamic, type)
+          query.__ash_bindings__.sql_behaviour.type_expr(
+            ref_dynamic,
+            query.__ash_bindings__.sql_behaviour.ref_cast_type(type)
+          )
       end
 
     {expr, acc}
@@ -3118,6 +3324,14 @@ defmodule AshSql.Expr do
         end
       end
     end
+  end
+
+  defp range_operand(query, operand, nil, bindings, embedded?, acc) do
+    do_dynamic_expr(query, operand, set_location(bindings, :sub_expr), embedded?, acc, nil)
+  end
+
+  defp range_operand(query, operand, type, bindings, embedded?, acc) do
+    maybe_type_expr(query, operand, set_location(bindings, :sub_expr), embedded?, acc, type)
   end
 
   defp extract_list_value(value) when is_list(value), do: {:ok, value}
@@ -3317,6 +3531,8 @@ defmodule AshSql.Expr do
         :bracket
       end
 
+    declared_field = type && field_constraints(constraints, next)
+
     {next, type, constraints} =
       cond do
         type && Ash.Type.embedded_type?(type) ->
@@ -3352,6 +3568,10 @@ defmodule AshSql.Expr do
             {name, type, constraints} ->
               {name, type, constraints}
           end
+
+        declared_field ->
+          {field_type, field_constraints} = declared_field
+          {next, field_type, field_constraints}
 
         true ->
           {next, nil, nil}
@@ -3396,6 +3616,20 @@ defmodule AshSql.Expr do
     end
   end
 
+  # The type a `fields` constraint declares for `next`, if it declares one.
+  defp field_constraints(constraints, next) do
+    with true <- Keyword.keyword?(constraints || []),
+         fields when is_list(fields) <- constraints[:fields],
+         {_name, config} <-
+           Enum.find(fields, fn {name, _config} ->
+             if is_binary(next), do: to_string(name) == next, else: name == next
+           end) do
+      {config[:type], config[:constraints] || []}
+    else
+      _ -> nil
+    end
+  end
+
   defp list_requires_encoding?(value) do
     !Enum.empty?(value) &&
       Enum.any?(value, fn value ->
@@ -3425,54 +3659,69 @@ defmodule AshSql.Expr do
           value
         end
 
-      element_type =
-        case type do
-          {{:array, type}, _} -> type
-          {{:in, type}, _} -> type
-          _ -> nil
-        end
+      case bindings.sql_behaviour.list_expr(query, value, bindings, embedded?, acc, type) do
+        {:ok, expr, acc} ->
+          {expr, acc}
 
-      elements =
-        Enum.map(value, fn list_item ->
-          if type do
-            {:expr, %Ash.Query.Function.Type{arguments: [list_item, element_type, []]}}
-          else
-            {:expr, list_item}
-          end
-        end)
-        |> Enum.intersperse({:raw, ","})
+        {:error, error} ->
+          raise "Error while building list expression: #{error}"
 
-      if is_map? do
-        do_dynamic_expr(
-          query,
-          %Fragment{
-            embedded?: embedded?,
-            arguments:
-              [
-                raw: "array_to_json(ARRAY["
-              ] ++ elements ++ [raw: "])"]
-          },
-          bindings,
-          embedded?,
-          acc,
-          type
-        )
-      else
-        do_dynamic_expr(
-          query,
-          %Fragment{
-            embedded?: embedded?,
-            arguments:
-              [
-                raw: "ARRAY["
-              ] ++ elements ++ [raw: "]"]
-          },
-          bindings,
-          embedded?,
-          acc,
-          type
-        )
+        :error ->
+          default_encode_list(query, value, bindings, embedded?, acc, type, is_map?)
       end
+    end
+  end
+
+  # `ARRAY[...]` is Postgres syntax. It stays the default so implementations that do not
+  # override `list_expr/6` render exactly as they did before.
+  defp default_encode_list(query, value, bindings, embedded?, acc, type, is_map?) do
+    element_type =
+      case type do
+        {{:array, type}, _} -> type
+        {{:in, type}, _} -> type
+        _ -> nil
+      end
+
+    elements =
+      Enum.map(value, fn list_item ->
+        if type do
+          {:expr, %Ash.Query.Function.Type{arguments: [list_item, element_type, []]}}
+        else
+          {:expr, list_item}
+        end
+      end)
+      |> Enum.intersperse({:raw, ","})
+
+    if is_map? do
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: embedded?,
+          arguments:
+            [
+              raw: "array_to_json(ARRAY["
+            ] ++ elements ++ [raw: "])"]
+        },
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
+    else
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: embedded?,
+          arguments:
+            [
+              raw: "ARRAY["
+            ] ++ elements ++ [raw: "]"]
+        },
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
     end
   end
 
