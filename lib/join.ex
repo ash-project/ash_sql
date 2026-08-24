@@ -82,8 +82,7 @@ defmodule AshSql.Join do
         parent_query,
         no_inner_join?
       ) do
-    no_inner_join? =
-      no_inner_join? || query.__ash_bindings__.context[:data_layer][:no_inner_join?]
+    no_inner_join? = left_join_only?(query, opts, no_inner_join?)
 
     case join_parent_paths(query, filter, relationship_paths) do
       {:ok, query} ->
@@ -226,6 +225,12 @@ defmodule AshSql.Join do
       {:error, error} ->
         {:error, error}
     end
+  end
+
+  @doc false
+  def left_join_only?(query, opts, explicit?) do
+    explicit? || query.__ash_bindings__.context[:data_layer][:no_inner_join?] ||
+      opts[:left_only?] || false
   end
 
   @doc false
@@ -400,7 +405,8 @@ defmodule AshSql.Join do
         if opts[:return_subquery?] do
           subquery(query)
         else
-          if Enum.empty?(query.joins) && Enum.empty?(query.order_bys) && Enum.empty?(query.wheres) do
+          if Enum.empty?(query.joins) && Enum.empty?(query.order_bys) && Enum.empty?(query.wheres) &&
+               Enum.empty?(query.group_bys) && is_nil(query.limit) do
             query
           else
             from(row in subquery(query), as: ^(opts[:start_bindings_at] || 0))
@@ -465,7 +471,10 @@ defmodule AshSql.Join do
       if query.__validated_for_action__ == read_action.name do
         query
       else
-        Ash.Query.for_read(query, read_action.name, %{},
+        Ash.Query.for_read(
+          query,
+          read_action.name,
+          Map.get(relationship, :read_action_arguments, %{}),
           actor: context[:private][:actor],
           tenant: context[:private][:tenant]
         )
