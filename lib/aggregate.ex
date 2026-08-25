@@ -1717,7 +1717,7 @@ defmodule AshSql.Aggregate do
             }
           } ->
             if module.has_expression?() do
-              module.expression(opts, context)
+              Ash.Resource.Calculation.expression(module, opts, context)
               |> has_parent_expr?(depth + 1)
             else
               false

@@ -66,7 +66,11 @@ defmodule AshSql.Sort do
       Enum.flat_map(sort, fn
         {%Ash.Query.Calculation{} = calculation, _} ->
           case Ash.Filter.hydrate_refs(
-                 calculation.module.expression(calculation.opts, calculation.context),
+                 Ash.Resource.Calculation.expression(
+                   calculation.module,
+                   calculation.opts,
+                   calculation.context
+                 ),
                  %{
                    resource: resource,
                    aggregates: %{},
@@ -102,8 +106,8 @@ defmodule AshSql.Sort do
       Enum.flat_map(sort, fn
         {%Ash.Query.Calculation{} = calculation, _} ->
           {:ok, expression} =
-            calculation.opts
-            |> calculation.module.expression(calculation.context)
+            calculation.module
+            |> Ash.Resource.Calculation.expression(calculation.opts, calculation.context)
             |> Ash.Filter.hydrate_refs(%{
               resource: resource,
               parent_stack: query.__ash_bindings__[:parent_resources] || [],
@@ -182,8 +186,8 @@ defmodule AshSql.Sort do
                 nil
               end
 
-            calc.opts
-            |> calc.module.expression(calc.context)
+            calc.module
+            |> Ash.Resource.Calculation.expression(calc.opts, calc.context)
             |> Ash.Filter.hydrate_refs(%{
               resource: resource,
               parent_stack: query.__ash_bindings__[:parent_resources] || [],

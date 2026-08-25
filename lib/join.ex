@@ -833,7 +833,14 @@ defmodule AshSql.Join do
 
           {%Ash.Query.Calculation{} = calculation, direction}, {joined_query, distinct} ->
             resource = joined_query.__ash_bindings__.resource
-            expression = calculation.module.expression(calculation.opts, calculation.context)
+
+            expression =
+              Ash.Resource.Calculation.expression(
+                calculation.module,
+                calculation.opts,
+                calculation.context
+              )
+
             filter = %Ash.Filter{resource: resource, expression: expression}
             used_aggregates = Ash.Filter.used_aggregates(expression, [])
             {:ok, joined_query} = AshSql.Join.join_all_relationships(joined_query, filter)

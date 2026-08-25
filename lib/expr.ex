@@ -2153,7 +2153,11 @@ defmodule AshSql.Expr do
       )
 
     case Ash.Filter.hydrate_refs(
-           calculation.module.expression(calculation.opts, calculation.context),
+           Ash.Resource.Calculation.expression(
+             calculation.module,
+             calculation.opts,
+             calculation.context
+           ),
            %{
              resource: resource,
              aggregates: %{},
@@ -2203,7 +2207,7 @@ defmodule AshSql.Expr do
 
       {:error, error} ->
         raise """
-        Failed to hydrate references for resource #{inspect(resource)} in #{inspect(calculation.module.expression(calculation.opts, calculation.context))}
+        Failed to hydrate references for resource #{inspect(resource)} in #{inspect(Ash.Resource.Calculation.expression(calculation.module, calculation.opts, calculation.context))}
 
         #{inspect(error)}
         """
