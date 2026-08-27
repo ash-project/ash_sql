@@ -3556,9 +3556,14 @@ defmodule AshSql.Expr do
               end
             end
 
-          case Enum.find(Ash.Type.composite_types(type, constraints), condition) do
+          composite_types = Ash.Type.composite_types(type, constraints)
+
+          case Enum.find(composite_types, condition) do
             nil ->
-              {next, nil, nil}
+              raise Ash.Error.Query.InvalidExpression,
+                expression: next,
+                message:
+                  "Invalid path segment #{inspect(next)} for composite type #{inspect(type)}. Valid segments are: #{inspect(Enum.map(composite_types, &elem(&1, 0)))}"
 
             {_, aliased_as, type, constraints} ->
               {aliased_as, type, constraints}
@@ -3967,6 +3972,12 @@ defmodule AshSql.Expr do
          acc
        )
        when is_atom(field) do
+    unless to_string(field) =~ ~r/^[a-zA-Z_][a-zA-Z0-9_]*$/ do
+      raise Ash.Error.Query.InvalidExpression,
+        expression: field,
+        message: "#{inspect(field)} is not a valid composite type field name"
+    end
+
     type =
       parameterized_type(
         bindings.sql_behaviour,
