@@ -4116,15 +4116,15 @@ defmodule AshSql.Expr do
   def do_split_statements(other, _op), do: [other]
 
   defp escape_contains(text) do
-    "%" <> String.replace(text, ~r/([\%_])/u, "\\\\\\0") <> "%"
+    "%" <> String.replace(text, ~r/([\\%_])/u, "\\\\\\0") <> "%"
   end
 
   defp escape_starts_with(text) do
-    String.replace(text, ~r/([\%_])/u, "\\\\\\0") <> "%"
+    String.replace(text, ~r/([\\%_])/u, "\\\\\\0") <> "%"
   end
 
   defp escape_ends_with(text) do
-    "%" <> String.replace(text, ~r/([\%_])/u, "\\\\\\0")
+    "%" <> String.replace(text, ~r/([\\%_])/u, "\\\\\\0")
   end
 
   defp determine_types(sql_behaviour, mod, args, returns) do
