@@ -677,8 +677,11 @@ defmodule AshSql.Join do
         query
       end
     else
-      # When has_parent_expr?, we can't apply the limit in exists subquery
-      # Fall through to the default clause which just applies select_star if needed
+      # When has_parent_expr?, we can't wrap in a non-lateral subquery to apply
+      # the limit, but the caller-supplied filter was skipped in related_query/3
+      # and must still be applied here, or exists/2 would match any related row.
+      {:ok, query} = AshSql.Filter.filter(query, filter, query.__ash_bindings__.resource)
+
       if opts[:select_star?] do
         from(row in Ecto.Query.exclude(query, :select), select: 1)
       else
