@@ -160,10 +160,15 @@ defmodule AshSql.AggregateQuery do
 
             in_query = Ecto.Query.exclude(in_query, :distinct)
 
+            # `query.from.source` is only `{table, schema}`, so rebuilding from it
+            # drops the tenant schema prefix (`strategy(:context)` multitenancy).
+            # Restore it so the outer query reads the same schema as the original.
             from(row in query.from.source,
               as: ^query.__ash_bindings__.root_binding,
               where: exists(in_query)
             )
+            |> Map.put(:prefix, query.prefix)
+            |> Map.update!(:from, &Map.put(&1, :prefix, query.from.prefix))
           else
             filtered
           end
