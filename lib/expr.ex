@@ -1658,7 +1658,7 @@ defmodule AshSql.Expr do
         arguments: [
           raw: "REGEXP_REPLACE(REGEXP_REPLACE(",
           expr: value,
-          raw: ", '\s+$', ''), '^\s+', '')"
+          raw: ", '\\s+$', ''), '^\\s+', '')"
         ]
       },
       bindings,
