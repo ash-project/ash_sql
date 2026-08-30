@@ -11,6 +11,43 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.7.1](https://github.com/ash-project/ash_sql/compare/v0.7.0...v0.7.1) (2026-08-30)
+
+
+
+
+### Bug Fixes:
+
+* trim all whitespace in string_trim, not only literal spaces (CVE-2026-80227) by [@zachdaniel](https://github.com/zachdaniel)
+
+* escape backslashes in contains/starts_with/ends_with to prevent LIKE injection (CVE-2026-78691) by [@zachdaniel](https://github.com/zachdaniel)
+
+* keep the tenant schema prefix when aggregating over a distinct query (CVE-2026-81318) by [@zachdaniel](https://github.com/zachdaniel)
+
+* distinguish same-named aggregates that differ only by filter (CVE-2026-81316) by [@zachdaniel](https://github.com/zachdaniel)
+
+* apply exists/2 predicate when a limited relationship has a parent() filter (CVE-2026-77454) by [@zachdaniel](https://github.com/zachdaniel)
+
+* be extra careful in case someone does something stupid with get_path fields by [@zachdaniel](https://github.com/zachdaniel)
+
+* use official expression generator for calculation hydration by [@zachdaniel](https://github.com/zachdaniel)
+
+* the length of an empty array is zero by [@zachdaniel](https://github.com/zachdaniel) [(#255)](https://github.com/ash-project/ash_sql/pull/255)
+
+* honour a fields constraint when extracting a map field by [@zachdaniel](https://github.com/zachdaniel) [(#254)](https://github.com/ash-project/ash_sql/pull/254)
+
+* string_position is zero based, and nil when the substring is absent by [@zachdaniel](https://github.com/zachdaniel) [(#253)](https://github.com/ash-project/ash_sql/pull/253)
+
+* round with no precision and round over float by [@zachdaniel](https://github.com/zachdaniel) [(#252)](https://github.com/ash-project/ash_sql/pull/252)
+
+* the length of an empty array is zero by [@matt-beanland](https://github.com/matt-beanland) [(#255)](https://github.com/ash-project/ash_sql/pull/255)
+
+* honour a fields constraint when extracting a map field by [@matt-beanland](https://github.com/matt-beanland) [(#254)](https://github.com/ash-project/ash_sql/pull/254)
+
+* string_position is zero based, and nil when the substring is absent by [@matt-beanland](https://github.com/matt-beanland) [(#253)](https://github.com/ash-project/ash_sql/pull/253)
+
+* round to no decimal places by default, over numeric so round/2 resolves by [@matt-beanland](https://github.com/matt-beanland) [(#252)](https://github.com/ash-project/ash_sql/pull/252)
+
 ## [v0.7.0](https://github.com/ash-project/ash_sql/compare/v0.6.9...v0.7.0) (2026-08-20)
 
 
