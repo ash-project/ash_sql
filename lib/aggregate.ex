@@ -839,7 +839,7 @@ defmodule AshSql.Aggregate do
   defp different_queries?(_, nil), do: true
 
   defp different_queries?(query1, query2) do
-    query1.filter != query2.filter && query1.sort != query2.sort
+    query1.filter != query2.filter || query1.sort != query2.sort
   end
 
   @doc false
