@@ -2922,6 +2922,29 @@ defmodule AshSql.Expr do
         end)
       end)
 
+    # Joins for `rest` are derived from the refs in the filter and are left
+    # joins, so a predicate with no refs (e.g. `exists(a.bs, true)`) drops the
+    # remaining path entirely, and a null-satisfiable predicate is satisfied
+    # by null-extended rows. Requiring a non-nil primary key at every hop
+    # (not just the last: `no_attributes?` hops join with `on: true`)
+    # excludes both while being a no-op for real rows.
+    filter =
+      rest
+      |> Enum.scan([], fn rel_name, prefix -> prefix ++ [rel_name] end)
+      |> Enum.reduce(filter, fn prefix, filter ->
+        with target when not is_nil(target) <-
+               Ash.Resource.Info.related(first_relationship.destination, prefix),
+             [pk | _] <- Ash.Resource.Info.primary_key(target) do
+          Ash.Query.BooleanExpression.optimized_new(
+            :and,
+            filter,
+            Ash.Expr.expr(not is_nil(^Ash.Expr.ref(prefix, pk)))
+          )
+        else
+          _ -> filter
+        end
+      end)
+
     query =
       if first_relationship.type == :many_to_many do
         put_in(query.__ash_bindings__[:lateral_join_bindings], [:join_source])
