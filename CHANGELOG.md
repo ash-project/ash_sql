@@ -11,6 +11,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.7.2](https://github.com/ash-project/ash_sql/compare/v0.7.1...v0.7.2) (2026-09-05)
+
+
+
+
+### Bug Fixes:
+
+* don't drop the tail of a multi-hop exists path with an unanchored predicate (#259) by [@barnabasJ](https://github.com/barnabasJ) [(#259)](https://github.com/ash-project/ash_sql/pull/259)
+
+### Improvements:
+
+* support new string length functions by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.7.1](https://github.com/ash-project/ash_sql/compare/v0.7.0...v0.7.1) (2026-08-30)
 
 
