@@ -1603,7 +1603,46 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
-         %StringLength{arguments: [value], embedded?: pred_embedded?},
+         %StringLength{arguments: [value]} = string_length,
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    default_dynamic_expr(
+      query,
+      %{string_length | arguments: [value, :codepoints]},
+      bindings,
+      embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StringLength{arguments: [value, :bytes], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(
+      query,
+      %Fragment{
+        embedded?: pred_embedded?,
+        arguments: [raw: "octet_length(", expr: value, raw: ")"]
+      },
+      bindings,
+      embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %StringLength{arguments: [value, :codepoints], embedded?: pred_embedded?},
          bindings,
          embedded?,
          acc,
