@@ -1652,7 +1652,7 @@ defmodule AshSql.Expr do
       query,
       %Fragment{
         embedded?: pred_embedded?,
-        arguments: [raw: "length(normalize(", expr: value, raw: "))"]
+        arguments: [raw: "length(", expr: value, raw: ")"]
       },
       bindings,
       embedded?,
