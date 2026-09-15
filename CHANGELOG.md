@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.7.5](https://github.com/ash-project/ash_sql/compare/v0.7.4...v0.7.5) (2026-09-15)
+
+
+
+
+### Bug Fixes:
+
+* fix aggregate field determination by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.7.4](https://github.com/ash-project/ash_sql/compare/v0.7.3...v0.7.4) (2026-09-15)
 
 
