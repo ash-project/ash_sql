@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.7.4](https://github.com/ash-project/ash_sql/compare/v0.7.3...v0.7.4) (2026-09-15)
+
+
+
+
+### Bug Fixes:
+
+* count codepoints on the stored value, not a normalized copy (#261) by [@matt-beanland](https://github.com/matt-beanland) [(#261)](https://github.com/ash-project/ash_sql/pull/261)
+
 ## [v0.7.3](https://github.com/ash-project/ash_sql/compare/v0.7.2...v0.7.3) (2026-09-06)
 
 
