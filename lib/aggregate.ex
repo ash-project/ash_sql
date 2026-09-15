@@ -1374,7 +1374,9 @@ defmodule AshSql.Aggregate do
       field =
         case aggregate.field do
           field when is_atom(field) ->
-            Ash.Resource.Info.field(related, field)
+            related
+            |> Ash.Resource.Info.related(relationship_path)
+            |> Ash.Resource.Info.field(field)
 
           field ->
             field
