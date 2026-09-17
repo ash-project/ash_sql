@@ -519,6 +519,10 @@ defmodule AshSql.Aggregate do
        ) do
     limited? = limited_relationship?(first_relationship)
 
+    limit_one_first? =
+      is_single? && relationship_path == [] &&
+        limit_one_first_aggregate?(resource, Enum.at(aggregates, 0))
+
     AshSql.Join.related_subquery(
       first_relationship,
       tmp_query,
@@ -531,25 +535,36 @@ defmodule AshSql.Aggregate do
         current_binding = subquery.__ash_bindings__.current
 
         subquery =
-          if limited? do
-            apply_limited_relationship_subquery(
-              subquery,
-              first_relationship,
-              source_binding,
-              base_binding
-            )
-          else
-            subquery
-            |> Ecto.Query.exclude(:select)
-            |> Ecto.Query.select(%{})
-            |> apply_relationship_subquery(
-              first_relationship,
-              query,
-              tenant,
-              source_binding,
-              current_binding,
-              base_binding
-            )
+          cond do
+            limited? ->
+              apply_limited_relationship_subquery(
+                subquery,
+                first_relationship,
+                source_binding,
+                base_binding
+              )
+
+            limit_one_first? ->
+              apply_limit_one_first_subquery(
+                subquery,
+                Enum.at(aggregates, 0),
+                first_relationship,
+                source_binding,
+                base_binding
+              )
+
+            true ->
+              subquery
+              |> Ecto.Query.exclude(:select)
+              |> Ecto.Query.select(%{})
+              |> apply_relationship_subquery(
+                first_relationship,
+                query,
+                tenant,
+                source_binding,
+                current_binding,
+                base_binding
+              )
           end
 
         subquery =
@@ -585,13 +600,15 @@ defmodule AshSql.Aggregate do
             join_filters
           )
 
+        # When the aggregate's filter has already been pushed into the
+        # `LIMIT 1` inner subquery, it must not be applied again here.
         {:ok, filtered} =
           maybe_filter_subquery(
             joined,
             first_relationship,
             relationship_path,
             aggregates,
-            is_single?,
+            is_single? && !limit_one_first?,
             subquery.__ash_bindings__.root_binding
           )
 
@@ -664,6 +681,98 @@ defmodule AshSql.Aggregate do
       from(row in wrapped,
         group_by: field(row, ^field),
         select_merge: %{^field => field(row, ^field)}
+      )
+    end)
+  end
+
+  @doc false
+  def limit_one_first_aggregate?(
+        resource,
+        %{
+          kind: :first,
+          relationship_path: [relationship_name],
+          field: field,
+          join_filters: join_filters
+        } = aggregate
+      )
+      when is_atom(field) and not is_nil(field) do
+    case Ash.Resource.Info.relationship(resource, relationship_name) do
+      nil ->
+        false
+
+      relationship ->
+        relationship.type != :many_to_many &&
+          is_nil(Map.get(relationship, :manual)) &&
+          !Map.get(relationship, :no_attributes?) &&
+          !limited_relationship?(relationship) &&
+          join_filters in [nil, %{}, []] &&
+          (has_sort?(aggregate.query) || relationship.sort not in [nil, []]) &&
+          match?(
+            %Ash.Resource.Attribute{},
+            Ash.Resource.Info.attribute(relationship.destination, field)
+          )
+    end
+  end
+
+  def limit_one_first_aggregate?(_resource, _aggregate), do: false
+
+  defp apply_limit_one_first_subquery(
+         subquery,
+         aggregate,
+         rel,
+         source_binding,
+         base_binding
+       ) do
+    group_field = rel.destination_attribute
+
+    inner =
+      from(row in subquery,
+        where:
+          field(
+            parent_as(^source_binding),
+            ^rel.source_attribute
+          ) ==
+            field(
+              as(^base_binding),
+              ^rel.destination_attribute
+            )
+      )
+
+    {:ok, inner} =
+      if has_filter?(aggregate.query) do
+        AshSql.Filter.filter(inner, aggregate.query.filter, rel.destination)
+      else
+        {:ok, inner}
+      end
+
+    inner =
+      if aggregate.include_nil? do
+        inner
+      else
+        from(row in inner,
+          where: not is_nil(field(as(^base_binding), ^aggregate.field))
+        )
+      end
+
+    sort =
+      if has_sort?(aggregate.query) do
+        aggregate.query.sort
+      else
+        List.wrap(rel.sort)
+      end
+
+    {:ok, inner} =
+      AshSql.Sort.sort(inner, sort, rel.destination, [], base_binding, :direct)
+
+    inner = Ecto.Query.limit(inner, 1)
+
+    from(row in subquery(inner), as: ^base_binding)
+    |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
+    |> Ecto.Query.select(%{})
+    |> then(fn wrapped ->
+      from(row in wrapped,
+        group_by: field(row, ^group_field),
+        select_merge: %{^group_field => field(row, ^group_field)}
       )
     end)
   end
@@ -1688,6 +1797,7 @@ defmodule AshSql.Aggregate do
     can_group_kind?(aggregate, resource, query) && !has_exists?(aggregate) &&
       !references_to_many_relationships?(aggregate) &&
       !optimizable_first_aggregate?(resource, aggregate, query) &&
+      !limit_one_first_aggregate?(resource, aggregate) &&
       !has_parent_expr?(aggregate.query.filter)
   end
 
