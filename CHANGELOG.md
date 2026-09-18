@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.7.6](https://github.com/ash-project/ash_sql/compare/v0.7.5...v0.7.6) (2026-09-18)
+
+
+
+
+### Improvements:
+
+* optimize limited aggregates by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.7.5](https://github.com/ash-project/ash_sql/compare/v0.7.4...v0.7.5) (2026-09-15)
 
 
