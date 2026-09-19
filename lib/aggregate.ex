@@ -2096,6 +2096,25 @@ defmodule AshSql.Aggregate do
   defp has_sort?(%{sort: _}), do: true
   defp has_sort?(_), do: false
 
+  # `array_agg(DISTINCT x ORDER BY y)` is rejected by postgres unless every ORDER BY
+  # expression also appears in the argument list, so a `uniq?` aggregate can only be
+  # ordered by the field it aggregates. Sorting by anything else is discarded rather
+  # than emitted as invalid SQL - it is unsatisfiable either way, since the ordering
+  # key is exactly what deduplication throws away. This also keeps a `sort` declared
+  # on the relationship from reaching an aggregate that never asked to be sorted.
+  defp distinct_safe_sort(sort, aggregate) do
+    if Map.get(aggregate, :uniq?) do
+      aggregated_field = Map.get(aggregate, :field)
+
+      Enum.filter(sort, fn
+        {field, _direction} -> field == aggregated_field
+        _ -> false
+      end)
+    else
+      sort
+    end
+  end
+
   def add_subquery_aggregate_select(
         query,
         relationship_path,
@@ -2327,15 +2346,22 @@ defmodule AshSql.Aggregate do
 
     has_sort? = has_sort?(aggregate.query)
 
-    {sorted, include_nil_filter_field, query} =
-      if has_sort? || (first_relationship && first_relationship.sort not in [nil, []]) do
-        {sort, binding} =
-          if has_sort? do
-            {aggregate.query.sort, binding}
-          else
-            {List.wrap(first_relationship.sort), query.__ash_bindings__.root_binding}
-          end
+    {sort, binding} =
+      cond do
+        has_sort? ->
+          {aggregate.query.sort, binding}
 
+        first_relationship && first_relationship.sort not in [nil, []] ->
+          {List.wrap(first_relationship.sort), query.__ash_bindings__.root_binding}
+
+        true ->
+          {[], binding}
+      end
+
+    sort = distinct_safe_sort(sort, aggregate)
+
+    {sorted, include_nil_filter_field, query} =
+      if sort != [] do
         {:ok, sort_expr, query} =
           AshSql.Sort.sort(
             query,

@@ -1189,13 +1189,12 @@ defmodule AshSql.Join do
              current_binding
            ) do
       case related_subquery(relationship, query,
-             sort?: sort?,
              apply_filter: apply_filter,
              start_bindings_at: 500,
              refs_at_path: path,
              require_lateral?: require_lateral?,
              filter_subquery?: true,
-             sort?: Map.get(relationship, :from_many?),
+             sort?: sort? && !!Map.get(relationship, :from_many?),
              on_subquery: fn subquery ->
                if !Map.get(relationship, :from_many?) || Map.get(relationship, :no_attributes?) do
                  subquery
