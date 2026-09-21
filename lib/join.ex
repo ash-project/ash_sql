@@ -257,7 +257,15 @@ defmodule AshSql.Join do
         {:ok, query}
 
       lateral_join_source_query ->
-        case join_all_relationships(lateral_join_source_query, parent_expr(filter)) do
+        # Don't join both parent lists when the filter is "this id or that id".
+        parent_filter =
+          if parent_rel_id_or?(filter) do
+            true
+          else
+            parent_expr(filter)
+          end
+
+        case join_all_relationships(lateral_join_source_query, parent_filter) do
           {:ok, lateral_join_source_query} ->
             {:ok,
              put_in(query.__ash_bindings__.lateral_join_source_query, lateral_join_source_query)
@@ -278,6 +286,41 @@ defmodule AshSql.Join do
   defp join_parent_paths(query, _filter, _relationship_paths) do
     {:ok, query}
   end
+
+  # True when the filter is parent(rel.id) == id or-ed with another like it.
+  defp parent_rel_id_or?(filter) do
+    branches = AshSql.Expr.split_statements(filter, :or)
+    length(branches) >= 2 and Enum.all?(branches, &parent_rel_id_eq_local_id?/1)
+  end
+
+  defp parent_rel_id_eq_local_id?(%Ash.Query.Operator.Eq{left: left, right: right}) do
+    parent_rel_id_eq_pair?(left, right) or parent_rel_id_eq_pair?(right, left)
+  end
+
+  defp parent_rel_id_eq_local_id?(_), do: false
+
+  defp parent_rel_id_eq_pair?(%Ash.Query.Parent{expr: parent_ref}, local_ref) do
+    parent_rel_ref?(parent_ref) and local_id_ref?(local_ref)
+  end
+
+  defp parent_rel_id_eq_pair?(_, _), do: false
+
+  defp parent_rel_ref?(%Ash.Query.Ref{relationship_path: path} = ref)
+       when is_list(path) and path != [] do
+    ref_name(ref) == :id
+  end
+
+  defp parent_rel_ref?(_), do: false
+
+  defp local_id_ref?(%Ash.Query.Ref{relationship_path: []} = ref) do
+    ref_name(ref) == :id
+  end
+
+  defp local_id_ref?(_), do: false
+
+  defp ref_name(%Ash.Query.Ref{attribute: %{name: name}}), do: name
+  defp ref_name(%Ash.Query.Ref{attribute: name}) when is_atom(name), do: name
+  defp ref_name(_), do: nil
 
   defp to_joins(paths, filter, resource) do
     paths
