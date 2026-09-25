@@ -434,17 +434,18 @@ defmodule AshSql.Join do
     end
   end
 
-  defp related_query(relationship, query, opts) do
-    sort? = Keyword.get(opts, :sort?, false)
+  @doc false
+  def related_ash_query(relationship, query, opts \\ []) do
     filter = Keyword.get(opts, :filter, nil)
     filter_subquery? = Keyword.get(opts, :filter_subquery?, false)
     parent_resources = Keyword.get(opts, :parent_stack, [relationship.source])
+    source_query = opts[:source_query]
 
     read_action = get_read_action(relationship)
 
     context = Map.delete(query.__ash_bindings__.context, :data_layer)
 
-    tenant = query.__ash_bindings__.context[:private][:tenant]
+    tenant = (source_query && source_query.tenant) || context[:private][:tenant]
 
     relationship.destination
     |> Ash.Query.new()
@@ -456,6 +457,17 @@ defmodule AshSql.Join do
         start_bindings_at: opts[:start_bindings_at] || 0
       }
     })
+    |> then(fn query ->
+      if source_query do
+        # Rebuild the relationship's action scope on a fresh query. The source
+        # aggregate query already combines action and aggregate filters.
+        query
+        |> Ash.Query.set_context(source_query.context)
+        |> Ash.Query.set_domain(source_query.domain || query.domain)
+      else
+        query
+      end
+    end)
     |> Ash.Query.set_context(relationship.context)
     |> Ash.Query.do_filter(relationship.filter, parent_stack: parent_resources)
     |> then(fn query ->
@@ -476,13 +488,19 @@ defmodule AshSql.Join do
           read_action.name,
           Map.get(relationship, :read_action_arguments, %{}),
           actor: context[:private][:actor],
-          tenant: context[:private][:tenant]
+          tenant: tenant
         )
       end
     end)
     |> Ash.Query.unset([:distinct, :select, :limit, :offset])
     |> handle_attribute_multitenancy(tenant, read_action)
     |> hydrate_refs(context[:private][:actor])
+  end
+
+  defp related_query(relationship, query, opts) do
+    sort? = Keyword.get(opts, :sort?, false)
+
+    related_ash_query(relationship, query, opts)
     |> then(fn query ->
       if sort? do
         query
@@ -558,9 +576,20 @@ defmodule AshSql.Join do
   end
 
   @doc false
+  def context_multitenancy(query) do
+    case query.context do
+      %{private: %{multitenancy: multitenancy}} -> multitenancy
+      %{multitenancy: multitenancy} -> multitenancy
+      _ -> nil
+    end
+  end
+
+  @doc false
   def handle_attribute_multitenancy(query, tenant, read_action \\ nil) do
+    multitenancy = context_multitenancy(query) || (read_action && read_action.multitenancy)
+
     if tenant && Ash.Resource.Info.multitenancy_strategy(query.resource) == :attribute &&
-         (is_nil(read_action) || read_action.multitenancy not in [:bypass, :bypass_all]) do
+         multitenancy not in [:bypass, :bypass_all] do
       multitenancy_attribute = Ash.Resource.Info.multitenancy_attribute(query.resource)
 
       if multitenancy_attribute do

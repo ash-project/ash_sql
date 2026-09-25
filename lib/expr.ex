@@ -2341,13 +2341,13 @@ defmodule AshSql.Expr do
        ) do
     %{attribute: aggregate} =
       ref =
-      case bindings.aggregate_names[aggregate.name] do
-        nil ->
-          ref
-
-        name ->
-          %{ref | attribute: %{aggregate | name: name}}
-      end
+      %{
+        ref
+        | attribute: %{
+            aggregate
+            | name: AshSql.Aggregate.Common.name_for(aggregate, bindings, ref.relationship_path)
+          }
+      }
 
     related? = Map.get(aggregate, :related?, true)
 
