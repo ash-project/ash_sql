@@ -108,6 +108,10 @@ defmodule AshSql.Expr do
     do_dynamic_expr(query, expression, bindings, embedded?, acc, type)
   end
 
+  defp as_of_or_now(query) do
+    get_in(query.__ash_bindings__, [:context, :private, :as_of]) || DateTime.utc_now()
+  end
+
   defp do_dynamic_expr(query, expr, bindings, embedded?, acc, type \\ nil) do
     case bindings.sql_behaviour.expr(query, expr, bindings, embedded?, acc, type) do
       {:ok, expr, acc} -> {expr, acc}
@@ -306,7 +310,7 @@ defmodule AshSql.Expr do
       )
 
     {Ecto.Query.dynamic(
-       fragment("(?)", datetime_add(^DateTime.utc_now(), ^left * -1, ^to_string(right)))
+       fragment("(?)", datetime_add(^as_of_or_now(query), ^left * -1, ^to_string(right)))
      ), acc}
   end
 
@@ -468,7 +472,7 @@ defmodule AshSql.Expr do
       )
 
     {Ecto.Query.dynamic(
-       fragment("(?)", datetime_add(^DateTime.utc_now(), ^left, ^to_string(right)))
+       fragment("(?)", datetime_add(^as_of_or_now(query), ^left, ^to_string(right)))
      ), acc}
   end
 
@@ -2216,7 +2220,8 @@ defmodule AshSql.Expr do
             calculation.context.tracer,
             query.__ash_bindings__[:domain],
             resource,
-            parent_stack: query.__ash_bindings__[:parent_resources] || []
+            parent_stack: query.__ash_bindings__[:parent_resources] || [],
+            as_of: query.__ash_bindings__[:context][:private][:as_of]
           )
 
         updated_bindings =
@@ -2266,9 +2271,9 @@ defmodule AshSql.Expr do
            relationship_path: ref_relationship_path
          },
          bindings,
-         embedded?,
+         _embedded?,
          acc,
-         type
+         _type
        ) do
     related? = Map.get(aggregate, :related?, true)
 
@@ -2315,18 +2320,16 @@ defmodule AshSql.Expr do
           agg_query.filter
         end
 
-      do_dynamic_expr(
+      related_exists_expr(
         query,
         %Ash.Query.Exists{
           path: agg_relationship_path,
           expr: filter,
           at_path: ref_relationship_path
-        }
-        |> Map.put(:__join_filters__, join_filters),
+        },
+        join_filters,
         bindings,
-        embedded?,
-        acc,
-        type
+        acc
       )
     end
   end
@@ -2389,7 +2392,8 @@ defmodule AshSql.Expr do
               Map.get(aggregate.context, :tracer),
               query.__ash_bindings__[:domain],
               resource,
-              parent_stack: query.__ash_bindings__[:parent_resources] || []
+              parent_stack: query.__ash_bindings__[:parent_resources] || [],
+              as_of: query.__ash_bindings__[:context][:private][:as_of]
             )
 
           {value, acc} = do_dynamic_expr(query, ref, query.__ash_bindings__, false, acc)
@@ -2700,7 +2704,7 @@ defmodule AshSql.Expr do
        ) do
     do_dynamic_expr(
       query,
-      DateTime.utc_now(),
+      as_of_or_now(query),
       bindings,
       embedded? || pred_embedded?,
       acc,
@@ -2896,220 +2900,8 @@ defmodule AshSql.Expr do
     {Ecto.Query.dynamic(exists(subquery)), acc}
   end
 
-  defp default_dynamic_expr(
-         query,
-         %Exists{at_path: at_path, path: [first | rest], expr: expr} = exists,
-         bindings,
-         _embedded?,
-         acc,
-         _type
-       ) do
-    full_at_path = List.wrap(bindings[:refs_at_path]) ++ at_path
-    resource = Ash.Resource.Info.related(bindings.resource, full_at_path)
-
-    first_relationship = Ash.Resource.Info.relationship(resource, first)
-
-    unless first_relationship do
-      raise Ash.Error.Framework.AssumptionFailed,
-        message: """
-        Unknown relationship #{inspect(bindings.resource)}.#{first}
-
-        in exists expression: `#{inspect(exists)}`
-        """
-    end
-
-    filter =
-      case Ash.Filter.move_to_relationship_path(expr, rest) do
-        %Ash.Filter{expression: expression} -> expression
-        expression -> expression
-      end
-
-    filter =
-      exists
-      |> Map.get(:__join_filters__, %{})
-      |> Map.fetch([first_relationship.name])
-      |> case do
-        {:ok, join_filter} ->
-          Ash.Query.BooleanExpression.optimized_new(
-            :and,
-            filter,
-            Ash.Filter.move_to_relationship_path(
-              join_filter,
-              rest ++ [first_relationship.name]
-            )
-          )
-
-        :error ->
-          filter
-      end
-
-    filter =
-      exists
-      |> Map.get(:__join_filters__, %{})
-      |> Map.delete([first_relationship.name])
-      |> Enum.reduce(filter, fn {path, path_filter}, filter ->
-        path = Enum.drop(path, 1)
-        parent_path = :lists.droplast(path)
-
-        Ash.Query.BooleanExpression.optimized_new(
-          :and,
-          filter,
-          Ash.Filter.move_to_relationship_path(path_filter, path)
-        )
-        |> Ash.Filter.map(fn
-          %Ash.Query.Parent{expr: expr} ->
-            {:halt, Ash.Filter.move_to_relationship_path(expr, parent_path)}
-
-          other ->
-            other
-        end)
-      end)
-
-    # Joins for `rest` are derived from the refs in the filter and are left
-    # joins, so a predicate with no refs (e.g. `exists(a.bs, true)`) drops the
-    # remaining path entirely, and a null-satisfiable predicate is satisfied
-    # by null-extended rows. Requiring a non-nil primary key at every hop
-    # (not just the last: `no_attributes?` hops join with `on: true`)
-    # excludes both while being a no-op for real rows.
-    filter =
-      rest
-      |> Enum.scan([], fn rel_name, prefix -> prefix ++ [rel_name] end)
-      |> Enum.reduce(filter, fn prefix, filter ->
-        with target when not is_nil(target) <-
-               Ash.Resource.Info.related(first_relationship.destination, prefix),
-             [pk | _] <- Ash.Resource.Info.primary_key(target) do
-          pk_ref = %Ref{
-            attribute: Ash.Resource.Info.attribute(target, pk),
-            relationship_path: prefix,
-            resource: target
-          }
-
-          Ash.Query.BooleanExpression.optimized_new(
-            :and,
-            filter,
-            %Ash.Query.Operator.IsNil{left: pk_ref, right: false}
-          )
-        else
-          _ -> filter
-        end
-      end)
-
-    query =
-      if first_relationship.type == :many_to_many do
-        put_in(query.__ash_bindings__[:lateral_join_bindings], [:join_source])
-        |> AshSql.Bindings.explicitly_set_binding(
-          %{
-            type: :left,
-            path: [first_relationship.join_relationship]
-          },
-          :join_source
-        )
-      else
-        query
-      end
-
-    {:ok, subquery} =
-      AshSql.Join.related_subquery(first_relationship, query,
-        filter: filter,
-        filter_subquery?: true,
-        sort?: Map.get(first_relationship, :from_many?) || not is_nil(first_relationship.sort),
-        start_bindings_at: 1,
-        select_star?: !Map.get(first_relationship, :manual),
-        in_group?: true,
-        refs_at_path: full_at_path,
-        parent_resources: [
-          Ash.Resource.Info.related(resource, at_path)
-          | query.__ash_bindings__[:parent_resources] || []
-        ],
-        return_subquery?: true,
-        on_subquery: fn subquery ->
-          subquery =
-            Ecto.Query.from(row in subquery, select: row)
-            |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
-
-          cond do
-            Map.get(first_relationship, :manual) ->
-              {module, opts} = first_relationship.manual
-
-              source_binding =
-                ref_binding(
-                  %Ref{
-                    attribute:
-                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
-                    relationship_path: at_path,
-                    resource: resource
-                  },
-                  bindings
-                )
-
-              {:ok, subquery} =
-                apply(
-                  module,
-                  query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function(),
-                  [
-                    opts,
-                    source_binding,
-                    1,
-                    subquery
-                  ]
-                )
-
-              subquery
-
-            Map.get(first_relationship, :no_attributes?) ->
-              subquery
-
-            first_relationship.type == :many_to_many ->
-              source_ref =
-                ref_binding(
-                  %Ref{
-                    attribute:
-                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
-                    relationship_path: at_path,
-                    resource: resource
-                  },
-                  bindings
-                )
-
-              through_relationship =
-                Ash.Resource.Info.relationship(resource, first_relationship.join_relationship)
-
-              {:ok, through} =
-                AshSql.Join.related_subquery(through_relationship, query)
-
-              Ecto.Query.from(destination in subquery,
-                join: through in ^through,
-                as: ^:join_source,
-                on:
-                  field(through, ^first_relationship.destination_attribute_on_join_resource) ==
-                    field(destination, ^first_relationship.destination_attribute),
-                on:
-                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
-                    field(through, ^first_relationship.source_attribute_on_join_resource)
-              )
-
-            true ->
-              source_ref =
-                ref_binding(
-                  %Ref{
-                    attribute:
-                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
-                    relationship_path: at_path,
-                    resource: resource
-                  },
-                  bindings
-                )
-
-              Ecto.Query.from(destination in subquery,
-                where:
-                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
-                    field(destination, ^first_relationship.destination_attribute)
-              )
-          end
-        end
-      )
-
-    {Ecto.Query.dynamic(exists(subquery)), acc}
+  defp default_dynamic_expr(query, %Exists{} = exists, bindings, _embedded?, acc, _type) do
+    related_exists_expr(query, exists, %{}, bindings, acc)
   end
 
   defp default_dynamic_expr(
@@ -3396,6 +3188,219 @@ defmodule AshSql.Expr do
     end
   end
 
+  defp related_exists_expr(
+         query,
+         %Exists{at_path: at_path, path: [first | rest], expr: expr} = exists,
+         join_filters,
+         bindings,
+         acc
+       ) do
+    full_at_path = List.wrap(bindings[:refs_at_path]) ++ at_path
+    resource = Ash.Resource.Info.related(bindings.resource, full_at_path)
+
+    first_relationship = Ash.Resource.Info.relationship(resource, first)
+
+    unless first_relationship do
+      raise Ash.Error.Framework.AssumptionFailed,
+        message: """
+        Unknown relationship #{inspect(bindings.resource)}.#{first}
+
+        in exists expression: `#{inspect(exists)}`
+        """
+    end
+
+    filter =
+      case Ash.Filter.move_to_relationship_path(expr, rest) do
+        %Ash.Filter{expression: expression} -> expression
+        expression -> expression
+      end
+
+    filter =
+      join_filters
+      |> Map.fetch([first_relationship.name])
+      |> case do
+        {:ok, join_filter} ->
+          Ash.Query.BooleanExpression.optimized_new(
+            :and,
+            filter,
+            Ash.Filter.move_to_relationship_path(
+              join_filter,
+              rest ++ [first_relationship.name]
+            )
+          )
+
+        :error ->
+          filter
+      end
+
+    filter =
+      join_filters
+      |> Map.delete([first_relationship.name])
+      |> Enum.reduce(filter, fn {path, path_filter}, filter ->
+        path = Enum.drop(path, 1)
+        parent_path = :lists.droplast(path)
+
+        Ash.Query.BooleanExpression.optimized_new(
+          :and,
+          filter,
+          Ash.Filter.move_to_relationship_path(path_filter, path)
+        )
+        |> Ash.Filter.map(fn
+          %Ash.Query.Parent{expr: expr} ->
+            {:halt, Ash.Filter.move_to_relationship_path(expr, parent_path)}
+
+          other ->
+            other
+        end)
+      end)
+
+    # Joins for `rest` are derived from the refs in the filter and are left
+    # joins, so a predicate with no refs (e.g. `exists(a.bs, true)`) drops the
+    # remaining path entirely, and a null-satisfiable predicate is satisfied
+    # by null-extended rows. Requiring a non-nil primary key at every hop
+    # (not just the last: `no_attributes?` hops join with `on: true`)
+    # excludes both while being a no-op for real rows.
+    filter =
+      rest
+      |> Enum.scan([], fn rel_name, prefix -> prefix ++ [rel_name] end)
+      |> Enum.reduce(filter, fn prefix, filter ->
+        with target when not is_nil(target) <-
+               Ash.Resource.Info.related(first_relationship.destination, prefix),
+             [pk | _] <- Ash.Resource.Info.primary_key(target) do
+          pk_ref = %Ref{
+            attribute: Ash.Resource.Info.attribute(target, pk),
+            relationship_path: prefix,
+            resource: target
+          }
+
+          Ash.Query.BooleanExpression.optimized_new(
+            :and,
+            filter,
+            %Ash.Query.Operator.IsNil{left: pk_ref, right: false}
+          )
+        else
+          _ -> filter
+        end
+      end)
+
+    query =
+      if first_relationship.type == :many_to_many do
+        put_in(query.__ash_bindings__[:lateral_join_bindings], [:join_source])
+        |> AshSql.Bindings.explicitly_set_binding(
+          %{
+            type: :left,
+            path: [first_relationship.join_relationship]
+          },
+          :join_source
+        )
+      else
+        query
+      end
+
+    {:ok, subquery} =
+      AshSql.Join.related_subquery(first_relationship, query,
+        filter: filter,
+        filter_subquery?: true,
+        sort?: Map.get(first_relationship, :from_many?) || not is_nil(first_relationship.sort),
+        start_bindings_at: 1,
+        select_star?: !Map.get(first_relationship, :manual),
+        in_group?: true,
+        refs_at_path: full_at_path,
+        parent_resources: [
+          Ash.Resource.Info.related(resource, at_path)
+          | query.__ash_bindings__[:parent_resources] || []
+        ],
+        return_subquery?: true,
+        on_subquery: fn subquery ->
+          subquery =
+            Ecto.Query.from(row in subquery, select: row)
+            |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
+
+          cond do
+            Map.get(first_relationship, :manual) ->
+              {module, opts} = first_relationship.manual
+
+              source_binding =
+                ref_binding(
+                  %Ref{
+                    attribute:
+                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                    relationship_path: at_path,
+                    resource: resource
+                  },
+                  bindings
+                )
+
+              {:ok, subquery} =
+                apply(
+                  module,
+                  query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function(),
+                  [
+                    opts,
+                    source_binding,
+                    1,
+                    subquery
+                  ]
+                )
+
+              subquery
+
+            Map.get(first_relationship, :no_attributes?) ->
+              subquery
+
+            first_relationship.type == :many_to_many ->
+              source_ref =
+                ref_binding(
+                  %Ref{
+                    attribute:
+                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                    relationship_path: at_path,
+                    resource: resource
+                  },
+                  bindings
+                )
+
+              through_relationship =
+                Ash.Resource.Info.relationship(resource, first_relationship.join_relationship)
+
+              {:ok, through} =
+                AshSql.Join.related_subquery(through_relationship, query)
+
+              Ecto.Query.from(destination in subquery,
+                join: through in ^through,
+                as: ^:join_source,
+                on:
+                  field(through, ^first_relationship.destination_attribute_on_join_resource) ==
+                    field(destination, ^first_relationship.destination_attribute),
+                on:
+                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
+                    field(through, ^first_relationship.source_attribute_on_join_resource)
+              )
+
+            true ->
+              source_ref =
+                ref_binding(
+                  %Ref{
+                    attribute:
+                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                    relationship_path: at_path,
+                    resource: resource
+                  },
+                  bindings
+                )
+
+              Ecto.Query.from(destination in subquery,
+                where:
+                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
+                    field(destination, ^first_relationship.destination_attribute)
+              )
+          end
+        end
+      )
+
+    {Ecto.Query.dynamic(exists(subquery)), acc}
+  end
+
   defp range_operand(query, operand, nil, bindings, embedded?, acc) do
     do_dynamic_expr(query, operand, set_location(bindings, :sub_expr), embedded?, acc, nil)
   end
@@ -3464,11 +3469,11 @@ defmodule AshSql.Expr do
         %{arguments: [_, type, constraints]} = type_func = reverse_engineer_type(item)
         %{type_func | arguments: [list_item, {:array, type}, [items: constraints || []]]}
 
-      %{} = list_item ->
-        %Type{arguments: [list_item, :map, []]}
-
       %Decimal{} = list_item ->
         %Type{arguments: [list_item, :decimal, []]}
+
+      %{} = list_item ->
+        %Type{arguments: [list_item, :map, []]}
 
       list_item ->
         list_item
@@ -4232,7 +4237,6 @@ defmodule AshSql.Expr do
               case type do
                 {:array, type} -> {{:array, type}, []}
                 {type, constraints} -> {type, constraints}
-                type -> {type, []}
               end
 
             do_dynamic_expr(
@@ -4247,7 +4251,6 @@ defmodule AshSql.Expr do
       else
         {type, constraints} =
           case type do
-            {:array, type} -> {{:array, type}, []}
             {type, constraints} -> {type, constraints}
             type -> {type, []}
           end
