@@ -8,6 +8,7 @@ defmodule AshSql.Filter do
   require Ecto.Query
 
   def filter(query, filter, resource, opts \\ []) do
+    filter = rewrite_cartesian_parent_filter(query, filter)
     used_aggregates = Ash.Filter.used_aggregates(filter, [])
 
     query
@@ -35,7 +36,8 @@ defmodule AshSql.Filter do
   end
 
   def add_filter_expression(query, filter) do
-    filter
+    query
+    |> rewrite_cartesian_parent_filter(filter)
     |> AshSql.Expr.split_statements(:and)
     |> Enum.reduce(query, fn filter, query ->
       {dynamic, acc} =
@@ -56,5 +58,12 @@ defmodule AshSql.Filter do
       |> Ecto.Query.where([], ^dynamic)
       |> AshSql.Expr.merge_accumulator(acc)
     end)
+  end
+
+  defp rewrite_cartesian_parent_filter(query, filter) do
+    AshSql.Join.rewrite_filter_if_cartesian_parent(
+      filter,
+      AshSql.Join.cartesian_parent_resource(query)
+    )
   end
 end
