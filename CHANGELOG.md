@@ -11,6 +11,23 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.8.0](https://github.com/ash-project/ash_sql/compare/v0.7.6...v0.8.0) (2026-10-03)
+
+
+
+
+### Features:
+
+* add temporal features by [@zachdaniel](https://github.com/zachdaniel)
+
+### Improvements:
+
+* add a Grouped strategy for aggregates (#264) by Will Townsend [(#264)](https://github.com/ash-project/ash_sql/pull/264)
+
+### Bug Fixes:
+
+* sort from_many? relationships in aggregate joins (#266) by Daniel Gollings [(#266)](https://github.com/ash-project/ash_sql/pull/266)
+
 ## [v0.7.6](https://github.com/ash-project/ash_sql/compare/v0.7.5...v0.7.6) (2026-09-18)
 
 
