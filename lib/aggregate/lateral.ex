@@ -2177,14 +2177,30 @@ defmodule AshSql.Aggregate.Lateral do
 
     has_sort? = has_sort?(aggregate.query)
 
+    sort =
+      cond do
+        has_sort? ->
+          {aggregate.query.sort, binding}
+
+        first_relationship && first_relationship.sort not in [nil, []] ->
+          {List.wrap(first_relationship.sort), query.__ash_bindings__.root_binding}
+
+        true ->
+          nil
+      end
+
+    # `array_agg(DISTINCT x ORDER BY y)` is only valid when every `y` is `x`. Otherwise
+    # we aggregate every value in order and dedupe afterwards, keeping each value's
+    # first occurrence, which is what sorting then `Enum.uniq/1` would produce.
+    aggregate_field = aggregate.field
+
+    dedupe_sorted? =
+      match?({_, _}, sort) && Map.get(aggregate, :uniq?) &&
+        !Enum.all?(elem(sort, 0), &match?({^aggregate_field, _}, &1))
+
     {sorted, include_nil_filter_field, query} =
-      if has_sort? || (first_relationship && first_relationship.sort not in [nil, []]) do
-        {sort, binding} =
-          if has_sort? do
-            {aggregate.query.sort, binding}
-          else
-            {List.wrap(first_relationship.sort), query.__ash_bindings__.root_binding}
-          end
+      if sort do
+        {sort, binding} = sort
 
         {:ok, sort_expr, query} =
           AshSql.Sort.sort(
@@ -2199,7 +2215,7 @@ defmodule AshSql.Aggregate.Lateral do
         question_marks = Enum.map(sort_expr, fn _ -> " ? " end)
 
         distinct =
-          if Map.get(aggregate, :uniq?) do
+          if Map.get(aggregate, :uniq?) && !dedupe_sorted? do
             "DISTINCT "
           else
             ""
@@ -2269,6 +2285,18 @@ defmodule AshSql.Aggregate.Lateral do
         relationship_path,
         is_single?
       )
+
+    filtered =
+      if dedupe_sorted? do
+        Ecto.Query.dynamic(
+          fragment(
+            "(SELECT array_agg(ash_uniq.value ORDER BY ash_uniq.position) FROM (SELECT ash_ordered.value, min(ash_ordered.position) AS position FROM unnest(?) WITH ORDINALITY AS ash_ordered(value, position) GROUP BY ash_ordered.value) AS ash_uniq)",
+            ^filtered
+          )
+        )
+      else
+        filtered
+      end
 
     with_default =
       if aggregate.default_value do

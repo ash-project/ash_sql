@@ -1156,7 +1156,7 @@ defmodule AshSql.Join do
          kind,
          source,
          filter,
-         sort?,
+         _sort?,
          apply_filter
        ) do
     full_path = path ++ [relationship.name]
@@ -1218,9 +1218,12 @@ defmodule AshSql.Join do
              current_binding
            ) do
       case related_subquery(relationship, query,
+             # The join discards the subquery's ordering, so it only matters when
+             # the subquery is limited to the first row(s) by that ordering.
              sort?:
-               sort? || Map.get(relationship, :from_many?) ||
-                 not is_nil(Map.get(relationship, :sort)),
+               Map.get(relationship, :from_many?) ||
+                 is_integer(Map.get(relationship, :limit)) ||
+                 (Map.get(relationship, :offset) || 0) > 0,
              apply_filter: apply_filter,
              start_bindings_at: 500,
              refs_at_path: path,

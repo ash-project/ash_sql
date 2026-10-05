@@ -13,6 +13,7 @@ defmodule AshSql.Aggregate.Grouped do
   @window_value_field :__ash_sql_grouped_aggregate_value__
   @window_row_number_field :__ash_sql_grouped_aggregate_row_number__
   @window_count_field :__ash_sql_grouped_aggregate_count__
+  @window_dedupe_rank_field :__ash_sql_grouped_aggregate_dedupe_rank__
   @relationship_row_number_field :__ash_sql_grouped_relationship_row_number__
   @unrelated_join_field :__ash_sql_grouped_unrelated_join__
 
@@ -1102,7 +1103,6 @@ defmodule AshSql.Aggregate.Grouped do
        ) do
     with :ok <- validate_window_aggregate(aggregate),
          {:ok, sort} <- window_aggregate_sort(aggregate, relationship),
-         :ok <- validate_window_aggregate_sort(aggregate, sort),
          {:ok, query, value} <-
            AshSql.Aggregate.field_expression(
              query,
@@ -1124,8 +1124,16 @@ defmodule AshSql.Aggregate.Grouped do
         query =
           query
           |> maybe_filter_window_nil_values(aggregate, value)
-          |> window_source_query(aggregate, join_attribute, partition_binding, value, order_by)
+          |> window_source_query(
+            aggregate,
+            sort,
+            join_attribute,
+            partition_binding,
+            value,
+            order_by
+          )
           |> Ecto.Query.subquery()
+          |> maybe_dedupe_window_source(aggregate, sort, join_attribute, order_by)
           |> window_result_query(aggregate, join_attribute, order_by, aggregate_value)
 
         {:ok, query}
@@ -1143,16 +1151,14 @@ defmodule AshSql.Aggregate.Grouped do
      "AshSql cannot load first or list aggregate #{inspect(name)} with field #{inspect(field)}"}
   end
 
-  defp validate_window_aggregate_sort(%{kind: :list, uniq?: true, field: field}, sort) do
-    if Enum.all?(sort, fn {sort_field, _order} -> sort_field == field end) do
-      :ok
-    else
-      {:error,
-       "AshSql only supports uniq list aggregates when sorting by the list aggregate field"}
-    end
+  # A uniq list sorted only by its own field can dedupe with a plain `DISTINCT`. Sorted by
+  # anything else, each value keeps its first occurrence in sort order instead, which is
+  # what sorting then `Enum.uniq/1` would produce.
+  defp dedupe_sorted?(%{kind: :list, uniq?: true, field: field}, sort) do
+    !Enum.all?(sort, &match?({^field, _}, &1))
   end
 
-  defp validate_window_aggregate_sort(_aggregate, _sort), do: :ok
+  defp dedupe_sorted?(_aggregate, _sort), do: false
 
   defp maybe_filter_window_nil_values(query, %{include_nil?: true}, _value), do: query
 
@@ -1164,6 +1170,7 @@ defmodule AshSql.Aggregate.Grouped do
   defp window_source_query(
          query,
          aggregate,
+         sort,
          join_attribute,
          partition_binding,
          value,
@@ -1186,9 +1193,8 @@ defmodule AshSql.Aggregate.Grouped do
       )
 
     query =
-      if aggregate.kind == :list && aggregate.uniq? do
-        # This relies on validate_window_aggregate_sort/2 requiring uniq lists to
-        # sort by the listed field, so distinct applies to {parent, value}.
+      if aggregate.kind == :list && aggregate.uniq? && !dedupe_sorted?(aggregate, sort) do
+        # Every sort column is the listed field, so distinct applies to {parent, value}.
         from(row in query, distinct: true)
       else
         query
@@ -1197,13 +1203,56 @@ defmodule AshSql.Aggregate.Grouped do
     from(row in query, select: ^select)
   end
 
+  defp maybe_dedupe_window_source(source_query, aggregate, sort, join_attribute, order_by) do
+    if dedupe_sorted?(aggregate, sort) do
+      value_field = @window_value_field
+      rank_field = @window_dedupe_rank_field
+
+      fields =
+        [join_attribute, value_field] ++
+          Enum.map(Enum.with_index(order_by), fn {_, index} -> window_sort_field(index) end)
+
+      select = Map.new(fields, &{&1, Ecto.Query.dynamic([row], field(row, ^&1))})
+
+      partition_by = [
+        Ecto.Query.dynamic([row], field(row, ^join_attribute)),
+        Ecto.Query.dynamic([row], field(row, ^value_field))
+      ]
+
+      ranked =
+        from(row in source_query,
+          windows: [
+            ash_sql_grouped_aggregate_dedupe_window: [
+              partition_by: ^partition_by,
+              order_by: ^window_order_by(order_by)
+            ]
+          ],
+          select: ^select
+        )
+        |> Ecto.Query.select_merge(%{
+          ^rank_field => over(row_number(), :ash_sql_grouped_aggregate_dedupe_window)
+        })
+
+      from(row in Ecto.Query.subquery(ranked),
+        where: field(row, ^rank_field) == 1,
+        select: ^select
+      )
+      |> Ecto.Query.subquery()
+    else
+      source_query
+    end
+  end
+
+  defp window_order_by(sort) do
+    sort
+    |> Enum.with_index()
+    |> Enum.map(fn {{order, _expression}, index} ->
+      {ecto_sort_order(order), Ecto.Query.dynamic([row], field(row, ^window_sort_field(index)))}
+    end)
+  end
+
   defp window_result_query(source_query, aggregate, join_attribute, sort, aggregate_value) do
-    order_by =
-      sort
-      |> Enum.with_index()
-      |> Enum.map(fn {{order, _expression}, index} ->
-        {ecto_sort_order(order), Ecto.Query.dynamic([row], field(row, ^window_sort_field(index)))}
-      end)
+    order_by = window_order_by(sort)
 
     partition_by = Ecto.Query.dynamic([row], field(row, ^join_attribute))
 
