@@ -11,6 +11,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.8.1](https://github.com/ash-project/ash_sql/compare/v0.8.0...v0.8.1) (2026-10-05)
+
+
+
+
+### Bug Fixes:
+
+* handle list aggregates sorted on other fields by [@zachdaniel](https://github.com/zachdaniel)
+
+* properly handle `false` default values in aggregates by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.8.0](https://github.com/ash-project/ash_sql/compare/v0.7.6...v0.8.0) (2026-10-03)
 
 
