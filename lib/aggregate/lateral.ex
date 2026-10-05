@@ -60,15 +60,15 @@ defmodule AshSql.Aggregate.Lateral do
                   [agg.name | select_aggs]
                 end)
 
-              if not is_nil(agg.default_value) do
+              if is_nil(agg.default_value) do
+                from(row in q,
+                  select_merge: %{^agg.name => field(as(^agg_binding), ^agg.name)}
+                )
+              else
                 from(row in q,
                   select_merge: %{
                     ^agg.name => coalesce(field(as(^agg_binding), ^agg.name), ^agg.default_value)
                   }
-                )
-              else
-                from(row in q,
-                  select_merge: %{^agg.name => field(as(^agg_binding), ^agg.name)}
                 )
               end
             else
@@ -1175,7 +1175,9 @@ defmodule AshSql.Aggregate.Lateral do
           )
 
         with_default =
-          if not is_nil(aggregate.default_value) do
+          if is_nil(aggregate.default_value) do
+            value
+          else
             if type do
               type_expr =
                 query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
@@ -1184,8 +1186,6 @@ defmodule AshSql.Aggregate.Lateral do
             else
               Ecto.Query.dynamic(coalesce(^value, ^aggregate.default_value))
             end
-          else
-            value
           end
 
         casted =
@@ -1265,7 +1265,9 @@ defmodule AshSql.Aggregate.Lateral do
           )
 
         with_default =
-          if not is_nil(aggregate.default_value) do
+          if is_nil(aggregate.default_value) do
+            value
+          else
             if type do
               type_expr =
                 query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
@@ -1274,8 +1276,6 @@ defmodule AshSql.Aggregate.Lateral do
             else
               Ecto.Query.dynamic(coalesce(^value, ^aggregate.default_value))
             end
-          else
-            value
           end
 
         casted =

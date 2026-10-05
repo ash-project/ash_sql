@@ -1389,7 +1389,11 @@ defmodule AshSql.Aggregate.Grouped do
     end
   end
 
-  defp window_sort_field(index) do
+  # just to ensure we can't create an arbitrary amount of atoms
+  # would theoretically blow up on someone trying to sort on 51+ 
+  # fields at once but 🤷‍♂️
+  # sobelow_skip ["DOS.BinToAtom"]
+  defp window_sort_field(index) when index <= 50 do
     :"__ash_sql_grouped_aggregate_sort_#{index}__"
   end
 
