@@ -14,7 +14,12 @@ defmodule AshSql.Distinct do
   def distinct(query, distinct_on, resource) do
     case get_distinct_statement(query, distinct_on) do
       {:ok, {distinct_statement, query}} ->
+        sort_prefix? =
+          query.__ash_bindings__[:sort] not in [nil, []] and
+            (is_nil(query.distinct) or query.distinct.expr == [])
+
         %{query | distinct: distinct_statement}
+        |> Map.update!(:__ash_bindings__, &Map.put(&1, :distinct_is_sort_prefix?, sort_prefix?))
         |> AshSql.Sort.apply_sort(query.__ash_bindings__[:sort], resource)
 
       {:error, {distinct_statement, query}} ->

@@ -328,7 +328,7 @@ defmodule AshSql.Query do
       {:ok, query} ->
         query =
           if query.__ash_bindings__[:__order__?] && query.windows[:order] do
-            if query.distinct && !distinct_matches_sort?(query) do
+            if query.distinct && !query.__ash_bindings__[:distinct_is_sort_prefix?] do
               {calculations_require_rewrite, aggregates_require_rewrite, query} =
                 rewrite_nested_selects(query)
 
@@ -430,42 +430,6 @@ defmodule AshSql.Query do
         {:error, error}
     end
   end
-
-  # Ecto prepends DISTINCT ON fields to ORDER BY, merging their common prefix.
-  # If either ordering is a prefix of the other, that preserves the requested sort.
-  # Keep it directly usable by the planner instead of sorting computed row numbers
-  # outside a subquery, which can force every row to be read before LIMIT.
-  defp distinct_matches_sort?(
-         %{
-           distinct: %Ecto.Query.ByExpr{expr: distinct, params: [], subqueries: []}
-         } = query
-       )
-       when is_list(distinct) do
-    case query.windows[:order] do
-      %Ecto.Query.ByExpr{expr: [order_by: order], params: [], subqueries: []} ->
-        normalize = fn expr ->
-          Macro.prewalk(expr, fn
-            {:as, _, [name]} = binding ->
-              case Map.fetch(query.aliases, name) do
-                {:ok, index} -> {:&, [], [index]}
-                :error -> binding
-              end
-
-            other ->
-              other
-          end)
-        end
-
-        distinct = normalize.(distinct)
-        order = normalize.(order)
-        List.starts_with?(distinct, order) || List.starts_with?(order, distinct)
-
-      _ ->
-        false
-    end
-  end
-
-  defp distinct_matches_sort?(_), do: false
 
   defp set_lateral_join_prefix(ash_query, query) do
     if Ash.Resource.Info.multitenancy_strategy(ash_query.resource) == :context do

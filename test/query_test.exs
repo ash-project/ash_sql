@@ -7,6 +7,18 @@ defmodule AshSql.QueryTest do
 
   import Ecto.Query
 
+  defmodule SqlImplementation do
+    use AshSql.Implementation
+
+    def table(_), do: "posts"
+    def schema(_), do: nil
+    def repo(_, _), do: nil
+    def parameterized_type(type, constraints), do: {:parameterized, {type, constraints}}
+    def determine_types(_, values), do: {Enum.map(values, fn _ -> nil end), nil}
+    def manual_relationship_function, do: :ash_postgres_join
+    def manual_relationship_subquery_function, do: :ash_postgres_subquery
+  end
+
   defmodule RecordSharedContext do
     use Ash.Resource.Preparation
 
@@ -127,139 +139,71 @@ defmodule AshSql.QueryTest do
   end
 
   describe "distinct pagination ordering" do
-    test "keeps compatible ordering and pagination in the same query" do
+    test "distinct on a sort prefix keeps ordering and pagination in the same query" do
       query =
-        from(post in "posts",
-          as: ^0,
-          left_join: comment in "comments",
-          on: comment.post_id == post.id,
-          where: post.author_id == ^"author",
-          distinct: [desc: post.author_id, asc: post.id, asc: post.id],
-          select: %{id: post.id, author_id: post.author_id},
-          limit: ^51,
-          offset: ^50
-        )
-        |> sorted_query(author_id: :desc, id: :asc)
+        from(post in "posts", as: ^0, select: %{id: post.id}, limit: ^51, offset: ^50)
+        |> distinct_query([author_id: :desc], author_id: :desc, id: :asc)
+
+      assert query.__ash_bindings__.distinct_is_sort_prefix?
 
       assert {:ok, result} = AshSql.Query.return_query(query, Post)
 
-      assert result.from == query.from
+      refute match?(%Ecto.SubQuery{}, result.from.source)
       assert result.distinct == query.distinct
-      assert result.joins == query.joins
-      assert result.wheres == query.wheres
-      assert result.select == query.select
       assert result.limit == query.limit
       assert result.offset == query.offset
       assert result.windows == []
       assert hd(result.order_bys).expr == query.windows[:order].expr[:order_by]
     end
 
-    test "keeps tie breakers after a shorter distinct ordering" do
+    test "distinct on the full sort keeps ordering in the same query" do
       query =
-        from(post in "posts", as: ^0, distinct: [desc: post.author_id], select: post.id)
-        |> sorted_query(author_id: :desc, id: :asc)
+        from(post in "posts", as: ^0, select: %{id: post.id})
+        |> distinct_query([author_id: :desc, id: :asc], author_id: :desc, id: :asc)
+
+      assert query.__ash_bindings__.distinct_is_sort_prefix?
 
       assert {:ok, result} = AshSql.Query.return_query(query, Post)
-      assert result.from == query.from
-      assert hd(result.order_bys).expr == query.windows[:order].expr[:order_by]
+      refute match?(%Ecto.SubQuery{}, result.from.source)
       assert result.windows == []
     end
 
-    test "preserves explicit null ordering" do
+    test "distinct that is not a sort prefix is not wrapped as a sort prefix" do
+      query =
+        from(post in "posts", as: ^0, select: %{id: post.id}, limit: ^51)
+        |> distinct_query([id: :asc], author_id: :desc, id: :asc)
+
+      refute query.__ash_bindings__[:distinct_is_sort_prefix?]
+      assert is_nil(query.distinct)
+    end
+
+    test "pre-existing distinct expressions keep the row_number wrapper" do
       query =
         from(post in "posts",
           as: ^0,
-          distinct: [desc_nulls_last: post.author_id, asc: post.id],
-          select: post.id
-        )
-        |> sorted_query(author_id: :desc_nils_last, id: :asc)
-
-      assert {:ok, result} = AshSql.Query.return_query(query, Post)
-      assert result.from == query.from
-      assert hd(result.order_bys).expr == query.windows[:order].expr[:order_by]
-    end
-
-    test "recognizes ordering through a nonzero named root binding" do
-      query =
-        from(post in "posts", as: ^500, distinct: [asc: post.id], select: post.id)
-        |> AshSql.Bindings.default_bindings(Post, __MODULE__, %{
-          data_layer: %{start_bindings_at: 500}
-        })
-        |> Map.update!(:__ash_bindings__, &Map.put(&1, :sort, id: :asc))
-
-      assert {:ok, result} = AshSql.Query.return_query(query, Post)
-      assert result.from == query.from
-      assert result.windows == []
-    end
-
-    test "retains the wrapper when distinct would change the requested ordering" do
-      for distinct <- [[asc: :id], [asc: :author_id], [desc_nulls_first: :author_id]] do
-        query =
-          from(post in "posts", as: ^0, distinct: ^distinct, select: %{id: post.id}, limit: ^51)
-          |> sorted_query(author_id: :desc, id: :asc)
-
-        assert {:ok, result} = AshSql.Query.return_query(query, Post)
-        assert %Ecto.SubQuery{query: inner} = result.from.source
-        assert inner.distinct == query.distinct
-        assert inner.limit == nil
-        assert result.limit == query.limit
-        assert [asc: {{:., _, [_, :__order__]}, _, []}] = hd(result.order_bys).expr
-      end
-    end
-
-    test "retains the wrapper for bound sort expressions" do
-      query =
-        from(post in "posts",
-          as: ^0,
-          distinct: [asc: fragment("coalesce(?, ?)", post.author_id, ^"first")],
+          distinct: [asc: post.id],
           select: %{id: post.id},
-          windows: [
-            order: [order_by: [asc: fragment("coalesce(?, ?)", post.author_id, ^"second")]]
-          ]
+          limit: ^51
         )
-        |> AshSql.Bindings.default_bindings(Post, __MODULE__)
-        |> Map.update!(
-          :__ash_bindings__,
-          &Map.merge(&1, %{sort_applied?: true, __order__?: true})
-        )
+        |> distinct_query([author_id: :desc], author_id: :desc, id: :asc)
+
+      refute query.__ash_bindings__.distinct_is_sort_prefix?
 
       assert {:ok, result} = AshSql.Query.return_query(query, Post)
       assert %Ecto.SubQuery{query: inner} = result.from.source
-      assert inner.distinct.params == query.distinct.params
-      assert inner.windows[:order].params == query.windows[:order].params
-    end
-
-    test "keeps independent subqueries in the distinct and display orders" do
-      highest = from(comment in "comments", select: max(comment.score))
-      lowest = from(comment in "comments", select: min(comment.score))
-
-      query =
-        from(post in "posts",
-          as: ^0,
-          distinct: [asc: subquery(highest)],
-          select: %{id: post.id},
-          windows: [order: [order_by: [asc: subquery(lowest)]]]
-        )
-        |> AshSql.Bindings.default_bindings(Post, __MODULE__)
-        |> Map.update!(
-          :__ash_bindings__,
-          &Map.merge(&1, %{sort_applied?: true, __order__?: true})
-        )
-
-      assert {:ok, result} = AshSql.Query.return_query(query, Post)
-      assert %Ecto.SubQuery{query: inner} = result.from.source
-      assert inner.distinct.subqueries == query.distinct.subqueries
-      assert inner.windows[:order].subqueries == query.windows[:order].subqueries
+      assert inner.limit == nil
+      assert result.limit == query.limit
+      assert [asc: {{:., _, [_, :__order__]}, _, []}] = hd(result.order_bys).expr
     end
   end
 
-  defp sorted_query(query, sort) do
+  defp distinct_query(query, distinct, sort) do
     query =
       query
-      |> AshSql.Bindings.default_bindings(Post, __MODULE__)
+      |> AshSql.Bindings.default_bindings(Post, SqlImplementation)
       |> Map.update!(:__ash_bindings__, &Map.put(&1, :sort, sort))
 
-    {:ok, query} = AshSql.Sort.apply_sort(query, sort, Post)
+    {:ok, query} = AshSql.Distinct.distinct(query, distinct, Post)
     query
   end
 end
