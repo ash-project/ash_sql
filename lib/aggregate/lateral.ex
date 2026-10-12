@@ -1233,6 +1233,22 @@ defmodule AshSql.Aggregate.Lateral do
            join_filters
          ) do
       {:ok, query, relationship_bindings} ->
+        # References in filters and calculations must use the same joins as selection.
+        # Scope these bindings to the aggregate definition and its attachment path.
+        key = {path, aggregate.resource, aggregate.name}
+
+        query =
+          update_in(query.__ash_bindings__, fn bindings ->
+            Map.update(
+              bindings,
+              :optimized_aggregate_bindings,
+              %{key => relationship_bindings},
+              fn
+                existing -> Map.put(existing, key, relationship_bindings)
+              end
+            )
+          end)
+
         ref =
           aggregate_field_ref(
             aggregate,
