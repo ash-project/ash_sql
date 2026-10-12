@@ -257,9 +257,10 @@ defmodule AshSql.Join do
         {:ok, query}
 
       lateral_join_source_query ->
-        # Joining two parent to-many paths cartesian-products rows. Use EXISTS instead.
+        # A to-many hop in parent() would be joined onto the lateral source and
+        # cartesian-product rows. Keep those joins inside a correlated EXISTS instead.
         as_exists? =
-          cartesian_parent_join?(
+          parent_expr_has_to_many?(
             filter,
             lateral_join_source_query.__ash_bindings__.resource
           )
@@ -276,11 +277,12 @@ defmodule AshSql.Join do
             {:ok,
              put_in(query.__ash_bindings__.lateral_join_source_query, lateral_join_source_query)
              |> Map.update!(:__ash_bindings__, fn bindings ->
-               Map.put(
-                 bindings,
+               bindings
+               |> Map.put(
                  :parent_bindings,
                  Map.put(lateral_join_source_query.__ash_bindings__, :parent?, true)
                )
+               |> Map.put(:source_exists_parent_filter?, as_exists?)
              end)}
 
           {:error, error} ->
@@ -293,127 +295,41 @@ defmodule AshSql.Join do
     {:ok, query}
   end
 
-  # True when parent() names two or more to-many relationships (those would be joined).
-  defp cartesian_parent_join?(filter, parent_resource) do
+  # True when unwrapping parent() would join a to-many relationship at any hop.
+  defp parent_expr_has_to_many?(filter, parent_resource) do
     filter
     |> parent_expr()
     |> Ash.Filter.relationship_paths()
     |> Enum.reject(&(&1 == []))
-    |> Enum.uniq()
-    |> Enum.filter(fn
-      [first | _] ->
-        case Ash.Resource.Info.relationship(parent_resource, first) do
-          %{cardinality: :many} -> true
-          _ -> false
-        end
-
-      _ ->
-        false
-    end)
-    |> length()
-    |> Kernel.>=(2)
+    |> Enum.any?(&to_many_in_path?(parent_resource, &1))
   end
 
-  defp maybe_rewrite_cartesian_parent_query(%{valid?: false} = query, _parent_resource),
-    do: query
+  defp to_many_in_path?(_resource, []), do: false
 
-  defp maybe_rewrite_cartesian_parent_query(query, parent_resource) do
-    %{query | filter: rewrite_filter_if_cartesian_parent(query.filter, parent_resource)}
-  end
-
-  @doc false
-  def rewrite_filter_if_cartesian_parent(filter, parent_resource)
-      when is_nil(filter) or is_nil(parent_resource) or filter in [true, false] do
-    filter
-  end
-
-  def rewrite_filter_if_cartesian_parent(filter, parent_resource) do
-    if cartesian_parent_join?(filter, parent_resource) do
-      rewrite_parent_paths_as_exists(filter, parent_resource)
-    else
-      filter
+  defp to_many_in_path?(resource, [name | rest]) do
+    case Ash.Resource.Info.relationship(resource, name) do
+      %{cardinality: :many} -> true
+      %{destination: dest} -> to_many_in_path?(dest, rest)
+      _ -> false
     end
   end
 
+  # parent(rel.field) is a join on the source EXISTS. Local fields stay parent() of the related row.
   @doc false
-  def cartesian_parent_resource(query) do
-    case query.__ash_bindings__[:lateral_join_source_query] do
-      %{__ash_bindings__: %{resource: resource}} ->
-        resource
-
-      _ ->
-        case query.__ash_bindings__[:parent_bindings] do
-          %{resource: resource} -> resource
-          _ -> nil
-        end
-    end
-  end
-
-  # Keep and/or/not. Turn each parent(to_many.*) leaf into exists from the parent.
-  defp rewrite_parent_paths_as_exists(filter, parent_resource) do
+  def rewrite_parent_filter_for_source_exists(filter) do
     Ash.Filter.map(filter, fn
-      %Ash.Query.BooleanExpression{} = expr ->
-        expr
-
-      %Ash.Query.Not{} = expr ->
-        expr
+      %Ash.Query.Parent{expr: expr} ->
+        {:halt, expr}
 
       %Ash.Query.Exists{} = expr ->
         {:halt, expr}
 
-      expr ->
-        case parent_to_many_first_hops(expr, parent_resource) do
-          [first] ->
-            {:halt, exists_from_parent_path(expr, first)}
+      %Ref{relationship_path: []} = ref ->
+        {:halt, %Ash.Query.Parent{expr: ref}}
 
-          _ ->
-            expr
-        end
+      other ->
+        other
     end)
-  end
-
-  defp parent_to_many_first_hops(expr, parent_resource) do
-    expr
-    |> Ash.Filter.flat_map(fn
-      %Ash.Query.Parent{expr: %Ref{relationship_path: [first | _]}} ->
-        case Ash.Resource.Info.relationship(parent_resource, first) do
-          %{cardinality: :many} -> [first]
-          _ -> []
-        end
-
-      %Ash.Query.Parent{expr: inner} ->
-        parent_to_many_first_hops(inner, parent_resource)
-
-      _ ->
-        []
-    end)
-    |> Enum.uniq()
-  end
-
-  defp exists_from_parent_path(expr, first) do
-    rewritten =
-      Ash.Filter.map(expr, fn
-        %Ash.Query.Parent{expr: %Ref{relationship_path: [^first | rest]} = ref} ->
-          {:halt, %{ref | relationship_path: rest}}
-
-        %Ref{relationship_path: []} = ref ->
-          {:halt, %Ash.Query.Parent{expr: ref}}
-
-        other ->
-          other
-      end)
-
-    inner =
-      case rewritten do
-        %Ash.Filter{expression: expression} -> expression
-        expression -> expression
-      end
-
-    Map.put(
-      %Ash.Query.Exists{path: [first], expr: inner, at_path: [], related?: true},
-      :from_parent,
-      true
-    )
   end
 
   defp to_joins(paths, filter, resource) do
@@ -638,7 +554,6 @@ defmodule AshSql.Join do
       end
     end)
     |> set_has_parent_expr_context(relationship)
-    |> maybe_rewrite_cartesian_parent_query(relationship.source)
     |> case do
       %{valid?: true} = related_query ->
         parent_bindings =
