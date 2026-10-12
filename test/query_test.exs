@@ -197,6 +197,100 @@ defmodule AshSql.QueryTest do
     end
   end
 
+  describe "nested select rewriting" do
+    test "flattens calculations in a merge base before selecting aggregates" do
+      actor_id = 7
+
+      query =
+        from(post in "posts", as: ^0, select: post)
+        |> select_merge([post], %{calculations: %{visible: post.author_id == ^actor_id}})
+        |> select_merge([post], %{aggregates: %{comment_count: post.id + ^2}})
+        |> AshSql.Bindings.default_bindings(Post, SqlImplementation)
+        |> Map.update!(:__ash_bindings__, &Map.put(&1, :select_calculations, [:calculations]))
+
+      assert {calculations, aggregates, rewritten} = AshSql.Query.rewrite_nested_selects(query)
+      assert calculations == %{__calculations__visible: :visible}
+      assert aggregates == %{__aggregates__comment_count: :comment_count}
+      assert rewritten.select.params == query.select.params
+      assert rewritten.select.aliases == query.select.aliases
+      assert rewritten.__ash_bindings__.select_calculations == []
+
+      assert {:merge, _, [{:merge, _, [base, {:%{}, _, [calculation]}]}, {:%{}, _, [aggregate]}]} =
+               rewritten.select.expr
+
+      assert base == {:&, [], [0]}
+      assert {:__calculations__visible, _} = calculation
+      assert {:__aggregates__comment_count, _} = aggregate
+    end
+
+    test "collects mappings from a map base and multiple merges without reordering expressions" do
+      query =
+        from(post in "posts",
+          as: ^0,
+          select: %{id: post.id, calculations: %{visible: post.author_id == ^7}}
+        )
+        |> select_merge([post], %{aggregates: %{comment_count: post.id + ^2}})
+        |> select_merge([post], %{calculations: %{other: post.id > ^3}})
+        |> AshSql.Bindings.default_bindings(Post, SqlImplementation)
+
+      {calculations, aggregates, rewritten} = AshSql.Query.rewrite_nested_selects(query)
+
+      assert calculations == %{
+               __calculations__visible: :visible,
+               __calculations__other: :other
+             }
+
+      assert aggregates == %{__aggregates__comment_count: :comment_count}
+      assert rewritten.select.params == query.select.params
+
+      {_, original_params} =
+        Macro.prewalk(query.select.expr, [], fn
+          {:^, _, _} = expr, params -> {expr, params ++ [expr]}
+          expr, params -> {expr, params}
+        end)
+
+      {_, rewritten_params} =
+        Macro.prewalk(rewritten.select.expr, [], fn
+          {:^, _, _} = expr, params -> {expr, params ++ [expr]}
+          expr, params -> {expr, params}
+        end)
+
+      assert rewritten_params == original_params
+
+      {_, keys} =
+        Macro.prewalk(rewritten.select.expr, [], fn
+          {:%{}, _, fields} = expr, keys -> {expr, keys ++ Keyword.keys(fields)}
+          expr, keys -> {expr, keys}
+        end)
+
+      refute :calculations in keys
+      refute :aggregates in keys
+      assert :__calculations__visible in keys
+      assert :__calculations__other in keys
+      assert :__aggregates__comment_count in keys
+
+      # Ecto must accept the rewritten query as a subquery, as relationship
+      # pagination does, and expose both flattened fields to the outer select.
+      outer =
+        from(post in subquery(rewritten),
+          select: %{
+            visible: post.__calculations__visible,
+            comment_count: post.__aggregates__comment_count
+          }
+        )
+
+      assert {%Ecto.Query{}, _, _} = Ecto.Query.Planner.plan(outer, :all, Ecto.Adapters.Postgres)
+    end
+
+    test "leaves selects without nested fields unchanged" do
+      query =
+        from(post in "posts", select: %{id: post.id})
+        |> AshSql.Bindings.default_bindings(Post, SqlImplementation)
+
+      assert {%{}, %{}, ^query} = AshSql.Query.rewrite_nested_selects(query)
+    end
+  end
+
   defp distinct_query(query, distinct, sort) do
     query =
       query
