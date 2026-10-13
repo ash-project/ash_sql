@@ -1226,23 +1226,29 @@ defmodule AshSql.Aggregate.Lateral do
         %{}
       end
 
-    case AshSql.Join.join_all_relationships(
+    case AshSql.Join.join_relationship_path(
            query,
-           nil,
-           [],
-           [
-             {:left,
-              AshSql.Join.relationship_path_to_relationships(
-                resource,
-                path ++ aggregate.relationship_path
-              )}
-           ],
-           [],
-           nil,
-           false,
+           resource,
+           path ++ aggregate.relationship_path,
            join_filters
          ) do
-      {:ok, query} ->
+      {:ok, query, relationship_bindings} ->
+        # References in filters and calculations must use the same joins as selection.
+        # Scope these bindings to the aggregate definition and its attachment path.
+        key = {path, aggregate.resource, aggregate.name}
+
+        query =
+          update_in(query.__ash_bindings__, fn bindings ->
+            Map.update(
+              bindings,
+              :optimized_aggregate_bindings,
+              %{key => relationship_bindings},
+              fn
+                existing -> Map.put(existing, key, relationship_bindings)
+              end
+            )
+          end)
+
         ref =
           aggregate_field_ref(
             aggregate,
@@ -1254,7 +1260,11 @@ defmodule AshSql.Aggregate.Lateral do
 
         {:ok, query} = AshSql.Join.join_all_relationships(query, ref)
 
-        {value, acc} = AshSql.Expr.dynamic_expr(query, ref, query.__ash_bindings__, false)
+        # Use the exact joins created for this aggregate, including references
+        # inside calculation expressions, without changing the query's other bindings.
+        bindings = Map.put(query.__ash_bindings__, :ref_bindings, relationship_bindings)
+
+        {value, acc} = AshSql.Expr.dynamic_expr(query, ref, bindings, false)
 
         type =
           AshSql.Expr.parameterized_type(
