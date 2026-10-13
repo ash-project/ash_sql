@@ -112,6 +112,37 @@ defmodule AshSql.QueryTest do
     end
   end
 
+  describe "explicit relationship bindings" do
+    test "uses the specified binding while keeping ordinary path lookup unchanged" do
+      bindings = %{
+        resource: Post,
+        bindings: %{
+          0 => %{type: :root, path: []},
+          1 => %{type: :left, path: [:author]},
+          2 => %{type: :left, path: [:author]},
+          3 => %{type: :left, path: [:author]}
+        }
+      }
+
+      ref = %Ash.Query.Ref{
+        attribute: Ash.Resource.Info.attribute(Author, :id),
+        relationship_path: [:author]
+      }
+
+      assert AshSql.Expr.ref_binding(ref, bindings) == 1
+
+      explicit = Map.put(bindings, :ref_bindings, %{[:author] => 2})
+      assert AshSql.Expr.ref_binding(ref, explicit) == 2
+      assert explicit.bindings == bindings.bindings
+      assert AshSql.Expr.ref_binding(ref, bindings) == 1
+
+      # Calculation expressions resolve local references at their relationship path.
+      local = %{ref | relationship_path: []}
+      assert AshSql.Expr.ref_binding(local, Map.put(explicit, :refs_at_path, [:author])) == 2
+      assert AshSql.Expr.ref_binding(local, explicit) == 0
+    end
+  end
+
   test "lateral join source keeps shared context for parent-path preparations" do
     shared = %{current_user_id: Ash.UUID.generate()}
 
