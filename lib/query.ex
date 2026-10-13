@@ -519,89 +519,21 @@ defmodule AshSql.Query do
     Ecto.Query.select_merge(query, ^%{calculations: dynamics})
   end
 
-  # sobelow_skip ["DOS.StringToAtom"]
   def rewrite_nested_selects(query) do
     case query.select do
-      %Ecto.Query.SelectExpr{
-        expr:
-          {:merge, [],
-           [
-             merge_base,
-             {:%{}, [], current_merging}
-           ]}
-      } = select ->
-        # as we flatten these, they must all remain in the same relative order
-        # I'm actually not sure why this is required by ecto, but it is :)
-        merging =
-          Enum.flat_map(current_merging, fn
-            {type, {:%{}, _, type_exprs}} when type in [:calculations, :aggregates] ->
-              Enum.map(type_exprs, fn {name, expr} ->
-                {String.to_atom("__#{type}__#{name}"), expr}
-              end)
+      %Ecto.Query.SelectExpr{} = select ->
+        {calculation_merges, aggregate_merges, expr} = rewrite_nested_select_expr(select.expr)
 
-            {type, other} ->
-              [{type, other}]
-          end)
-
-        aggregate_merges =
-          current_merging
-          |> Keyword.get(:aggregates, {:%{}, [], []})
-          |> elem(2)
-          |> Map.new(fn {name, _expr} ->
-            {String.to_existing_atom("__aggregates__#{name}"), name}
-          end)
-
-        calculation_merges =
-          current_merging
-          |> Keyword.get(:calculations, {:%{}, [], []})
-          |> elem(2)
-          |> Map.new(fn {name, _expr} ->
-            {String.to_existing_atom("__calculations__#{name}"), name}
-          end)
+        new_query = %{query | select: %{select | expr: expr}}
 
         new_query =
-          %{
-            query
-            | select: %{select | expr: {:merge, [], [merge_base, {:%{}, [], merging}]}}
-          }
-          |> Map.update!(:__ash_bindings__, fn bindings ->
-            Map.update(bindings, :select_calculations, [], &((&1 || []) -- [:calculations]))
-          end)
-
-        {calculation_merges, aggregate_merges, new_query}
-
-      %Ecto.Query.SelectExpr{expr: {:%{}, map_meta, current_merging}} = select ->
-        merging =
-          Enum.flat_map(current_merging, fn
-            {type, {:%{}, _, type_exprs}} when type in [:calculations, :aggregates] ->
-              Enum.map(type_exprs, fn {name, expr} ->
-                {String.to_atom("__#{type}__#{name}"), expr}
-              end)
-
-            {type, other} ->
-              [{type, other}]
-          end)
-
-        aggregate_merges =
-          current_merging
-          |> Keyword.get(:aggregates, {:%{}, [], []})
-          |> elem(2)
-          |> Map.new(fn {name, _expr} ->
-            {String.to_existing_atom("__aggregates__#{name}"), name}
-          end)
-
-        calculation_merges =
-          current_merging
-          |> Keyword.get(:calculations, {:%{}, [], []})
-          |> elem(2)
-          |> Map.new(fn {name, _expr} ->
-            {String.to_existing_atom("__calculations__#{name}"), name}
-          end)
-
-        new_query = %{
-          query
-          | select: %{select | expr: {:%{}, map_meta, merging}}
-        }
+          if map_size(calculation_merges) > 0 do
+            Map.update!(new_query, :__ash_bindings__, fn bindings ->
+              Map.update(bindings, :select_calculations, [], &((&1 || []) -- [:calculations]))
+            end)
+          else
+            new_query
+          end
 
         {calculation_merges, aggregate_merges, new_query}
 
@@ -609,6 +541,44 @@ defmodule AshSql.Query do
         {%{}, %{}, query}
     end
   end
+
+  defp rewrite_nested_select_expr({:merge, meta, [base, merging]}) do
+    {base_calculations, base_aggregates, base} = rewrite_nested_select_expr(base)
+    {calculations, aggregates, merging} = rewrite_nested_select_expr(merging)
+
+    {Map.merge(base_calculations, calculations), Map.merge(base_aggregates, aggregates),
+     {:merge, meta, [base, merging]}}
+  end
+
+  # sobelow_skip ["DOS.StringToAtom"]
+  defp rewrite_nested_select_expr({:%{}, meta, fields}) do
+    # Preserve expression order so Ecto's select parameter indexes stay valid.
+    {fields, calculations, aggregates} =
+      Enum.reduce(fields, {[], %{}, %{}}, fn
+        {type, {:%{}, _, type_exprs}}, {fields, calculations, aggregates}
+        when type in [:calculations, :aggregates] ->
+          {flattened, mapping} =
+            Enum.map_reduce(type_exprs, %{}, fn {name, expr}, mapping ->
+              key = String.to_atom("__#{type}__#{name}")
+              {{key, expr}, Map.put(mapping, key, name)}
+            end)
+
+          case type do
+            :calculations ->
+              {Enum.reverse(flattened, fields), Map.merge(calculations, mapping), aggregates}
+
+            :aggregates ->
+              {Enum.reverse(flattened, fields), calculations, Map.merge(aggregates, mapping)}
+          end
+
+        field, {fields, calculations, aggregates} ->
+          {[field | fields], calculations, aggregates}
+      end)
+
+    {calculations, aggregates, {:%{}, meta, Enum.reverse(fields)}}
+  end
+
+  defp rewrite_nested_select_expr(expr), do: {%{}, %{}, expr}
 
   def remap_mapped_fields(
         results,
