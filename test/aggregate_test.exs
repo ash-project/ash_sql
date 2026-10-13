@@ -277,6 +277,31 @@ defmodule AshSql.AggregateTest do
       %{query: query, ref: ref}
     end
 
+    test "ordinary relationship references do not reuse the aggregate's filtered join",
+         context do
+      {:ok, query} =
+        Ticket
+        |> Ash.Query.for_read(:read, %{}, actor: %{id: 1})
+        |> Ash.Query.data_layer_query()
+
+      {:ok, query} =
+        AshSql.Aggregate.add_aggregates(query, [context.ref.attribute], Ticket, false, 0)
+
+      assert [%{as: 1, source: authorized}] = query.joins
+      assert filtered_join?(authorized)
+
+      filter = Ash.Query.filter(Ticket, assignee.name == "Bob").filter
+      {:ok, query} = AshSql.Filter.filter(query, filter, Ticket)
+
+      assert [%{as: 1}, %{as: 2, source: ordinary}] = query.joins
+      refute filtered_join?(ordinary)
+      assert expression_bindings(List.last(query.wheres).expr) == [2]
+
+      {value, _} = AshSql.Expr.dynamic_expr(query, context.ref, query.__ash_bindings__)
+      selected = Ecto.Query.select(query, ^value)
+      assert expression_bindings(selected.select.expr) == [1]
+    end
+
     test "aggregate predicates read the authorized join without loading the aggregate", context do
       {value, _} =
         AshSql.Expr.dynamic_expr(context.query, context.ref, context.query.__ash_bindings__)

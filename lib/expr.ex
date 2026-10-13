@@ -2362,12 +2362,12 @@ defmodule AshSql.Expr do
     {ref_binding, field_name, value, acc} =
       if first_optimized_aggregate? do
         if related? do
-          key =
-            {List.wrap(bindings[:refs_at_path]) ++ ref.relationship_path, aggregate.resource,
-             aggregate.name}
+          key = {List.wrap(bindings[:refs_at_path]) ++ ref.relationship_path, aggregate.name}
 
           relationship_bindings =
-            Map.get(bindings[:optimized_aggregate_bindings] || %{}, key, %{})
+            for {binding, %{first_aggregate: ^key, path: path}} <- bindings.bindings,
+                into: %{},
+                do: {path, binding}
 
           bindings =
             Map.update(bindings, :ref_bindings, relationship_bindings, fn existing ->
