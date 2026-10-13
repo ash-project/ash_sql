@@ -3973,14 +3973,15 @@ defmodule AshSql.Expr do
   def ref_binding(%{attribute: %Ash.Resource.Attribute{}} = ref, bindings) do
     relationship_path = List.wrap(bindings[:refs_at_path]) ++ ref.relationship_path
 
-    Enum.find_value(bindings.bindings, fn {binding, data} ->
-      data.type in [:inner, :left, :root] &&
-        Ash.Resource.Info.synonymous_relationship_paths?(
-          bindings.resource,
-          data.path,
-          relationship_path
-        ) && binding
-    end)
+    Map.get(bindings[:ref_bindings] || %{}, relationship_path) ||
+      Enum.find_value(bindings.bindings, fn {binding, data} ->
+        data.type in [:inner, :left, :root] &&
+          Ash.Resource.Info.synonymous_relationship_paths?(
+            bindings.resource,
+            data.path,
+            relationship_path
+          ) && binding
+      end)
   end
 
   defp do_get_path(

@@ -185,7 +185,7 @@ defmodule AshSql.Join do
                      sort?,
                      join_filters[Enum.map(current_path, & &1.name)]
                    ) do
-                {:ok, joined_query} ->
+                {:ok, joined_query, _binding} ->
                   joined_query_with_distinct = add_distinct(relationship, join_type, joined_query)
 
                   case join_all_relationships(
@@ -226,6 +226,41 @@ defmodule AshSql.Join do
         {:error, error}
     end
   end
+
+  @doc false
+  def join_relationship_path(query, resource, relationship_path, join_filters) do
+    relationships = relationship_path_to_relationships(resource, relationship_path)
+
+    relationships
+    |> Enum.reduce_while({:ok, query, [], %{}}, fn relationship, {:ok, query, path, bindings} ->
+      full_path = path ++ [relationship.name]
+
+      case join_relationship(
+             query,
+             relationship,
+             path,
+             :left,
+             resource,
+             nil,
+             false,
+             join_filters[full_path]
+           ) do
+        {:ok, query, binding} ->
+          query = add_distinct(relationship, :left, query)
+          {:cont, {:ok, query, full_path, Map.put(bindings, full_path, binding)}}
+
+        {:error, error} ->
+          {:halt, {:error, error}}
+      end
+    end)
+    |> case do
+      {:ok, query, _path, bindings} -> {:ok, query, bindings}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  defp with_join_binding({:ok, query}, binding), do: {:ok, query, binding}
+  defp with_join_binding({:error, error}, _binding), do: {:error, error}
 
   @doc false
   def left_join_only?(query, opts, explicit?) do
@@ -981,6 +1016,7 @@ defmodule AshSql.Join do
             initial_ash_bindings.current,
             {query.__ash_bindings__.resource, full_path}
           )
+          |> with_join_binding(initial_ash_bindings.current)
 
         {:error, query} ->
           {:error, query}
@@ -1145,6 +1181,7 @@ defmodule AshSql.Join do
           initial_ash_bindings.current + 1,
           {query.__ash_bindings__.resource, full_path}
         )
+        |> with_join_binding(initial_ash_bindings.current + 1)
       end
     end
   end
@@ -1354,6 +1391,7 @@ defmodule AshSql.Join do
             initial_ash_bindings.current,
             {query.__ash_bindings__.resource, full_path}
           )
+          |> with_join_binding(initial_ash_bindings.current)
       end
     end
   end
@@ -1510,6 +1548,7 @@ defmodule AshSql.Join do
         initial_ash_bindings.current,
         {query.__ash_bindings__.resource, full_path}
       )
+      |> with_join_binding(initial_ash_bindings.current)
     end
   end
 
