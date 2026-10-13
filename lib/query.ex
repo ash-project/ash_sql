@@ -10,6 +10,7 @@ defmodule AshSql.Query do
 
   def resource_to_query(resource, implementation, domain \\ nil) do
     from(row in {implementation.table(resource) || "", resource}, [])
+    |> Ecto.Query.put_query_prefix(implementation.schema(resource))
     |> Map.put(:__ash_domain__, domain)
   end
 
