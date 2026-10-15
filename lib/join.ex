@@ -185,7 +185,7 @@ defmodule AshSql.Join do
                      sort?,
                      join_filters[Enum.map(current_path, & &1.name)]
                    ) do
-                {:ok, joined_query} ->
+                {:ok, joined_query, _binding} ->
                   joined_query_with_distinct = add_distinct(relationship, join_type, joined_query)
 
                   case join_all_relationships(
@@ -226,6 +226,41 @@ defmodule AshSql.Join do
         {:error, error}
     end
   end
+
+  @doc false
+  def join_relationship_path(query, resource, relationship_path, join_filters) do
+    relationships = relationship_path_to_relationships(resource, relationship_path)
+
+    relationships
+    |> Enum.reduce_while({:ok, query, [], %{}}, fn relationship, {:ok, query, path, bindings} ->
+      full_path = path ++ [relationship.name]
+
+      case join_relationship(
+             query,
+             relationship,
+             path,
+             :left,
+             resource,
+             nil,
+             false,
+             join_filters[full_path]
+           ) do
+        {:ok, query, binding} ->
+          query = add_distinct(relationship, :left, query)
+          {:cont, {:ok, query, full_path, Map.put(bindings, full_path, binding)}}
+
+        {:error, error} ->
+          {:halt, {:error, error}}
+      end
+    end)
+    |> case do
+      {:ok, query, _path, bindings} -> {:ok, query, bindings}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  defp with_join_binding({:ok, query}, binding), do: {:ok, query, binding}
+  defp with_join_binding({:error, error}, _binding), do: {:error, error}
 
   @doc false
   def left_join_only?(query, opts, explicit?) do
@@ -487,17 +522,18 @@ defmodule AshSql.Join do
     end
   end
 
-  defp related_query(relationship, query, opts) do
-    sort? = Keyword.get(opts, :sort?, false)
+  @doc false
+  def related_ash_query(relationship, query, opts \\ []) do
     filter = Keyword.get(opts, :filter, nil)
     filter_subquery? = Keyword.get(opts, :filter_subquery?, false)
     parent_resources = Keyword.get(opts, :parent_stack, [relationship.source])
+    source_query = opts[:source_query]
 
     read_action = get_read_action(relationship)
 
     context = Map.delete(query.__ash_bindings__.context, :data_layer)
 
-    tenant = query.__ash_bindings__.context[:private][:tenant]
+    tenant = (source_query && source_query.tenant) || context[:private][:tenant]
 
     relationship.destination
     |> Ash.Query.new()
@@ -509,6 +545,17 @@ defmodule AshSql.Join do
         start_bindings_at: opts[:start_bindings_at] || 0
       }
     })
+    |> then(fn query ->
+      if source_query do
+        # Rebuild the relationship's action scope on a fresh query. The source
+        # aggregate query already combines action and aggregate filters.
+        query
+        |> Ash.Query.set_context(source_query.context)
+        |> Ash.Query.set_domain(source_query.domain || query.domain)
+      else
+        query
+      end
+    end)
     |> Ash.Query.set_context(relationship.context)
     |> Ash.Query.do_filter(relationship.filter, parent_stack: parent_resources)
     |> then(fn query ->
@@ -529,13 +576,19 @@ defmodule AshSql.Join do
           read_action.name,
           Map.get(relationship, :read_action_arguments, %{}),
           actor: context[:private][:actor],
-          tenant: context[:private][:tenant]
+          tenant: tenant
         )
       end
     end)
     |> Ash.Query.unset([:distinct, :select, :limit, :offset])
     |> handle_attribute_multitenancy(tenant, read_action)
     |> hydrate_refs(context[:private][:actor])
+  end
+
+  defp related_query(relationship, query, opts) do
+    sort? = Keyword.get(opts, :sort?, false)
+
+    related_ash_query(relationship, query, opts)
     |> then(fn query ->
       if sort? do
         query
@@ -611,9 +664,20 @@ defmodule AshSql.Join do
   end
 
   @doc false
+  def context_multitenancy(query) do
+    case query.context do
+      %{private: %{multitenancy: multitenancy}} -> multitenancy
+      %{multitenancy: multitenancy} -> multitenancy
+      _ -> nil
+    end
+  end
+
+  @doc false
   def handle_attribute_multitenancy(query, tenant, read_action \\ nil) do
+    multitenancy = context_multitenancy(query) || (read_action && read_action.multitenancy)
+
     if tenant && Ash.Resource.Info.multitenancy_strategy(query.resource) == :attribute &&
-         (is_nil(read_action) || read_action.multitenancy not in [:bypass, :bypass_all]) do
+         multitenancy not in [:bypass, :bypass_all] do
       multitenancy_attribute = Ash.Resource.Info.multitenancy_attribute(query.resource)
 
       if multitenancy_attribute do
@@ -1005,6 +1069,7 @@ defmodule AshSql.Join do
             initial_ash_bindings.current,
             {query.__ash_bindings__.resource, full_path}
           )
+          |> with_join_binding(initial_ash_bindings.current)
 
         {:error, query} ->
           {:error, query}
@@ -1169,6 +1234,7 @@ defmodule AshSql.Join do
           initial_ash_bindings.current + 1,
           {query.__ash_bindings__.resource, full_path}
         )
+        |> with_join_binding(initial_ash_bindings.current + 1)
       end
     end
   end
@@ -1180,7 +1246,7 @@ defmodule AshSql.Join do
          kind,
          source,
          filter,
-         sort?,
+         _sort?,
          apply_filter
        ) do
     full_path = path ++ [relationship.name]
@@ -1242,13 +1308,17 @@ defmodule AshSql.Join do
              current_binding
            ) do
       case related_subquery(relationship, query,
-             sort?: sort?,
+             # The join discards the subquery's ordering, so it only matters when
+             # the subquery is limited to the first row(s) by that ordering.
+             sort?:
+               Map.get(relationship, :from_many?) ||
+                 is_integer(Map.get(relationship, :limit)) ||
+                 (Map.get(relationship, :offset) || 0) > 0,
              apply_filter: apply_filter,
              start_bindings_at: 500,
              refs_at_path: path,
              require_lateral?: require_lateral?,
              filter_subquery?: true,
-             sort?: Map.get(relationship, :from_many?),
              on_subquery: fn subquery ->
                if !Map.get(relationship, :from_many?) || Map.get(relationship, :no_attributes?) do
                  subquery
@@ -1374,6 +1444,7 @@ defmodule AshSql.Join do
             initial_ash_bindings.current,
             {query.__ash_bindings__.resource, full_path}
           )
+          |> with_join_binding(initial_ash_bindings.current)
       end
     end
   end
@@ -1530,6 +1601,7 @@ defmodule AshSql.Join do
         initial_ash_bindings.current,
         {query.__ash_bindings__.resource, full_path}
       )
+      |> with_join_binding(initial_ash_bindings.current)
     end
   end
 

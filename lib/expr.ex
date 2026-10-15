@@ -108,6 +108,10 @@ defmodule AshSql.Expr do
     do_dynamic_expr(query, expression, bindings, embedded?, acc, type)
   end
 
+  defp as_of_or_now(query) do
+    get_in(query.__ash_bindings__, [:context, :private, :as_of]) || DateTime.utc_now()
+  end
+
   defp do_dynamic_expr(query, expr, bindings, embedded?, acc, type \\ nil) do
     case bindings.sql_behaviour.expr(query, expr, bindings, embedded?, acc, type) do
       {:ok, expr, acc} -> {expr, acc}
@@ -306,7 +310,7 @@ defmodule AshSql.Expr do
       )
 
     {Ecto.Query.dynamic(
-       fragment("(?)", datetime_add(^DateTime.utc_now(), ^left * -1, ^to_string(right)))
+       fragment("(?)", datetime_add(^as_of_or_now(query), ^left * -1, ^to_string(right)))
      ), acc}
   end
 
@@ -468,7 +472,7 @@ defmodule AshSql.Expr do
       )
 
     {Ecto.Query.dynamic(
-       fragment("(?)", datetime_add(^DateTime.utc_now(), ^left, ^to_string(right)))
+       fragment("(?)", datetime_add(^as_of_or_now(query), ^left, ^to_string(right)))
      ), acc}
   end
 
@@ -1825,1299 +1829,6 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
-         %_{
-           __predicate__?: _,
-           left: _,
-           right: _,
-           operator: _
-         } = op,
-         bindings,
-         embedded?,
-         acc,
-         type
-       ) do
-    typed_binary_operator_expr(query, op, bindings, embedded?, acc, type)
-  end
-
-  defp default_dynamic_expr(query, %MapSet{} = mapset, bindings, embedded?, acc, type) do
-    do_dynamic_expr(query, Enum.to_list(mapset), bindings, embedded?, acc, type)
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Ash.CiString{string: string} = expression,
-         bindings,
-         embedded?,
-         acc,
-         type
-       ) do
-    case query.__ash_bindings__.sql_behaviour.require_extension_for_citext() do
-      {true, extension} ->
-        require_extension!(query.__ash_bindings__.resource, extension, expression, query)
-
-        do_dynamic_expr(
-          query,
-          %Ash.Query.Function.Fragment{arguments: [raw: "(", expr: string, raw: "::citext)"]},
-          bindings,
-          embedded?,
-          acc,
-          type
-        )
-
-      false ->
-        do_dynamic_expr(
-          query,
-          %Ash.Query.Function.Type{arguments: [string, Ash.Type.CiString, []]},
-          bindings,
-          embedded?,
-          acc,
-          type
-        )
-    end
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Ref{
-           attribute: %Ash.Query.Calculation{} = calculation,
-           relationship_path: relationship_path
-         },
-         bindings,
-         embedded?,
-         acc,
-         _type
-       ) do
-    calculation = %{calculation | load: calculation.name}
-
-    resource =
-      Ash.Resource.Info.related(
-        bindings.resource,
-        List.wrap(bindings[:refs_at_path]) ++ relationship_path
-      )
-
-    case Ash.Filter.hydrate_refs(
-           Ash.Resource.Calculation.expression(
-             calculation.module,
-             calculation.opts,
-             calculation.context
-           ),
-           %{
-             resource: resource,
-             aggregates: %{},
-             calculations: %{},
-             public?: false,
-             parent_stack: query.__ash_bindings__[:parent_resources] || [],
-             source_context: calculation.context.source_context || %{}
-           }
-         ) do
-      {:ok, expression} ->
-        expression =
-          Ash.Actions.Read.add_calc_context_to_filter(
-            expression,
-            calculation.context.actor,
-            calculation.context.authorize?,
-            calculation.context.tenant,
-            calculation.context.tracer,
-            query.__ash_bindings__[:domain],
-            resource,
-            parent_stack: query.__ash_bindings__[:parent_resources] || []
-          )
-
-        updated_bindings =
-          bindings
-          |> set_location(:sub_expr)
-          |> Map.delete(:no_cast?)
-          |> Map.delete(:skip_cast_for_ref?)
-          |> then(fn bindings ->
-            if Enum.empty?(relationship_path) do
-              bindings
-            else
-              bindings
-              |> Map.put(:refs_at_path, List.wrap(bindings[:refs_at_path]) ++ relationship_path)
-            end
-          end)
-
-        updated_query = %{query | __ash_bindings__: updated_bindings}
-
-        do_dynamic_expr(
-          updated_query,
-          expression,
-          updated_bindings,
-          embedded?,
-          acc,
-          {calculation.type, Map.get(calculation, :constraints, [])}
-        )
-
-      {:error, error} ->
-        raise """
-        Failed to hydrate references for resource #{inspect(resource)} in #{inspect(Ash.Resource.Calculation.expression(calculation.module, calculation.opts, calculation.context))}
-
-        #{inspect(error)}
-        """
-    end
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Ref{
-           attribute:
-             %Ash.Query.Aggregate{
-               kind: :exists,
-               relationship_path: agg_relationship_path,
-               query: agg_query,
-               join_filters: join_filters
-             } = aggregate,
-           relationship_path: ref_relationship_path
-         },
-         bindings,
-         embedded?,
-         acc,
-         type
-       ) do
-    related? = Map.get(aggregate, :related?, true)
-
-    if related? == false do
-      filter =
-        if is_nil(agg_query.filter) do
-          true
-        else
-          agg_query.filter
-        end
-
-      subquery_result =
-        aggregate.query
-        |> Ash.Query.set_context(query.__ash_bindings__.context)
-        |> Ash.Query.set_context(%{
-          data_layer: %{
-            table: nil,
-            parent_bindings: query.__ash_bindings__,
-            start_bindings_at: (query.__ash_bindings__.current || 0) + 1
-          }
-        })
-        |> then(fn ash_query ->
-          if filter != true do
-            Ash.Query.filter(ash_query, filter)
-          else
-            ash_query
-          end
-        end)
-        |> Ash.Query.data_layer_query()
-
-      case subquery_result do
-        {:ok, ecto_query} ->
-          subquery = Ecto.Query.exclude(ecto_query, :select)
-          {Ecto.Query.dynamic(exists(subquery)), acc}
-
-        {:error, error} ->
-          raise "Failed to create unrelated exists subquery: #{inspect(error)}"
-      end
-    else
-      filter =
-        if is_nil(agg_query.filter) do
-          true
-        else
-          agg_query.filter
-        end
-
-      do_dynamic_expr(
-        query,
-        %Ash.Query.Exists{
-          path: agg_relationship_path,
-          expr: filter,
-          at_path: ref_relationship_path
-        }
-        |> Map.put(:__join_filters__, join_filters),
-        bindings,
-        embedded?,
-        acc,
-        type
-      )
-    end
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Ref{attribute: %Ash.Query.Aggregate{} = aggregate} = ref,
-         bindings,
-         _embedded?,
-         acc,
-         _type
-       ) do
-    %{attribute: aggregate} =
-      ref =
-      case bindings.aggregate_names[aggregate.name] do
-        nil ->
-          ref
-
-        name ->
-          %{ref | attribute: %{aggregate | name: name}}
-      end
-
-    related? = Map.get(aggregate, :related?, true)
-
-    resource = aggregate.resource
-
-    first_optimized_aggregate? =
-      AshSql.Aggregate.optimizable_first_aggregate?(resource, aggregate, query)
-
-    {ref_binding, field_name, value, acc} =
-      if first_optimized_aggregate? do
-        if related? do
-          ref =
-            %{
-              ref
-              | attribute: %Ash.Resource.Attribute{name: :fake},
-                relationship_path: ref.relationship_path ++ aggregate.relationship_path
-            }
-
-          ref_binding = ref_binding(ref, bindings)
-
-          ref =
-            %Ash.Query.Ref{
-              attribute:
-                AshSql.Aggregate.aggregate_field(
-                  aggregate,
-                  aggregate.query.resource,
-                  query
-                ),
-              relationship_path: ref.relationship_path,
-              resource: resource
-            }
-
-          ref =
-            Ash.Actions.Read.add_calc_context_to_filter(
-              ref,
-              Map.get(aggregate.context, :actor),
-              Map.get(aggregate.context, :authorize?),
-              Map.get(aggregate.context, :tenant),
-              Map.get(aggregate.context, :tracer),
-              query.__ash_bindings__[:domain],
-              resource,
-              parent_stack: query.__ash_bindings__[:parent_resources] || []
-            )
-
-          {value, acc} = do_dynamic_expr(query, ref, query.__ash_bindings__, false, acc)
-
-          if is_nil(ref_binding) do
-            reference_error!(query, ref)
-          end
-
-          {ref_binding, aggregate.field, value, acc}
-        else
-          ref_binding = ref_binding(ref, bindings)
-
-          {ref_binding, aggregate.field, nil, acc}
-        end
-      else
-        ref_binding = ref_binding(ref, bindings)
-
-        if is_nil(ref_binding) do
-          reference_error!(query, ref)
-        end
-
-        {ref_binding, aggregate.name, nil, acc}
-      end
-
-    field_name =
-      if is_binary(field_name) do
-        new_field_name =
-          query.__ash_bindings__.aggregate_names[field_name]
-
-        if !new_field_name do
-          raise "Unbound aggregate field: #{inspect(field_name)}"
-        end
-
-        new_field_name
-      else
-        field_name
-      end
-
-    expr =
-      if value do
-        value
-      else
-        if query.__ash_bindings__[:parent?] &&
-             ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
-          if bindings[:parent?] do
-            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^field_name))
-          else
-            Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
-          end
-        else
-          if bindings[:parent?] do
-            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^field_name))
-          else
-            Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
-          end
-        end
-      end
-
-    type =
-      parameterized_type(
-        bindings.sql_behaviour,
-        aggregate.type,
-        aggregate.constraints,
-        :expr
-      )
-
-    validate_type!(query, type, ref)
-
-    coalesced =
-      if is_nil(aggregate.default_value) do
-        expr
-      else
-        if type do
-          typed_default =
-            query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
-
-          Ecto.Query.dynamic(coalesce(^expr, ^typed_default))
-        else
-          Ecto.Query.dynamic(coalesce(^expr, ^aggregate.default_value))
-        end
-      end
-
-    if type do
-      {query.__ash_bindings__.sql_behaviour.type_expr(coalesced, type), acc}
-    else
-      {coalesced, acc}
-    end
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Ash.CustomExpression{expression: expr},
-         bindings,
-         embedded?,
-         acc,
-         type
-       ) do
-    do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Round{arguments: [num | rest], embedded?: pred_embedded?},
-         bindings,
-         embedded?,
-         acc,
-         _type
-       ) do
-    precision = Enum.at(rest, 0) || 0
-
-    frag =
-      %Fragment{
-        embedded?: pred_embedded?,
-        arguments: [
-          raw: "ROUND((",
-          expr: num,
-          raw: ")::numeric, ",
-          expr: precision,
-          raw: ")"
-        ]
-      }
-
-    do_dynamic_expr(query, frag, bindings, pred_embedded? || embedded?, acc)
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Type{
-           arguments: [
-             %Type{arguments: [arg1 | _]},
-             type,
-             constraints
-           ]
-         } = type_expr,
-         bindings,
-         embedded?,
-         acc,
-         type
-       ) do
-    do_dynamic_expr(
-      query,
-      %{type_expr | arguments: [arg1, type, constraints]},
-      bindings,
-      embedded?,
-      acc,
-      type
-    )
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Type{
-           arguments: [
-             %Ash.Query.Ref{attribute: %{type: type}} = arg1,
-             type | _
-           ]
-         },
-         bindings,
-         embedded?,
-         acc,
-         type
-       ) do
-    do_dynamic_expr(
-      query,
-      arg1,
-      bindings,
-      embedded?,
-      acc,
-      type
-    )
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Type{arguments: [arg1, arg2, constraints]},
-         bindings,
-         embedded?,
-         acc,
-         _type
-       ) do
-    arg2 = Ash.Type.get_type(arg2)
-    arg1 = maybe_uuid_to_binary(arg2, arg1, arg1)
-
-    type =
-      parameterized_type(
-        bindings.sql_behaviour,
-        arg2,
-        constraints,
-        :expr
-      )
-
-    if type do
-      {bindings, cast_type} =
-        case arg1 do
-          %Ash.Query.Ref{
-            attribute: %Ash.Resource.Attribute{type: attr_type, constraints: attr_constraints}
-          } ->
-            # only remap the cast for refs being cast to their own type —
-            # cross-type casts (e.g. a usec column cast to second precision)
-            # must keep their requested target
-            cast_type =
-              if type ==
-                   parameterized_type(bindings.sql_behaviour, attr_type, attr_constraints, :expr) do
-                bindings.sql_behaviour.ref_cast_type(type)
-              else
-                type
-              end
-
-            {Map.put(bindings, :no_cast?, true), cast_type}
-
-          _ ->
-            if Ash.Expr.expr?(arg1) do
-              {bindings, type}
-            else
-              {Map.put(bindings, :no_cast?, true), type}
-            end
-        end
-
-      validate_type!(query, type, arg1)
-
-      inner_bindings =
-        if is_map(arg1) && not is_struct(arg1) && Ash.Expr.expr?(arg1) do
-          set_location(bindings, :sub_expr)
-        else
-          bindings
-        end
-
-      {expr, acc} =
-        do_dynamic_expr(
-          query,
-          arg1,
-          inner_bindings,
-          embedded?,
-          acc,
-          {arg2, constraints}
-        )
-
-      case {type, expr} do
-        {{:parameterized, Ash.Type.Map.EctoType, []}, %Ecto.Query.DynamicExpr{}} ->
-          {expr, acc}
-
-        {{:parameterized, {Ash.Type.Map.EctoType, []}}, %Ecto.Query.DynamicExpr{}} ->
-          {expr, acc}
-
-        _ ->
-          {query.__ash_bindings__.sql_behaviour.type_expr(expr, cast_type), acc}
-      end
-    else
-      do_dynamic_expr(query, arg1, bindings, embedded?, acc, arg2)
-    end
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %CompositeType{arguments: [arg1, arg2, constraints], embedded?: pred_embedded?},
-         bindings,
-         embedded?,
-         acc,
-         _type
-       )
-       when is_map(arg1) do
-    type = Ash.Type.get_type(arg2)
-
-    composite_keys = Ash.Type.composite_types(type, constraints)
-
-    type =
-      parameterized_type(
-        bindings.sql_behaviour,
-        type,
-        constraints,
-        :expr
-      )
-
-    values =
-      composite_keys
-      |> Enum.map(fn config ->
-        key = elem(config, 0)
-        {:expr, Map.get(arg1, key)}
-      end)
-      |> Enum.intersperse({:raw, ","})
-
-    frag =
-      %Fragment{
-        embedded?: pred_embedded?,
-        arguments:
-          [
-            raw: "ROW("
-          ] ++
-            values ++
-            [
-              raw: ")"
-            ]
-      }
-
-    {frag, acc} =
-      do_dynamic_expr(query, frag, bindings, embedded?, acc)
-
-    {query.__ash_bindings__.sql_behaviour.type_expr(frag, type), acc}
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Now{embedded?: pred_embedded?},
-         bindings,
-         embedded?,
-         acc,
-         type
-       ) do
-    do_dynamic_expr(
-      query,
-      DateTime.utc_now(),
-      bindings,
-      embedded? || pred_embedded?,
-      acc,
-      type
-    )
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Today{embedded?: pred_embedded?},
-         bindings,
-         embedded?,
-         acc,
-         type
-       ) do
-    do_dynamic_expr(
-      query,
-      Date.utc_today(),
-      bindings,
-      embedded? || pred_embedded?,
-      acc,
-      type
-    )
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Ash.Query.Parent{expr: expr},
-         bindings,
-         embedded?,
-         acc,
-         type
-       ) do
-    parent? = Map.get(bindings.parent_bindings, :parent_is_parent_as?, true)
-
-    new_bindings =
-      set_location(Map.put(bindings.parent_bindings, :parent?, parent?), :sub_expr)
-
-    do_dynamic_expr(
-      %{query | __ash_bindings__: new_bindings},
-      expr,
-      set_location(new_bindings, :sub_expr),
-      embedded?,
-      acc,
-      type
-    )
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Error{arguments: [exception, input]} = value,
-         bindings,
-         embedded?,
-         acc,
-         type
-       ) do
-    require_ash_functions!(query, "error/2")
-
-    acc = %{acc | has_error?: true}
-
-    if !(Keyword.keyword?(input) || is_map(input)) do
-      raise "Input expression to `error` must be a map or keyword list"
-    end
-
-    {encoded, acc} =
-      if Ash.Expr.expr?(input) do
-        frag_parts =
-          Enum.flat_map(input, fn {key, value} ->
-            if Ash.Expr.expr?(value) do
-              [
-                expr: to_string(key),
-                raw: "::text, ",
-                expr: value,
-                raw: ", "
-              ]
-            else
-              [
-                expr: to_string(key),
-                raw: "::text, ",
-                expr: value,
-                raw: "::jsonb, "
-              ]
-            end
-          end)
-
-        frag_parts =
-          List.update_at(frag_parts, -1, fn {:raw, text} ->
-            {:raw, String.trim_trailing(text, ", ") <> "))"}
-          end)
-
-        do_dynamic_expr(
-          query,
-          %Fragment{
-            embedded?: false,
-            arguments:
-              [
-                raw: "jsonb_build_object('exception', ",
-                expr: inspect(exception),
-                raw: "::text, 'input', jsonb_build_object("
-              ] ++
-                frag_parts
-          },
-          bindings,
-          embedded?,
-          acc
-        )
-      else
-        {Jason.encode!(%{exception: inspect(exception), input: Map.new(input)}), acc}
-      end
-
-    if type do
-      # This is a type hint, if we're raising an error, we tell it what the value
-      # type *would* be in this expression so that we can return a "NULL" of that type
-      # its weird, but there isn't any other way that I can tell :)
-      validate_type!(query, type, value)
-
-      type =
-        parameterized_type(
-          bindings.sql_behaviour,
-          type,
-          [],
-          :expr
-        )
-
-      if type do
-        dynamic = Ecto.Query.dynamic(type(fragment("NULL"), ^type))
-
-        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
-      else
-        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
-      end
-    else
-      {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
-    end
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Exists{related?: false, expr: expr, resource: resource} = exists,
-         bindings,
-         _embedded?,
-         acc,
-         _type
-       ) do
-    {:ok, subquery} =
-      resource
-      |> Ash.Query.new()
-      |> Ash.Query.set_context(Map.delete(bindings.context, :data_layer))
-      |> Ash.Query.set_context(%{
-        data_layer: %{
-          parent_bindings: query.__ash_bindings__,
-          start_bindings_at: (query.__ash_bindings__.current || 0) + 1
-        }
-      })
-      |> then(fn ash_query ->
-        if ash_query.__validated_for_action__ do
-          ash_query
-        else
-          Ash.Query.for_read(
-            ash_query,
-            Ash.Resource.Info.primary_action!(ash_query.resource, :read).name,
-            %{},
-            actor: bindings.context[:private][:actor],
-            tenant: bindings.context[:private][:tenant]
-          )
-        end
-      end)
-      |> Ash.Query.unset([:sort, :distinct, :select, :limit, :offset])
-      |> AshSql.Join.handle_attribute_multitenancy(bindings.context[:private][:tenant])
-      |> AshSql.Join.hydrate_refs(bindings.context[:private][:actor])
-      |> then(fn related_query ->
-        if expr != true do
-          parent_stack =
-            if Map.get(exists, :correlate_source_pk) do
-              [query.__ash_bindings__.resource]
-            else
-              []
-            end
-
-          Ash.Query.do_filter(related_query, expr, parent_stack: parent_stack)
-        else
-          related_query
-        end
-      end)
-      |> case do
-        %{valid?: true} = related_query ->
-          case Ash.Query.data_layer_query(related_query) do
-            {:ok, ecto_query} ->
-              ecto_query = Ecto.Query.exclude(ecto_query, :select)
-
-              ecto_query =
-                if Map.get(exists, :correlate_source_pk) do
-                  correlate_exists_to_source_pk(ecto_query, query, resource)
-                else
-                  ecto_query
-                end
-
-              {:ok, ecto_query}
-
-            {:error, error} ->
-              {:error, error}
-          end
-
-        %{errors: errors} ->
-          {:error, errors}
-      end
-
-    # Create the exists dynamic expression
-    {Ecto.Query.dynamic(exists(subquery)), acc}
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Exists{at_path: at_path, path: [first | rest], expr: expr} = exists,
-         bindings,
-         _embedded?,
-         acc,
-         _type
-       ) do
-    full_at_path = List.wrap(bindings[:refs_at_path]) ++ at_path
-    resource = Ash.Resource.Info.related(bindings.resource, full_at_path)
-
-    first_relationship = Ash.Resource.Info.relationship(resource, first)
-
-    if !first_relationship do
-      raise Ash.Error.Framework.AssumptionFailed,
-        message: """
-        Unknown relationship #{inspect(bindings.resource)}.#{first}
-
-        in exists expression: `#{inspect(exists)}`
-        """
-    end
-
-    filter =
-      case Ash.Filter.move_to_relationship_path(expr, rest) do
-        %Ash.Filter{expression: expression} -> expression
-        expression -> expression
-      end
-
-    filter =
-      exists
-      |> Map.get(:__join_filters__, %{})
-      |> Map.fetch([first_relationship.name])
-      |> case do
-        {:ok, join_filter} ->
-          Ash.Query.BooleanExpression.optimized_new(
-            :and,
-            filter,
-            Ash.Filter.move_to_relationship_path(
-              join_filter,
-              rest ++ [first_relationship.name]
-            )
-          )
-
-        :error ->
-          filter
-      end
-
-    filter =
-      exists
-      |> Map.get(:__join_filters__, %{})
-      |> Map.delete([first_relationship.name])
-      |> Enum.reduce(filter, fn {path, path_filter}, filter ->
-        path = Enum.drop(path, 1)
-        parent_path = :lists.droplast(path)
-
-        Ash.Query.BooleanExpression.optimized_new(
-          :and,
-          filter,
-          Ash.Filter.move_to_relationship_path(path_filter, path)
-        )
-        |> Ash.Filter.map(fn
-          %Ash.Query.Parent{expr: expr} ->
-            {:halt, Ash.Filter.move_to_relationship_path(expr, parent_path)}
-
-          other ->
-            other
-        end)
-      end)
-
-    # Joins for `rest` are derived from the refs in the filter and are left
-    # joins, so a predicate with no refs (e.g. `exists(a.bs, true)`) drops the
-    # remaining path entirely, and a null-satisfiable predicate is satisfied
-    # by null-extended rows. Requiring a non-nil primary key at every hop
-    # (not just the last: `no_attributes?` hops join with `on: true`)
-    # excludes both while being a no-op for real rows.
-    filter =
-      rest
-      |> Enum.scan([], fn rel_name, prefix -> prefix ++ [rel_name] end)
-      |> Enum.reduce(filter, fn prefix, filter ->
-        with target when not is_nil(target) <-
-               Ash.Resource.Info.related(first_relationship.destination, prefix),
-             [pk | _] <- Ash.Resource.Info.primary_key(target) do
-          pk_ref = %Ref{
-            attribute: Ash.Resource.Info.attribute(target, pk),
-            relationship_path: prefix,
-            resource: target
-          }
-
-          Ash.Query.BooleanExpression.optimized_new(
-            :and,
-            filter,
-            %Ash.Query.Operator.IsNil{left: pk_ref, right: false}
-          )
-        else
-          _ -> filter
-        end
-      end)
-
-    query =
-      if first_relationship.type == :many_to_many do
-        put_in(query.__ash_bindings__[:lateral_join_bindings], [:join_source])
-        |> AshSql.Bindings.explicitly_set_binding(
-          %{
-            type: :left,
-            path: [first_relationship.join_relationship]
-          },
-          :join_source
-        )
-      else
-        query
-      end
-
-    {:ok, subquery} =
-      AshSql.Join.related_subquery(first_relationship, query,
-        filter: filter,
-        filter_subquery?: true,
-        sort?: Map.get(first_relationship, :from_many?) || not is_nil(first_relationship.sort),
-        start_bindings_at: 1,
-        select_star?: !Map.get(first_relationship, :manual),
-        in_group?: true,
-        refs_at_path: full_at_path,
-        parent_resources: [
-          Ash.Resource.Info.related(resource, at_path)
-          | query.__ash_bindings__[:parent_resources] || []
-        ],
-        return_subquery?: true,
-        on_subquery: fn subquery ->
-          subquery =
-            Ecto.Query.from(row in subquery, select: row)
-            |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
-
-          cond do
-            Map.get(first_relationship, :manual) ->
-              {module, opts} = first_relationship.manual
-
-              source_binding =
-                ref_binding(
-                  %Ref{
-                    attribute:
-                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
-                    relationship_path: at_path,
-                    resource: resource
-                  },
-                  bindings
-                )
-
-              {:ok, subquery} =
-                apply(
-                  module,
-                  query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function(),
-                  [
-                    opts,
-                    source_binding,
-                    1,
-                    subquery
-                  ]
-                )
-
-              subquery
-
-            Map.get(first_relationship, :no_attributes?) ->
-              subquery
-
-            first_relationship.type == :many_to_many ->
-              source_ref =
-                ref_binding(
-                  %Ref{
-                    attribute:
-                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
-                    relationship_path: at_path,
-                    resource: resource
-                  },
-                  bindings
-                )
-
-              through_relationship =
-                Ash.Resource.Info.relationship(resource, first_relationship.join_relationship)
-
-              {:ok, through} =
-                AshSql.Join.related_subquery(through_relationship, query)
-
-              Ecto.Query.from(destination in subquery,
-                join: through in ^through,
-                as: ^:join_source,
-                on:
-                  field(through, ^first_relationship.destination_attribute_on_join_resource) ==
-                    field(destination, ^first_relationship.destination_attribute),
-                on:
-                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
-                    field(through, ^first_relationship.source_attribute_on_join_resource)
-              )
-
-            true ->
-              source_ref =
-                ref_binding(
-                  %Ref{
-                    attribute:
-                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
-                    relationship_path: at_path,
-                    resource: resource
-                  },
-                  bindings
-                )
-
-              Ecto.Query.from(destination in subquery,
-                where:
-                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
-                    field(destination, ^first_relationship.destination_attribute)
-              )
-          end
-        end
-      )
-
-    {Ecto.Query.dynamic(exists(subquery)), acc}
-  end
-
-  defp default_dynamic_expr(
-         _query,
-         %Ref{
-           attribute: %Ash.Query.CombinationAttr{
-             name: name
-           }
-         },
-         bindings,
-         _embedded?,
-         acc,
-         _expr_type
-       ) do
-    ref_binding = bindings.root_binding
-
-    dynamic =
-      if bindings[:parent?] &&
-           ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
-        Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
-      else
-        Ecto.Query.dynamic(field(as(^ref_binding), ^name))
-      end
-
-    {dynamic, acc}
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Ref{
-           attribute: %Ash.Resource.Attribute{
-             name: name,
-             type: attr_type,
-             constraints: constraints
-           }
-         } = ref,
-         bindings,
-         _embedded?,
-         acc,
-         expr_type
-       ) do
-    ref_binding = ref_binding(ref, bindings)
-
-    if is_nil(ref_binding) do
-      reference_error!(query, ref)
-    end
-
-    constraints =
-      if attr_type do
-        constraints
-      end
-
-    type =
-      if !bindings[:no_cast?] do
-        parameterized_type(
-          bindings.sql_behaviour,
-          attr_type || expr_type,
-          constraints,
-          :expr
-        )
-      end
-
-    expr =
-      case type do
-        nil ->
-          # magic atoms FTW
-          if query.__ash_bindings__[:parent?] &&
-               ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
-            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
-          else
-            Ecto.Query.dynamic(field(as(^ref_binding), ^name))
-          end
-
-        type ->
-          validate_type!(query, type, ref)
-
-          ref_dynamic =
-            if query.__ash_bindings__[:parent?] &&
-                 ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
-              Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
-            else
-              Ecto.Query.dynamic(field(as(^ref_binding), ^name))
-            end
-
-          query.__ash_bindings__.sql_behaviour.type_expr(
-            ref_dynamic,
-            query.__ash_bindings__.sql_behaviour.ref_cast_type(type)
-          )
-      end
-
-    {expr, acc}
-  end
-
-  defp default_dynamic_expr(
-         query,
-         %Ref{attribute: %Ash.Resource.Aggregate{name: name}} = ref,
-         bindings,
-         _embedded?,
-         acc,
-         _expr_type
-       ) do
-    ref_binding = ref_binding(ref, bindings)
-
-    if is_nil(ref_binding) do
-      reference_error!(query, ref)
-    end
-
-    expr =
-      if query.__ash_bindings__[:parent?] &&
-           ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
-        Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
-      else
-        Ecto.Query.dynamic(field(as(^ref_binding), ^name))
-      end
-
-    {expr, acc}
-  end
-
-  defp default_dynamic_expr(_query, %Ash.Vector{} = value, _bindings, _embedded?, acc, _type) do
-    {value, acc}
-  end
-
-  defp default_dynamic_expr(query, value, bindings, embedded?, acc, type)
-       when is_map(value) and not is_struct(value) do
-    if (within?(bindings, :select) && sub_expr?(bindings)) ||
-         (within?(bindings, [:update, :aggregate]) && Ash.Expr.expr?(value)) do
-      elements =
-        value
-        |> Enum.flat_map(fn {key, list_item} ->
-          list_item = reverse_engineer_type(list_item)
-
-          if is_atom(key) do
-            [
-              {:expr, %Ash.Query.Function.Type{arguments: [key, :atom, []]}},
-              [
-                {:raw, "("},
-                {:expr, list_item},
-                {:raw, ")"}
-              ]
-            ]
-          else
-            [
-              {:expr, %Ash.Query.Function.Type{arguments: [key, :string, []]}},
-              [{:raw, "("}, {:expr, list_item}, {:raw, ")"}]
-            ]
-          end
-        end)
-        |> Enum.intersperse({:raw, ","})
-        |> List.flatten()
-
-      do_dynamic_expr(
-        query,
-        %Fragment{
-          embedded?: embedded?,
-          arguments:
-            squash_raw(
-              [
-                raw: "jsonb_build_object("
-              ] ++ elements ++ [raw: ")"]
-            )
-        },
-        bindings,
-        embedded?,
-        acc,
-        type
-      )
-    else
-      if bindings[:location] == :select do
-        Enum.reduce(value, {%{}, acc}, fn {key, value}, {map, acc} ->
-          {value, acc} = do_dynamic_expr(query, value, bindings, embedded?, acc)
-
-          {Map.put(map, key, value), acc}
-        end)
-      else
-        {value, acc}
-      end
-    end
-  end
-
-  defp default_dynamic_expr(query, other, bindings, true, acc, type) do
-    if other && is_atom(other) && !is_boolean(other) do
-      {to_string(other), acc}
-    else
-      if Ash.Expr.expr?(other) do
-        if is_list(other) do
-          list_expr(query, other, bindings, true, acc, type)
-        else
-          case bindings.sql_behaviour.expr(query, other, bindings, true, acc, type) do
-            {:ok, expr, acc} ->
-              {expr, acc}
-
-            {:error, error} ->
-              raise "Error while building expression: #{error}"
-
-            :error ->
-              raise "Unsupported expression in #{bindings.sql_behaviour} query: #{inspect(other, structs: false)}"
-          end
-        end
-      else
-        handle_literal(query, other, bindings, true, acc, type)
-      end
-    end
-  end
-
-  defp default_dynamic_expr(query, value, bindings, embedded?, acc, {:in, type})
-       when is_list(value) do
-    list_expr(query, value, bindings, embedded?, acc, {:array, type})
-  end
-
-  defp default_dynamic_expr(query, value, bindings, embedded?, acc, type)
-       when not is_nil(value) and is_atom(value) and not is_boolean(value) do
-    do_dynamic_expr(query, to_string(value), bindings, embedded?, acc, type)
-  end
-
-  defp default_dynamic_expr(_query, nil, bindings, _, acc, type) do
-    if type && type != :any do
-      param_type = parameterized_type(bindings.sql_behaviour, type, [], :expr)
-
-      if param_type do
-        {Ecto.Query.dynamic(type(fragment("NULL"), ^param_type)), acc}
-      else
-        {Ecto.Query.dynamic(fragment("NULL")), acc}
-      end
-    else
-      {Ecto.Query.dynamic(fragment("NULL")), acc}
-    end
-  end
-
-  defp default_dynamic_expr(query, value, bindings, false, acc, type)
-       when type == nil or type == :any do
-    if is_list(value) do
-      list_expr(query, value, bindings, false, acc, type)
-    else
-      handle_literal(query, value, bindings, true, acc, type)
-    end
-  end
-
-  defp default_dynamic_expr(query, value, bindings, false, acc, type) do
-    if Ash.Expr.expr?(value) do
-      if is_list(value) do
-        list_expr(query, value, bindings, false, acc, type)
-      else
-        case bindings.sql_behaviour.expr(query, value, bindings, false, acc, type) do
-          {:ok, expr, acc} ->
-            {expr, acc}
-
-          {:error, error} ->
-            raise "Error while building expression: #{error}"
-
-          :error ->
-            raise "Unsupported expression in #{bindings.sql_behaviour} query: #{inspect(value, structs: false)}"
-        end
-      end
-    else
-      if bindings[:no_cast?] do
-        {value, acc}
-      else
-        case handle_literal(query, value, bindings, true, acc, type) do
-          {^value, acc} ->
-            if type do
-              type =
-                parameterized_type(
-                  bindings.sql_behaviour,
-                  type,
-                  [],
-                  :expr
-                )
-
-              if type do
-                validate_type!(query, type, value)
-
-                {query.__ash_bindings__.sql_behaviour.type_expr(value, type), acc}
-              else
-                {value, acc}
-              end
-            else
-              {value, acc}
-            end
-
-          {value, acc} ->
-            {value, acc}
-        end
-      end
-    end
-  end
-
-  defp typed_binary_operator_expr(
-         query,
          %mod{
            __predicate__?: _,
            left: left,
@@ -3428,6 +2139,1296 @@ defmodule AshSql.Expr do
     end
   end
 
+  defp default_dynamic_expr(query, %MapSet{} = mapset, bindings, embedded?, acc, type) do
+    do_dynamic_expr(query, Enum.to_list(mapset), bindings, embedded?, acc, type)
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Ash.CiString{string: string} = expression,
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    case query.__ash_bindings__.sql_behaviour.require_extension_for_citext() do
+      {true, extension} ->
+        require_extension!(query.__ash_bindings__.resource, extension, expression, query)
+
+        do_dynamic_expr(
+          query,
+          %Ash.Query.Function.Fragment{arguments: [raw: "(", expr: string, raw: "::citext)"]},
+          bindings,
+          embedded?,
+          acc,
+          type
+        )
+
+      false ->
+        do_dynamic_expr(
+          query,
+          %Ash.Query.Function.Type{arguments: [string, Ash.Type.CiString, []]},
+          bindings,
+          embedded?,
+          acc,
+          type
+        )
+    end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Ref{
+           attribute: %Ash.Query.Calculation{} = calculation,
+           relationship_path: relationship_path
+         },
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    calculation = %{calculation | load: calculation.name}
+
+    resource =
+      Ash.Resource.Info.related(
+        bindings.resource,
+        List.wrap(bindings[:refs_at_path]) ++ relationship_path
+      )
+
+    case Ash.Filter.hydrate_refs(
+           Ash.Resource.Calculation.expression(
+             calculation.module,
+             calculation.opts,
+             calculation.context
+           ),
+           %{
+             resource: resource,
+             aggregates: %{},
+             calculations: %{},
+             public?: false,
+             parent_stack: query.__ash_bindings__[:parent_resources] || [],
+             source_context: calculation.context.source_context || %{}
+           }
+         ) do
+      {:ok, expression} ->
+        expression =
+          Ash.Actions.Read.add_calc_context_to_filter(
+            expression,
+            calculation.context.actor,
+            calculation.context.authorize?,
+            calculation.context.tenant,
+            calculation.context.tracer,
+            query.__ash_bindings__[:domain],
+            resource,
+            parent_stack: query.__ash_bindings__[:parent_resources] || [],
+            as_of: query.__ash_bindings__[:context][:private][:as_of]
+          )
+
+        updated_bindings =
+          bindings
+          |> set_location(:sub_expr)
+          |> Map.delete(:no_cast?)
+          |> Map.delete(:skip_cast_for_ref?)
+          |> then(fn bindings ->
+            if Enum.empty?(relationship_path) do
+              bindings
+            else
+              bindings
+              |> Map.put(:refs_at_path, List.wrap(bindings[:refs_at_path]) ++ relationship_path)
+            end
+          end)
+
+        updated_query = %{query | __ash_bindings__: updated_bindings}
+
+        do_dynamic_expr(
+          updated_query,
+          expression,
+          updated_bindings,
+          embedded?,
+          acc,
+          {calculation.type, Map.get(calculation, :constraints, [])}
+        )
+
+      {:error, error} ->
+        raise """
+        Failed to hydrate references for resource #{inspect(resource)} in #{inspect(Ash.Resource.Calculation.expression(calculation.module, calculation.opts, calculation.context))}
+
+        #{inspect(error)}
+        """
+    end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Ref{
+           attribute:
+             %Ash.Query.Aggregate{
+               kind: :exists,
+               relationship_path: agg_relationship_path,
+               query: agg_query,
+               join_filters: join_filters
+             } = aggregate,
+           relationship_path: ref_relationship_path
+         },
+         bindings,
+         _embedded?,
+         acc,
+         _type
+       ) do
+    related? = Map.get(aggregate, :related?, true)
+
+    if related? == false do
+      filter =
+        if is_nil(agg_query.filter) do
+          true
+        else
+          agg_query.filter
+        end
+
+      subquery_result =
+        aggregate.query
+        |> Ash.Query.set_context(query.__ash_bindings__.context)
+        |> Ash.Query.set_context(%{
+          data_layer: %{
+            table: nil,
+            parent_bindings: query.__ash_bindings__,
+            start_bindings_at: (query.__ash_bindings__.current || 0) + 1
+          }
+        })
+        |> then(fn ash_query ->
+          if filter != true do
+            Ash.Query.filter(ash_query, filter)
+          else
+            ash_query
+          end
+        end)
+        |> Ash.Query.data_layer_query()
+
+      case subquery_result do
+        {:ok, ecto_query} ->
+          subquery = Ecto.Query.exclude(ecto_query, :select)
+          {Ecto.Query.dynamic(exists(subquery)), acc}
+
+        {:error, error} ->
+          raise "Failed to create unrelated exists subquery: #{inspect(error)}"
+      end
+    else
+      filter =
+        if is_nil(agg_query.filter) do
+          true
+        else
+          agg_query.filter
+        end
+
+      related_exists_expr(
+        query,
+        %Ash.Query.Exists{
+          path: agg_relationship_path,
+          expr: filter,
+          at_path: ref_relationship_path
+        },
+        join_filters,
+        bindings,
+        acc
+      )
+    end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Ref{attribute: %Ash.Query.Aggregate{} = aggregate} = ref,
+         bindings,
+         _embedded?,
+         acc,
+         _type
+       ) do
+    %{attribute: aggregate} =
+      ref =
+      %{
+        ref
+        | attribute: %{
+            aggregate
+            | name: AshSql.Aggregate.Common.name_for(aggregate, bindings, ref.relationship_path)
+          }
+      }
+
+    related? = Map.get(aggregate, :related?, true)
+
+    resource = aggregate.resource
+
+    first_optimized_aggregate? =
+      AshSql.Aggregate.optimizable_first_aggregate?(resource, aggregate, query)
+
+    {ref_binding, field_name, value, acc} =
+      if first_optimized_aggregate? do
+        if related? do
+          key = {List.wrap(bindings[:refs_at_path]) ++ ref.relationship_path, aggregate.name}
+
+          relationship_bindings =
+            for {binding, %{first_aggregate: ^key, path: path}} <- bindings.bindings,
+                into: %{},
+                do: {path, binding}
+
+          bindings =
+            Map.update(bindings, :ref_bindings, relationship_bindings, fn existing ->
+              Map.merge(existing || %{}, relationship_bindings)
+            end)
+
+          ref =
+            %{
+              ref
+              | attribute: %Ash.Resource.Attribute{name: :fake},
+                relationship_path: ref.relationship_path ++ aggregate.relationship_path
+            }
+
+          ref_binding = ref_binding(ref, bindings)
+
+          ref =
+            %Ash.Query.Ref{
+              attribute:
+                AshSql.Aggregate.aggregate_field(
+                  aggregate,
+                  aggregate.query.resource,
+                  query
+                ),
+              relationship_path: ref.relationship_path,
+              resource: resource
+            }
+
+          ref =
+            Ash.Actions.Read.add_calc_context_to_filter(
+              ref,
+              Map.get(aggregate.context, :actor),
+              Map.get(aggregate.context, :authorize?),
+              Map.get(aggregate.context, :tenant),
+              Map.get(aggregate.context, :tracer),
+              query.__ash_bindings__[:domain],
+              resource,
+              parent_stack: query.__ash_bindings__[:parent_resources] || [],
+              as_of: query.__ash_bindings__[:context][:private][:as_of]
+            )
+
+          {value, acc} = do_dynamic_expr(query, ref, bindings, false, acc)
+
+          if is_nil(ref_binding) do
+            reference_error!(query, ref)
+          end
+
+          {ref_binding, aggregate.field, value, acc}
+        else
+          ref_binding = ref_binding(ref, bindings)
+
+          {ref_binding, aggregate.field, nil, acc}
+        end
+      else
+        ref_binding = ref_binding(ref, bindings)
+
+        if is_nil(ref_binding) do
+          reference_error!(query, ref)
+        end
+
+        {ref_binding, aggregate.name, nil, acc}
+      end
+
+    field_name =
+      if is_binary(field_name) do
+        new_field_name =
+          query.__ash_bindings__.aggregate_names[field_name]
+
+        if !new_field_name do
+          raise "Unbound aggregate field: #{inspect(field_name)}"
+        end
+
+        new_field_name
+      else
+        field_name
+      end
+
+    expr =
+      if value do
+        value
+      else
+        if query.__ash_bindings__[:parent?] &&
+             ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
+          if bindings[:parent?] do
+            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^field_name))
+          else
+            Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
+          end
+        else
+          if bindings[:parent?] do
+            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^field_name))
+          else
+            Ecto.Query.dynamic(field(as(^ref_binding), ^field_name))
+          end
+        end
+      end
+
+    type =
+      parameterized_type(
+        bindings.sql_behaviour,
+        aggregate.type,
+        aggregate.constraints,
+        :expr
+      )
+
+    validate_type!(query, type, ref)
+
+    coalesced =
+      if is_nil(aggregate.default_value) do
+        expr
+      else
+        if type do
+          typed_default =
+            query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
+
+          Ecto.Query.dynamic(coalesce(^expr, ^typed_default))
+        else
+          Ecto.Query.dynamic(coalesce(^expr, ^aggregate.default_value))
+        end
+      end
+
+    if type do
+      {query.__ash_bindings__.sql_behaviour.type_expr(coalesced, type), acc}
+    else
+      {coalesced, acc}
+    end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Ash.CustomExpression{expression: expr},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(query, expr, bindings, embedded?, acc, type)
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Round{arguments: [num | rest], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    precision = Enum.at(rest, 0) || 0
+
+    frag =
+      %Fragment{
+        embedded?: pred_embedded?,
+        arguments: [
+          raw: "ROUND((",
+          expr: num,
+          raw: ")::numeric, ",
+          expr: precision,
+          raw: ")"
+        ]
+      }
+
+    do_dynamic_expr(query, frag, bindings, pred_embedded? || embedded?, acc)
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Type{
+           arguments: [
+             %Type{arguments: [arg1 | _]},
+             type,
+             constraints
+           ]
+         } = type_expr,
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(
+      query,
+      %{type_expr | arguments: [arg1, type, constraints]},
+      bindings,
+      embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Type{
+           arguments: [
+             %Ash.Query.Ref{attribute: %{type: type}} = arg1,
+             type | _
+           ]
+         },
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(
+      query,
+      arg1,
+      bindings,
+      embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Type{arguments: [arg1, arg2, constraints]},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       ) do
+    arg2 = Ash.Type.get_type(arg2)
+    arg1 = maybe_uuid_to_binary(arg2, arg1, arg1)
+
+    type =
+      parameterized_type(
+        bindings.sql_behaviour,
+        arg2,
+        constraints,
+        :expr
+      )
+
+    if type do
+      {bindings, cast_type} =
+        case arg1 do
+          %Ash.Query.Ref{
+            attribute: %Ash.Resource.Attribute{type: attr_type, constraints: attr_constraints}
+          } ->
+            # only remap the cast for refs being cast to their own type —
+            # cross-type casts (e.g. a usec column cast to second precision)
+            # must keep their requested target
+            cast_type =
+              if type ==
+                   parameterized_type(bindings.sql_behaviour, attr_type, attr_constraints, :expr) do
+                bindings.sql_behaviour.ref_cast_type(type)
+              else
+                type
+              end
+
+            {Map.put(bindings, :no_cast?, true), cast_type}
+
+          _ ->
+            if Ash.Expr.expr?(arg1) do
+              {bindings, type}
+            else
+              {Map.put(bindings, :no_cast?, true), type}
+            end
+        end
+
+      validate_type!(query, type, arg1)
+
+      inner_bindings =
+        if is_map(arg1) && not is_struct(arg1) && Ash.Expr.expr?(arg1) do
+          set_location(bindings, :sub_expr)
+        else
+          bindings
+        end
+
+      {expr, acc} =
+        do_dynamic_expr(
+          query,
+          arg1,
+          inner_bindings,
+          embedded?,
+          acc,
+          {arg2, constraints}
+        )
+
+      case {type, expr} do
+        {{:parameterized, Ash.Type.Map.EctoType, []}, %Ecto.Query.DynamicExpr{}} ->
+          {expr, acc}
+
+        {{:parameterized, {Ash.Type.Map.EctoType, []}}, %Ecto.Query.DynamicExpr{}} ->
+          {expr, acc}
+
+        _ ->
+          {query.__ash_bindings__.sql_behaviour.type_expr(expr, cast_type), acc}
+      end
+    else
+      do_dynamic_expr(query, arg1, bindings, embedded?, acc, arg2)
+    end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %CompositeType{arguments: [arg1, arg2, constraints], embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         _type
+       )
+       when is_map(arg1) do
+    type = Ash.Type.get_type(arg2)
+
+    composite_keys = Ash.Type.composite_types(type, constraints)
+
+    type =
+      parameterized_type(
+        bindings.sql_behaviour,
+        type,
+        constraints,
+        :expr
+      )
+
+    values =
+      composite_keys
+      |> Enum.map(fn config ->
+        key = elem(config, 0)
+        {:expr, Map.get(arg1, key)}
+      end)
+      |> Enum.intersperse({:raw, ","})
+
+    frag =
+      %Fragment{
+        embedded?: pred_embedded?,
+        arguments:
+          [
+            raw: "ROW("
+          ] ++
+            values ++
+            [
+              raw: ")"
+            ]
+      }
+
+    {frag, acc} =
+      do_dynamic_expr(query, frag, bindings, embedded?, acc)
+
+    {query.__ash_bindings__.sql_behaviour.type_expr(frag, type), acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Now{embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(
+      query,
+      as_of_or_now(query),
+      bindings,
+      embedded? || pred_embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Today{embedded?: pred_embedded?},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    do_dynamic_expr(
+      query,
+      Date.utc_today(),
+      bindings,
+      embedded? || pred_embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Ash.Query.Parent{expr: expr},
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    parent? = Map.get(bindings.parent_bindings, :parent_is_parent_as?, true)
+
+    new_bindings =
+      set_location(Map.put(bindings.parent_bindings, :parent?, parent?), :sub_expr)
+
+    do_dynamic_expr(
+      %{query | __ash_bindings__: new_bindings},
+      expr,
+      set_location(new_bindings, :sub_expr),
+      embedded?,
+      acc,
+      type
+    )
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Error{arguments: [exception, input]} = value,
+         bindings,
+         embedded?,
+         acc,
+         type
+       ) do
+    require_ash_functions!(query, "error/2")
+
+    acc = %{acc | has_error?: true}
+
+    if !(Keyword.keyword?(input) || is_map(input)) do
+      raise "Input expression to `error` must be a map or keyword list"
+    end
+
+    {encoded, acc} =
+      if Ash.Expr.expr?(input) do
+        frag_parts =
+          Enum.flat_map(input, fn {key, value} ->
+            if Ash.Expr.expr?(value) do
+              [
+                expr: to_string(key),
+                raw: "::text, ",
+                expr: value,
+                raw: ", "
+              ]
+            else
+              [
+                expr: to_string(key),
+                raw: "::text, ",
+                expr: value,
+                raw: "::jsonb, "
+              ]
+            end
+          end)
+
+        frag_parts =
+          List.update_at(frag_parts, -1, fn {:raw, text} ->
+            {:raw, String.trim_trailing(text, ", ") <> "))"}
+          end)
+
+        do_dynamic_expr(
+          query,
+          %Fragment{
+            embedded?: false,
+            arguments:
+              [
+                raw: "jsonb_build_object('exception', ",
+                expr: inspect(exception),
+                raw: "::text, 'input', jsonb_build_object("
+              ] ++
+                frag_parts
+          },
+          bindings,
+          embedded?,
+          acc
+        )
+      else
+        {Jason.encode!(%{exception: inspect(exception), input: Map.new(input)}), acc}
+      end
+
+    if type do
+      # This is a type hint, if we're raising an error, we tell it what the value
+      # type *would* be in this expression so that we can return a "NULL" of that type
+      # its weird, but there isn't any other way that I can tell :)
+      validate_type!(query, type, value)
+
+      type =
+        parameterized_type(
+          bindings.sql_behaviour,
+          type,
+          [],
+          :expr
+        )
+
+      if type do
+        dynamic = Ecto.Query.dynamic(type(fragment("NULL"), ^type))
+
+        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb, ?)", ^encoded, ^dynamic)), acc}
+      else
+        {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
+      end
+    else
+      {Ecto.Query.dynamic(fragment("ash_raise_error(?::jsonb)", ^encoded)), acc}
+    end
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Exists{related?: false, expr: expr, resource: resource} = exists,
+         bindings,
+         _embedded?,
+         acc,
+         _type
+       ) do
+    {:ok, subquery} =
+      resource
+      |> Ash.Query.new()
+      |> Ash.Query.set_context(Map.delete(bindings.context, :data_layer))
+      |> Ash.Query.set_context(%{
+        data_layer: %{
+          parent_bindings: query.__ash_bindings__,
+          start_bindings_at: (query.__ash_bindings__.current || 0) + 1
+        }
+      })
+      |> then(fn ash_query ->
+        if ash_query.__validated_for_action__ do
+          ash_query
+        else
+          Ash.Query.for_read(
+            ash_query,
+            Ash.Resource.Info.primary_action!(ash_query.resource, :read).name,
+            %{},
+            actor: bindings.context[:private][:actor],
+            tenant: bindings.context[:private][:tenant]
+          )
+        end
+      end)
+      |> Ash.Query.unset([:sort, :distinct, :select, :limit, :offset])
+      |> AshSql.Join.handle_attribute_multitenancy(bindings.context[:private][:tenant])
+      |> AshSql.Join.hydrate_refs(bindings.context[:private][:actor])
+      |> then(fn related_query ->
+        if expr != true do
+          parent_stack =
+            if Map.get(exists, :correlate_source_pk) do
+              [query.__ash_bindings__.resource]
+            else
+              []
+            end
+
+          Ash.Query.do_filter(related_query, expr, parent_stack: parent_stack)
+        else
+          related_query
+        end
+      end)
+      |> case do
+        %{valid?: true} = related_query ->
+          case Ash.Query.data_layer_query(related_query) do
+            {:ok, ecto_query} ->
+              ecto_query = Ecto.Query.exclude(ecto_query, :select)
+
+              ecto_query =
+                if Map.get(exists, :correlate_source_pk) do
+                  correlate_exists_to_source_pk(ecto_query, query, resource)
+                else
+                  ecto_query
+                end
+
+              {:ok, ecto_query}
+
+            {:error, error} ->
+              {:error, error}
+          end
+
+        %{errors: errors} ->
+          {:error, errors}
+      end
+
+    # Create the exists dynamic expression
+    {Ecto.Query.dynamic(exists(subquery)), acc}
+  end
+
+  defp default_dynamic_expr(query, %Exists{} = exists, bindings, _embedded?, acc, _type) do
+    related_exists_expr(query, exists, %{}, bindings, acc)
+  end
+
+  defp default_dynamic_expr(
+         _query,
+         %Ref{
+           attribute: %Ash.Query.CombinationAttr{
+             name: name
+           }
+         },
+         bindings,
+         _embedded?,
+         acc,
+         _expr_type
+       ) do
+    ref_binding = bindings.root_binding
+
+    dynamic =
+      if bindings[:parent?] &&
+           ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
+        Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+      else
+        Ecto.Query.dynamic(field(as(^ref_binding), ^name))
+      end
+
+    {dynamic, acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Ref{
+           attribute: %Ash.Resource.Attribute{
+             name: name,
+             type: attr_type,
+             constraints: constraints
+           }
+         } = ref,
+         bindings,
+         _embedded?,
+         acc,
+         expr_type
+       ) do
+    ref_binding = ref_binding(ref, bindings)
+
+    if is_nil(ref_binding) do
+      reference_error!(query, ref)
+    end
+
+    constraints =
+      if attr_type do
+        constraints
+      end
+
+    type =
+      if !bindings[:no_cast?] do
+        parameterized_type(
+          bindings.sql_behaviour,
+          attr_type || expr_type,
+          constraints,
+          :expr
+        )
+      end
+
+    expr =
+      case type do
+        nil ->
+          # magic atoms FTW
+          if query.__ash_bindings__[:parent?] &&
+               ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
+            Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+          else
+            Ecto.Query.dynamic(field(as(^ref_binding), ^name))
+          end
+
+        type ->
+          validate_type!(query, type, ref)
+
+          ref_dynamic =
+            if query.__ash_bindings__[:parent?] &&
+                 ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
+              Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+            else
+              Ecto.Query.dynamic(field(as(^ref_binding), ^name))
+            end
+
+          query.__ash_bindings__.sql_behaviour.type_expr(
+            ref_dynamic,
+            query.__ash_bindings__.sql_behaviour.ref_cast_type(type)
+          )
+      end
+
+    {expr, acc}
+  end
+
+  defp default_dynamic_expr(
+         query,
+         %Ref{attribute: %Ash.Resource.Aggregate{name: name}} = ref,
+         bindings,
+         _embedded?,
+         acc,
+         _expr_type
+       ) do
+    ref_binding = ref_binding(ref, bindings)
+
+    if is_nil(ref_binding) do
+      reference_error!(query, ref)
+    end
+
+    expr =
+      if query.__ash_bindings__[:parent?] &&
+           ref_binding not in List.wrap(bindings[:lateral_join_bindings]) do
+        Ecto.Query.dynamic(field(parent_as(^ref_binding), ^name))
+      else
+        Ecto.Query.dynamic(field(as(^ref_binding), ^name))
+      end
+
+    {expr, acc}
+  end
+
+  defp default_dynamic_expr(_query, %Ash.Vector{} = value, _bindings, _embedded?, acc, _type) do
+    {value, acc}
+  end
+
+  defp default_dynamic_expr(query, value, bindings, embedded?, acc, type)
+       when is_map(value) and not is_struct(value) do
+    if (within?(bindings, :select) && sub_expr?(bindings)) ||
+         (within?(bindings, [:update, :aggregate]) && Ash.Expr.expr?(value)) do
+      elements =
+        value
+        |> Enum.flat_map(fn {key, list_item} ->
+          list_item = reverse_engineer_type(list_item)
+
+          if is_atom(key) do
+            [
+              {:expr, %Ash.Query.Function.Type{arguments: [key, :atom, []]}},
+              [
+                {:raw, "("},
+                {:expr, list_item},
+                {:raw, ")"}
+              ]
+            ]
+          else
+            [
+              {:expr, %Ash.Query.Function.Type{arguments: [key, :string, []]}},
+              [{:raw, "("}, {:expr, list_item}, {:raw, ")"}]
+            ]
+          end
+        end)
+        |> Enum.intersperse({:raw, ","})
+        |> List.flatten()
+
+      do_dynamic_expr(
+        query,
+        %Fragment{
+          embedded?: embedded?,
+          arguments:
+            squash_raw(
+              [
+                raw: "jsonb_build_object("
+              ] ++ elements ++ [raw: ")"]
+            )
+        },
+        bindings,
+        embedded?,
+        acc,
+        type
+      )
+    else
+      if bindings[:location] == :select do
+        Enum.reduce(value, {%{}, acc}, fn {key, value}, {map, acc} ->
+          {value, acc} = do_dynamic_expr(query, value, bindings, embedded?, acc)
+
+          {Map.put(map, key, value), acc}
+        end)
+      else
+        {value, acc}
+      end
+    end
+  end
+
+  defp default_dynamic_expr(query, other, bindings, true, acc, type) do
+    if other && is_atom(other) && !is_boolean(other) do
+      {to_string(other), acc}
+    else
+      if Ash.Expr.expr?(other) do
+        if is_list(other) do
+          list_expr(query, other, bindings, true, acc, type)
+        else
+          case bindings.sql_behaviour.expr(query, other, bindings, true, acc, type) do
+            {:ok, expr, acc} ->
+              {expr, acc}
+
+            {:error, error} ->
+              raise "Error while building expression: #{error}"
+
+            :error ->
+              raise "Unsupported expression in #{bindings.sql_behaviour} query: #{inspect(other, structs: false)}"
+          end
+        end
+      else
+        handle_literal(query, other, bindings, true, acc, type)
+      end
+    end
+  end
+
+  defp default_dynamic_expr(query, value, bindings, embedded?, acc, {:in, type})
+       when is_list(value) do
+    list_expr(query, value, bindings, embedded?, acc, {:array, type})
+  end
+
+  defp default_dynamic_expr(query, value, bindings, embedded?, acc, type)
+       when not is_nil(value) and is_atom(value) and not is_boolean(value) do
+    do_dynamic_expr(query, to_string(value), bindings, embedded?, acc, type)
+  end
+
+  defp default_dynamic_expr(_query, nil, bindings, _, acc, type) do
+    if type && type != :any do
+      param_type = parameterized_type(bindings.sql_behaviour, type, [], :expr)
+
+      if param_type do
+        {Ecto.Query.dynamic(type(fragment("NULL"), ^param_type)), acc}
+      else
+        {Ecto.Query.dynamic(fragment("NULL")), acc}
+      end
+    else
+      {Ecto.Query.dynamic(fragment("NULL")), acc}
+    end
+  end
+
+  defp default_dynamic_expr(query, value, bindings, false, acc, type)
+       when type == nil or type == :any do
+    if is_list(value) do
+      list_expr(query, value, bindings, false, acc, type)
+    else
+      handle_literal(query, value, bindings, true, acc, type)
+    end
+  end
+
+  defp default_dynamic_expr(query, value, bindings, false, acc, type) do
+    if Ash.Expr.expr?(value) do
+      if is_list(value) do
+        list_expr(query, value, bindings, false, acc, type)
+      else
+        case bindings.sql_behaviour.expr(query, value, bindings, false, acc, type) do
+          {:ok, expr, acc} ->
+            {expr, acc}
+
+          {:error, error} ->
+            raise "Error while building expression: #{error}"
+
+          :error ->
+            raise "Unsupported expression in #{bindings.sql_behaviour} query: #{inspect(value, structs: false)}"
+        end
+      end
+    else
+      if bindings[:no_cast?] do
+        {value, acc}
+      else
+        case handle_literal(query, value, bindings, true, acc, type) do
+          {^value, acc} ->
+            if type do
+              type =
+                parameterized_type(
+                  bindings.sql_behaviour,
+                  type,
+                  [],
+                  :expr
+                )
+
+              if type do
+                validate_type!(query, type, value)
+
+                {query.__ash_bindings__.sql_behaviour.type_expr(value, type), acc}
+              else
+                {value, acc}
+              end
+            else
+              {value, acc}
+            end
+
+          {value, acc} ->
+            {value, acc}
+        end
+      end
+    end
+  end
+
+  defp related_exists_expr(
+         query,
+         %Exists{at_path: at_path, path: [first | rest], expr: expr} = exists,
+         join_filters,
+         bindings,
+         acc
+       ) do
+    full_at_path = List.wrap(bindings[:refs_at_path]) ++ at_path
+    resource = Ash.Resource.Info.related(bindings.resource, full_at_path)
+
+    first_relationship = Ash.Resource.Info.relationship(resource, first)
+
+    unless first_relationship do
+      raise Ash.Error.Framework.AssumptionFailed,
+        message: """
+        Unknown relationship #{inspect(bindings.resource)}.#{first}
+
+        in exists expression: `#{inspect(exists)}`
+        """
+    end
+
+    filter =
+      case Ash.Filter.move_to_relationship_path(expr, rest) do
+        %Ash.Filter{expression: expression} -> expression
+        expression -> expression
+      end
+
+    filter =
+      join_filters
+      |> Map.fetch([first_relationship.name])
+      |> case do
+        {:ok, join_filter} ->
+          Ash.Query.BooleanExpression.optimized_new(
+            :and,
+            filter,
+            Ash.Filter.move_to_relationship_path(
+              join_filter,
+              rest ++ [first_relationship.name]
+            )
+          )
+
+        :error ->
+          filter
+      end
+
+    filter =
+      join_filters
+      |> Map.delete([first_relationship.name])
+      |> Enum.reduce(filter, fn {path, path_filter}, filter ->
+        path = Enum.drop(path, 1)
+        parent_path = :lists.droplast(path)
+
+        Ash.Query.BooleanExpression.optimized_new(
+          :and,
+          filter,
+          Ash.Filter.move_to_relationship_path(path_filter, path)
+        )
+        |> Ash.Filter.map(fn
+          %Ash.Query.Parent{expr: expr} ->
+            {:halt, Ash.Filter.move_to_relationship_path(expr, parent_path)}
+
+          other ->
+            other
+        end)
+      end)
+
+    # Joins for `rest` are derived from the refs in the filter and are left
+    # joins, so a predicate with no refs (e.g. `exists(a.bs, true)`) drops the
+    # remaining path entirely, and a null-satisfiable predicate is satisfied
+    # by null-extended rows. Requiring a non-nil primary key at every hop
+    # (not just the last: `no_attributes?` hops join with `on: true`)
+    # excludes both while being a no-op for real rows.
+    filter =
+      rest
+      |> Enum.scan([], fn rel_name, prefix -> prefix ++ [rel_name] end)
+      |> Enum.reduce(filter, fn prefix, filter ->
+        with target when not is_nil(target) <-
+               Ash.Resource.Info.related(first_relationship.destination, prefix),
+             [pk | _] <- Ash.Resource.Info.primary_key(target) do
+          pk_ref = %Ref{
+            attribute: Ash.Resource.Info.attribute(target, pk),
+            relationship_path: prefix,
+            resource: target
+          }
+
+          Ash.Query.BooleanExpression.optimized_new(
+            :and,
+            filter,
+            %Ash.Query.Operator.IsNil{left: pk_ref, right: false}
+          )
+        else
+          _ -> filter
+        end
+      end)
+
+    query =
+      if first_relationship.type == :many_to_many do
+        put_in(query.__ash_bindings__[:lateral_join_bindings], [:join_source])
+        |> AshSql.Bindings.explicitly_set_binding(
+          %{
+            type: :left,
+            path: [first_relationship.join_relationship]
+          },
+          :join_source
+        )
+      else
+        query
+      end
+
+    {:ok, subquery} =
+      AshSql.Join.related_subquery(first_relationship, query,
+        filter: filter,
+        filter_subquery?: true,
+        sort?: Map.get(first_relationship, :from_many?) || not is_nil(first_relationship.sort),
+        start_bindings_at: 1,
+        select_star?: !Map.get(first_relationship, :manual),
+        in_group?: true,
+        refs_at_path: full_at_path,
+        parent_resources: [
+          Ash.Resource.Info.related(resource, at_path)
+          | query.__ash_bindings__[:parent_resources] || []
+        ],
+        return_subquery?: true,
+        on_subquery: fn subquery ->
+          subquery =
+            Ecto.Query.from(row in subquery, select: row)
+            |> Map.put(:__ash_bindings__, subquery.__ash_bindings__)
+
+          cond do
+            Map.get(first_relationship, :manual) ->
+              {module, opts} = first_relationship.manual
+
+              source_binding =
+                ref_binding(
+                  %Ref{
+                    attribute:
+                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                    relationship_path: at_path,
+                    resource: resource
+                  },
+                  bindings
+                )
+
+              {:ok, subquery} =
+                apply(
+                  module,
+                  query.__ash_bindings__.sql_behaviour.manual_relationship_subquery_function(),
+                  [
+                    opts,
+                    source_binding,
+                    1,
+                    subquery
+                  ]
+                )
+
+              subquery
+
+            Map.get(first_relationship, :no_attributes?) ->
+              subquery
+
+            first_relationship.type == :many_to_many ->
+              source_ref =
+                ref_binding(
+                  %Ref{
+                    attribute:
+                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                    relationship_path: at_path,
+                    resource: resource
+                  },
+                  bindings
+                )
+
+              through_relationship =
+                Ash.Resource.Info.relationship(resource, first_relationship.join_relationship)
+
+              {:ok, through} =
+                AshSql.Join.related_subquery(through_relationship, query)
+
+              Ecto.Query.from(destination in subquery,
+                join: through in ^through,
+                as: ^:join_source,
+                on:
+                  field(through, ^first_relationship.destination_attribute_on_join_resource) ==
+                    field(destination, ^first_relationship.destination_attribute),
+                on:
+                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
+                    field(through, ^first_relationship.source_attribute_on_join_resource)
+              )
+
+            true ->
+              source_ref =
+                ref_binding(
+                  %Ref{
+                    attribute:
+                      Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                    relationship_path: at_path,
+                    resource: resource
+                  },
+                  bindings
+                )
+
+              Ecto.Query.from(destination in subquery,
+                where:
+                  field(parent_as(^source_ref), ^first_relationship.source_attribute) ==
+                    field(destination, ^first_relationship.destination_attribute)
+              )
+          end
+        end
+      )
+
+    {Ecto.Query.dynamic(exists(subquery)), acc}
+  end
+
   defp range_operand(query, operand, nil, bindings, embedded?, acc) do
     do_dynamic_expr(query, operand, set_location(bindings, :sub_expr), embedded?, acc, nil)
   end
@@ -3496,11 +3497,11 @@ defmodule AshSql.Expr do
         %{arguments: [_, type, constraints]} = type_func = reverse_engineer_type(item)
         %{type_func | arguments: [list_item, {:array, type}, [items: constraints || []]]}
 
-      %{} = list_item ->
-        %Type{arguments: [list_item, :map, []]}
-
       %Decimal{} = list_item ->
         %Type{arguments: [list_item, :decimal, []]}
+
+      %{} = list_item ->
+        %Type{arguments: [list_item, :map, []]}
 
       list_item ->
         list_item
@@ -4000,14 +4001,15 @@ defmodule AshSql.Expr do
   def ref_binding(%{attribute: %Ash.Resource.Attribute{}} = ref, bindings) do
     relationship_path = List.wrap(bindings[:refs_at_path]) ++ ref.relationship_path
 
-    Enum.find_value(bindings.bindings, fn {binding, data} ->
-      data.type in [:inner, :left, :root] &&
-        Ash.Resource.Info.synonymous_relationship_paths?(
-          bindings.resource,
-          data.path,
-          relationship_path
-        ) && binding
-    end)
+    Map.get(bindings[:ref_bindings] || %{}, relationship_path) ||
+      Enum.find_value(bindings.bindings, fn {binding, data} ->
+        data.type in [:inner, :left, :root] &&
+          Ash.Resource.Info.synonymous_relationship_paths?(
+            bindings.resource,
+            data.path,
+            relationship_path
+          ) && binding
+      end)
   end
 
   defp do_get_path(
@@ -4264,7 +4266,6 @@ defmodule AshSql.Expr do
               case type do
                 {:array, type} -> {{:array, type}, []}
                 {type, constraints} -> {type, constraints}
-                type -> {type, []}
               end
 
             do_dynamic_expr(
@@ -4279,7 +4280,6 @@ defmodule AshSql.Expr do
       else
         {type, constraints} =
           case type do
-            {:array, type} -> {{:array, type}, []}
             {type, constraints} -> {type, constraints}
             type -> {type, []}
           end

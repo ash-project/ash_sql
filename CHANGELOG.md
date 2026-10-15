@@ -11,6 +11,49 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.8.2](https://github.com/ash-project/ash_sql/compare/v0.8.1...v0.8.2) (2026-10-13)
+
+
+
+
+### Bug Fixes:
+
+* flatten nested calculation and aggregate select merge bases (#270) by [@barnabasJ](https://github.com/barnabasJ) [(#270)](https://github.com/ash-project/ash_sql/pull/270)
+
+* resolve optimized first aggregates from their exact authorized joins (#269) by [@barnabasJ](https://github.com/barnabasJ) [(#269)](https://github.com/ash-project/ash_sql/pull/269)
+
+* retain authorized bindings for optimized aggregate references by [@barnabasJ](https://github.com/barnabasJ) [(#269)](https://github.com/ash-project/ash_sql/pull/269)
+
+* retain direct ordering for compatible distinct pagination (#268) by Alt-iOS [(#268)](https://github.com/ash-project/ash_sql/pull/268)
+
+## [v0.8.1](https://github.com/ash-project/ash_sql/compare/v0.8.0...v0.8.1) (2026-10-05)
+
+
+
+
+### Bug Fixes:
+
+* handle list aggregates sorted on other fields by [@zachdaniel](https://github.com/zachdaniel)
+
+* properly handle `false` default values in aggregates by [@zachdaniel](https://github.com/zachdaniel)
+
+## [v0.8.0](https://github.com/ash-project/ash_sql/compare/v0.7.6...v0.8.0) (2026-10-03)
+
+
+
+
+### Features:
+
+* add temporal features by [@zachdaniel](https://github.com/zachdaniel)
+
+### Improvements:
+
+* add a Grouped strategy for aggregates (#264) by Will Townsend [(#264)](https://github.com/ash-project/ash_sql/pull/264)
+
+### Bug Fixes:
+
+* sort from_many? relationships in aggregate joins (#266) by Daniel Gollings [(#266)](https://github.com/ash-project/ash_sql/pull/266)
+
 ## [v0.7.6](https://github.com/ash-project/ash_sql/compare/v0.7.5...v0.7.6) (2026-09-18)
 
 

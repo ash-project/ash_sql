@@ -256,7 +256,11 @@ defmodule AshSql.Sort do
                     end
 
                   default_value =
-                    default_value || Ash.Query.Aggregate.default_value(aggregate.kind)
+                    if is_nil(default_value) do
+                      Ash.Query.Aggregate.default_value(aggregate.kind)
+                    else
+                      default_value
+                    end
 
                   if is_nil(default_value) do
                     Ecto.Query.dynamic(field(as(^binding), ^sort))
@@ -305,7 +309,7 @@ defmodule AshSql.Sort do
         end)
         |> case do
           {:ok, [], query} ->
-            if type == :return do
+            if type in [:return, :expressions] do
               {:ok, [], query}
             else
               {:ok, query}
@@ -313,6 +317,9 @@ defmodule AshSql.Sort do
 
           {:ok, sort_exprs, query} ->
             case type do
+              :expressions ->
+                {:ok, sort_exprs, query}
+
               :return ->
                 {:ok, order_to_fragments(sort_exprs), query}
 

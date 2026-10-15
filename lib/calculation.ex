@@ -78,7 +78,8 @@ defmodule AshSql.Calculation do
                   calculation.context.tracer,
                   query.__ash_bindings__[:domain],
                   query.__ash_bindings__[:resource],
-                  parent_stack: query.__ash_bindings__[:parent_resources] || []
+                  parent_stack: query.__ash_bindings__[:parent_resources] || [],
+                  as_of: query.__ash_bindings__[:context][:private][:as_of]
                 )
 
               expression =
