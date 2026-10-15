@@ -12,7 +12,6 @@ defmodule AshSql.Query do
     prefix = implementation.schema(resource)
 
     from(row in {implementation.table(resource) || "", resource}, prefix: ^prefix)
-    |> Ecto.Query.put_query_prefix(implementation.schema(resource))
     |> Map.put(:__ash_domain__, domain)
   end
 
