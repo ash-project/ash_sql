@@ -185,7 +185,7 @@ defmodule AshSql.Join do
                      sort?,
                      join_filters[Enum.map(current_path, & &1.name)]
                    ) do
-                {:ok, joined_query} ->
+                {:ok, joined_query, _binding} ->
                   joined_query_with_distinct = add_distinct(relationship, join_type, joined_query)
 
                   case join_all_relationships(
@@ -226,6 +226,41 @@ defmodule AshSql.Join do
         {:error, error}
     end
   end
+
+  @doc false
+  def join_relationship_path(query, resource, relationship_path, join_filters) do
+    relationships = relationship_path_to_relationships(resource, relationship_path)
+
+    relationships
+    |> Enum.reduce_while({:ok, query, [], %{}}, fn relationship, {:ok, query, path, bindings} ->
+      full_path = path ++ [relationship.name]
+
+      case join_relationship(
+             query,
+             relationship,
+             path,
+             :left,
+             resource,
+             nil,
+             false,
+             join_filters[full_path]
+           ) do
+        {:ok, query, binding} ->
+          query = add_distinct(relationship, :left, query)
+          {:cont, {:ok, query, full_path, Map.put(bindings, full_path, binding)}}
+
+        {:error, error} ->
+          {:halt, {:error, error}}
+      end
+    end)
+    |> case do
+      {:ok, query, _path, bindings} -> {:ok, query, bindings}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  defp with_join_binding({:ok, query}, binding), do: {:ok, query, binding}
+  defp with_join_binding({:error, error}, _binding), do: {:error, error}
 
   @doc false
   def left_join_only?(query, opts, explicit?) do
@@ -402,13 +437,21 @@ defmodule AshSql.Join do
       query = limit_from_many(query, relationship, filter, filter_subquery?, opts)
 
       query =
-        if opts[:return_subquery?] do
-          subquery(query)
-        else
-          if Enum.empty?(query.joins) && Enum.empty?(query.order_bys) && Enum.empty?(query.wheres) &&
-               Enum.empty?(query.group_bys) && is_nil(query.limit) do
+        cond do
+          opts[:return_subquery?] ->
+            subquery(query)
+
+          Enum.empty?(query.joins) && Enum.empty?(query.order_bys) && Enum.empty?(query.wheres) &&
+            Enum.empty?(query.group_bys) && is_nil(query.limit) ->
             query
-          else
+
+          opts[:join_binding] && !has_parent_expr? &&
+              where_only_join_query?(query, opts[:join_binding]) ->
+            # Joined directly, its `where`s become the join's `ON` conditions,
+            # instead of a subquery that has to select every column.
+            query
+
+          true ->
             from(row in subquery(query), as: ^(opts[:start_bindings_at] || 0))
             |> AshSql.Bindings.default_bindings(
               relationship.destination,
@@ -427,11 +470,33 @@ defmodule AshSql.Join do
                 })
               end
             )
-          end
         end
 
       {:ok, query}
     end
+  end
+
+  # Ecto only allows a query with nothing but `where`s to be joined directly, and
+  # the `ON` clause it moves them into can't carry subqueries.
+  defp where_only_join_query?(query, join_binding) do
+    match?(
+      %{
+        joins: [],
+        order_bys: [],
+        group_bys: [],
+        havings: [],
+        limit: nil,
+        offset: nil,
+        distinct: nil,
+        windows: [],
+        combinations: [],
+        with_ctes: nil,
+        lock: nil,
+        from: %{as: ^join_binding, source: {source, _}}
+      }
+      when is_binary(source),
+      query
+    ) && Enum.all?(query.wheres, &(&1.subqueries == []))
   end
 
   @doc false
@@ -519,6 +584,7 @@ defmodule AshSql.Join do
       end
     end)
     |> set_has_parent_expr_context(relationship)
+    |> bind_root_to_join(opts)
     |> case do
       %{valid?: true} = related_query ->
         parent_bindings =
@@ -722,6 +788,15 @@ defmodule AshSql.Join do
   defp limit_from_many(query, _, _, _, opts) do
     if opts[:select_star?] do
       from(row in Ecto.Query.exclude(query, :select), select: 1)
+    else
+      query
+    end
+  end
+
+  defp bind_root_to_join(query, opts) do
+    if opts[:join_binding] && !opts[:require_lateral?] &&
+         !query.context[:data_layer][:has_parent_expr?] do
+      Ash.Query.set_context(query, %{data_layer: %{start_bindings_at: opts[:join_binding]}})
     else
       query
     end
@@ -981,6 +1056,7 @@ defmodule AshSql.Join do
             initial_ash_bindings.current,
             {query.__ash_bindings__.resource, full_path}
           )
+          |> with_join_binding(initial_ash_bindings.current)
 
         {:error, query} ->
           {:error, query}
@@ -1145,6 +1221,7 @@ defmodule AshSql.Join do
           initial_ash_bindings.current + 1,
           {query.__ash_bindings__.resource, full_path}
         )
+        |> with_join_binding(initial_ash_bindings.current + 1)
       end
     end
   end
@@ -1229,6 +1306,8 @@ defmodule AshSql.Join do
              refs_at_path: path,
              require_lateral?: require_lateral?,
              filter_subquery?: true,
+             join_binding:
+               if(!Map.get(relationship, :from_many?), do: initial_ash_bindings.current),
              on_subquery: fn subquery ->
                if !Map.get(relationship, :from_many?) || Map.get(relationship, :no_attributes?) do
                  subquery
@@ -1354,6 +1433,7 @@ defmodule AshSql.Join do
             initial_ash_bindings.current,
             {query.__ash_bindings__.resource, full_path}
           )
+          |> with_join_binding(initial_ash_bindings.current)
       end
     end
   end
@@ -1510,6 +1590,7 @@ defmodule AshSql.Join do
         initial_ash_bindings.current,
         {query.__ash_bindings__.resource, full_path}
       )
+      |> with_join_binding(initial_ash_bindings.current)
     end
   end
 

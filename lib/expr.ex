@@ -2362,6 +2362,18 @@ defmodule AshSql.Expr do
     {ref_binding, field_name, value, acc} =
       if first_optimized_aggregate? do
         if related? do
+          key = {List.wrap(bindings[:refs_at_path]) ++ ref.relationship_path, aggregate.name}
+
+          relationship_bindings =
+            for {binding, %{first_aggregate: ^key, path: path}} <- bindings.bindings,
+                into: %{},
+                do: {path, binding}
+
+          bindings =
+            Map.update(bindings, :ref_bindings, relationship_bindings, fn existing ->
+              Map.merge(existing || %{}, relationship_bindings)
+            end)
+
           ref =
             %{
               ref
@@ -2396,7 +2408,7 @@ defmodule AshSql.Expr do
               as_of: query.__ash_bindings__[:context][:private][:as_of]
             )
 
-          {value, acc} = do_dynamic_expr(query, ref, query.__ash_bindings__, false, acc)
+          {value, acc} = do_dynamic_expr(query, ref, bindings, false, acc)
 
           if is_nil(ref_binding) do
             reference_error!(query, ref)
@@ -3973,14 +3985,15 @@ defmodule AshSql.Expr do
   def ref_binding(%{attribute: %Ash.Resource.Attribute{}} = ref, bindings) do
     relationship_path = List.wrap(bindings[:refs_at_path]) ++ ref.relationship_path
 
-    Enum.find_value(bindings.bindings, fn {binding, data} ->
-      data.type in [:inner, :left, :root] &&
-        Ash.Resource.Info.synonymous_relationship_paths?(
-          bindings.resource,
-          data.path,
-          relationship_path
-        ) && binding
-    end)
+    Map.get(bindings[:ref_bindings] || %{}, relationship_path) ||
+      Enum.find_value(bindings.bindings, fn {binding, data} ->
+        data.type in [:inner, :left, :root] &&
+          Ash.Resource.Info.synonymous_relationship_paths?(
+            bindings.resource,
+            data.path,
+            relationship_path
+          ) && binding
+      end)
   end
 
   defp do_get_path(
