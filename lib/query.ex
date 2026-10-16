@@ -9,7 +9,9 @@ defmodule AshSql.Query do
   require Ash.Expr
 
   def resource_to_query(resource, implementation, domain \\ nil) do
-    from(row in {implementation.table(resource) || "", resource}, [])
+    prefix = implementation.schema(resource)
+
+    from(row in {implementation.table(resource) || "", resource}, prefix: ^prefix)
     |> Map.put(:__ash_domain__, domain)
   end
 
