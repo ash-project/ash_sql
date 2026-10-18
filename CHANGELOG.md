@@ -11,6 +11,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.8.3](https://github.com/ash-project/ash_sql/compare/v0.8.2...v0.8.3) (2026-10-18)
+
+
+
+
+### Bug Fixes:
+
+* various issues w/ aggregate naming and type fetching by [@zachdaniel](https://github.com/zachdaniel)
+
+* compile parent(rel.id) or-filters as EXISTS instead of joining b… (#265) by TravelCurry02 [(#265)](https://github.com/ash-project/ash_sql/pull/265)
+
+* add prefix to aggregate queries (#272) by arstamm [(#272)](https://github.com/ash-project/ash_sql/pull/272)
+
 ## [v0.8.2](https://github.com/ash-project/ash_sql/compare/v0.8.1...v0.8.2) (2026-10-13)
 
 
