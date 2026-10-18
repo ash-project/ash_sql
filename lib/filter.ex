@@ -60,24 +60,12 @@ defmodule AshSql.Filter do
   end
 
   defp maybe_wrap_source_exists(filter, query) do
-    if query.__ash_bindings__[:source_exists_parent_filter?] &&
-         query.__ash_bindings__[:parent_bindings] do
-      rewritten = AshSql.Join.rewrite_parent_filter_for_source_exists(filter)
-      source = query.__ash_bindings__.parent_bindings.resource
+    case query.__ash_bindings__[:parent_bindings] do
+      %{resource: resource} ->
+        AshSql.Join.wrap_cartesian_parent_filter(filter, resource)
 
-      Map.put(
-        %Ash.Query.Exists{
-          related?: false,
-          resource: source,
-          expr: rewritten,
-          path: [],
-          at_path: []
-        },
-        :correlate_source_pk,
-        true
-      )
-    else
-      filter
+      _ ->
+        filter
     end
   end
 end

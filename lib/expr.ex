@@ -2890,7 +2890,7 @@ defmodule AshSql.Expr do
       |> then(fn related_query ->
         if expr != true do
           parent_stack =
-            if Map.get(exists, :correlate_source_pk) do
+            if exists.correlate_source_pk do
               [query.__ash_bindings__.resource]
             else
               []
@@ -2908,7 +2908,7 @@ defmodule AshSql.Expr do
               ecto_query = Ecto.Query.exclude(ecto_query, :select)
 
               ecto_query =
-                if Map.get(exists, :correlate_source_pk) do
+                if exists.correlate_source_pk do
                   correlate_exists_to_source_pk(ecto_query, query, resource)
                 else
                   ecto_query

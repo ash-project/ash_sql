@@ -187,17 +187,12 @@ defmodule AshSql.Aggregate.Lateral do
             )
 
           {:ok, query} =
-            AshSql.Join.join_all_relationships(
+            AshSql.Join.maybe_join_parent_expr(
               query,
-              parent_expr,
-              [],
-              nil,
-              [],
-              nil,
-              true,
-              nil,
-              nil,
-              true
+              first_relationship && first_relationship.filter,
+              parent_expr: parent_expr,
+              sort?: true,
+              no_inner_join?: true
             )
 
           is_single? = match?([_], aggregates)
