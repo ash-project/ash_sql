@@ -2435,7 +2435,7 @@ defmodule AshSql.Expr do
         new_field_name =
           query.__ash_bindings__.aggregate_names[field_name]
 
-        if !new_field_name do
+        unless new_field_name do
           raise "Unbound aggregate field: #{inspect(field_name)}"
         end
 
@@ -2777,7 +2777,7 @@ defmodule AshSql.Expr do
 
     acc = %{acc | has_error?: true}
 
-    if !(Keyword.keyword?(input) || is_map(input)) do
+    unless Keyword.keyword?(input) || is_map(input) do
       raise "Input expression to `error` must be a map or keyword list"
     end
 
@@ -2855,7 +2855,7 @@ defmodule AshSql.Expr do
 
   defp default_dynamic_expr(
          query,
-         %Exists{related?: false, expr: expr, resource: resource} = exists,
+         %Exists{related?: false, expr: expr, resource: resource},
          bindings,
          _embedded?,
          acc,
@@ -2889,14 +2889,7 @@ defmodule AshSql.Expr do
       |> AshSql.Join.hydrate_refs(bindings.context[:private][:actor])
       |> then(fn related_query ->
         if expr != true do
-          parent_stack =
-            if exists.correlate_source_pk do
-              [query.__ash_bindings__.resource]
-            else
-              []
-            end
-
-          Ash.Query.do_filter(related_query, expr, parent_stack: parent_stack)
+          Ash.Query.do_filter(related_query, expr)
         else
           related_query
         end
@@ -2905,16 +2898,7 @@ defmodule AshSql.Expr do
         %{valid?: true} = related_query ->
           case Ash.Query.data_layer_query(related_query) do
             {:ok, ecto_query} ->
-              ecto_query = Ecto.Query.exclude(ecto_query, :select)
-
-              ecto_query =
-                if exists.correlate_source_pk do
-                  correlate_exists_to_source_pk(ecto_query, query, resource)
-                else
-                  ecto_query
-                end
-
-              {:ok, ecto_query}
+              {:ok, Ecto.Query.exclude(ecto_query, :select)}
 
             {:error, error} ->
               {:error, error}
@@ -4078,7 +4062,7 @@ defmodule AshSql.Expr do
          acc
        )
        when is_atom(field) do
-    if !(to_string(field) =~ ~r/^[a-zA-Z_][a-zA-Z0-9_]*$/) do
+    unless to_string(field) =~ ~r/^[a-zA-Z_][a-zA-Z0-9_]*$/ do
       raise Ash.Error.Query.InvalidExpression,
         expression: field,
         message: "#{inspect(field)} is not a valid composite type field name"
@@ -4124,7 +4108,7 @@ defmodule AshSql.Expr do
     installed_extensions =
       query.__ash_bindings__.sql_behaviour.repo(query.__ash_bindings__.resource, :mutate).installed_extensions()
 
-    if "ash-functions" not in installed_extensions do
+    unless "ash-functions" in installed_extensions do
       raise """
       Cannot use `#{operator}` without adding the extension `ash-functions` to your repo.
 
@@ -4433,18 +4417,4 @@ defmodule AshSql.Expr do
   defp get_path_array_type?({type, _}) when is_tuple(type), do: get_path_array_type?(type)
 
   defp get_path_array_type?(_), do: false
-
-  defp correlate_exists_to_source_pk(subquery, outer_query, resource) do
-    source_binding = outer_query.__ash_bindings__.parent_bindings.root_binding
-
-    resource
-    |> Ash.Resource.Info.primary_key()
-    |> Enum.reduce(subquery, fn pk, subquery ->
-      Ecto.Query.where(
-        subquery,
-        [row],
-        field(parent_as(^source_binding), ^pk) == field(row, ^pk)
-      )
-    end)
-  end
 end

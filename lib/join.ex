@@ -319,7 +319,13 @@ defmodule AshSql.Join do
   # Skip joining parent() paths onto `query` when that would cartesian-product to-many lists.
   @doc false
   def maybe_join_parent_expr(query, destination_filter, opts \\ []) do
-    if cartesian_parent_join?(destination_filter, query.__ash_bindings__.resource) do
+    source =
+      case opts[:path] do
+        [_ | _] = path -> List.last(path).destination
+        _ -> query.__ash_bindings__.resource
+      end
+
+    if cartesian_parent_join?(destination_filter, source) do
       {:ok, query}
     else
       join_all_relationships(
@@ -337,55 +343,120 @@ defmodule AshSql.Join do
     end
   end
 
-  # Wrap only parent() subexpressions that would join two to-many source paths.
+  # When `maybe_join_parent_expr/3` skipped the parent joins, every statement that
+  # references parent() is compiled together into one EXISTS over the source.
   @doc false
-  def wrap_cartesian_parent_filter(filter, parent_resource)
-      when is_nil(filter) or is_nil(parent_resource) or filter in [true, false] do
-    filter
-  end
-
-  def wrap_cartesian_parent_filter(%Ash.Filter{expression: expression} = filter, parent_resource) do
-    %{filter | expression: wrap_cartesian_parent_filter(expression, parent_resource)}
-  end
-
-  def wrap_cartesian_parent_filter(
-        %Ash.Query.BooleanExpression{op: :and, left: left, right: right} = expr,
-        parent_resource
-      ) do
-    %{
-      expr
-      | left: wrap_cartesian_parent_filter(left, parent_resource),
-        right: wrap_cartesian_parent_filter(right, parent_resource)
-    }
-  end
-
-  def wrap_cartesian_parent_filter(
-        %Ash.Query.BooleanExpression{op: :or} = expr,
-        parent_resource
-      ) do
-    if cartesian_parent_join?(expr, parent_resource) do
-      parent_filter_as_source_exists(expr, parent_resource)
+  def group_cartesian_parent_statements(statements, query) do
+    with %{} = parent_bindings <- query.__ash_bindings__[:parent_bindings],
+         {[_ | _] = parent_statements, rest} <- Enum.split_with(statements, &parent_ref?/1),
+         true <-
+           cartesian_parent_join?(and_all(parent_statements), parent_source(parent_bindings)) do
+      [{:parent_source_exists, and_all(parent_statements)} | rest]
     else
-      %{
-        expr
-        | left: wrap_cartesian_parent_filter(expr.left, parent_resource),
-          right: wrap_cartesian_parent_filter(expr.right, parent_resource)
-      }
+      _ -> statements
     end
   end
 
-  def wrap_cartesian_parent_filter(%Ash.Query.Not{expression: expression} = expr, parent_resource) do
-    %{expr | expression: wrap_cartesian_parent_filter(expression, parent_resource)}
+  # EXISTS (SELECT 1 FROM source s JOIN <parent paths> WHERE s.pk = <source row>.pk AND filter)
+  #
+  # The filter is compiled from the destination with its bindings swapped: destination refs
+  # resolve to `parent_as` the outer query, and parent() refs resolve to `as` inside the subquery.
+  @doc false
+  def parent_source_exists_expr(query, filter) do
+    bindings = query.__ash_bindings__
+    parent_bindings = bindings.parent_bindings
+    source = parent_source(parent_bindings)
+    parent_expr = parent_expr(filter)
+
+    with {:ok, source_query} <-
+           source
+           |> Ash.Query.new()
+           |> Ash.Query.set_tenant(bindings.context[:private][:tenant])
+           |> Ash.Query.set_context(%{data_layer: %{start_bindings_at: bindings.current + 1}})
+           |> Ash.Query.data_layer_query(),
+         source_query =
+           put_in(
+             source_query.__ash_bindings__[:parent_bindings],
+             parent_bindings[:parent_bindings]
+           ),
+         {:ok, source_query} <- join_all_relationships(source_query, parent_expr),
+         {:ok, source_query} <-
+           AshSql.Aggregate.add_aggregates(
+             source_query,
+             Ash.Filter.used_aggregates(parent_expr, []),
+             source,
+             false,
+             source_query.__ash_bindings__.root_binding
+           ) do
+      inner_bindings =
+        bindings
+        |> Map.merge(%{
+          parent?: true,
+          location: :filter,
+          current: source_query.__ash_bindings__.current,
+          parent_bindings: Map.put(source_query.__ash_bindings__, :parent_is_parent_as?, false)
+        })
+
+      {dynamic, acc} =
+        AshSql.Expr.dynamic_expr(
+          %{query | __ash_bindings__: inner_bindings},
+          filter,
+          inner_bindings
+        )
+
+      root_binding = source_query.__ash_bindings__.root_binding
+
+      source_query =
+        source
+        |> Ash.Resource.Info.primary_key()
+        |> Enum.reduce(source_query, fn pk, source_query ->
+          source_row_binding =
+            AshSql.Expr.ref_binding(
+              %Ref{
+                attribute: Ash.Resource.Info.attribute(source, pk),
+                relationship_path: [],
+                resource: source
+              },
+              parent_bindings
+            )
+
+          from(row in source_query,
+            where: field(as(^root_binding), ^pk) == field(parent_as(^source_row_binding), ^pk)
+          )
+        end)
+        |> Ecto.Query.where(^dynamic)
+        |> Ecto.Query.exclude(:select)
+        |> Ecto.Query.exclude(:distinct)
+
+      {Ecto.Query.dynamic(exists(source_query)), acc}
+    else
+      {:error, error} -> raise Ash.Error.to_ash_error(error)
+    end
   end
 
-  def wrap_cartesian_parent_filter(%Ash.Query.Exists{} = expr, _parent_resource), do: expr
+  @doc false
+  def hydrated_relationship_filter(%{filter: nil}), do: nil
 
-  def wrap_cartesian_parent_filter(expr, parent_resource) do
-    if cartesian_parent_join?(expr, parent_resource) do
-      parent_filter_as_source_exists(expr, parent_resource)
-    else
-      expr
+  def hydrated_relationship_filter(relationship) do
+    case Ash.Filter.hydrate_refs(relationship.filter, %{
+           resource: relationship.destination,
+           parent_stack: [relationship.source]
+         }) do
+      {:ok, filter} -> filter
+      _ -> relationship.filter
     end
+  end
+
+  defp parent_source(parent_bindings) do
+    Ash.Resource.Info.related(parent_bindings.resource, parent_bindings[:refs_at_path] || [])
+  end
+
+  defp parent_ref?(statement) do
+    !!Ash.Filter.find(statement, &match?(%Ash.Query.Parent{}, &1))
+  end
+
+  defp and_all(statements) do
+    Enum.reduce(statements, &Ash.Query.BooleanExpression.optimized_new(:and, &2, &1))
   end
 
   defp cartesian_parent_join?(filter, _parent_resource)
@@ -412,42 +483,6 @@ defmodule AshSql.Join do
       %{destination: dest} -> to_many_in_path?(dest, rest)
       _ -> false
     end
-  end
-
-  defp parent_filter_as_source_exists(expr, parent_resource) do
-    rewritten = rewrite_parent_filter_for_source_exists(expr)
-
-    inner =
-      case rewritten do
-        %Ash.Filter{expression: expression} -> expression
-        expression -> expression
-      end
-
-    %Ash.Query.Exists{
-      related?: false,
-      resource: parent_resource,
-      expr: inner,
-      path: [],
-      at_path: [],
-      correlate_source_pk: true
-    }
-  end
-
-  # parent(rel.field) is a join on the source EXISTS. Local fields stay parent() of the related row.
-  defp rewrite_parent_filter_for_source_exists(filter) do
-    Ash.Filter.map(filter, fn
-      %Ash.Query.Parent{expr: expr} ->
-        {:halt, expr}
-
-      %Ash.Query.Exists{} = expr ->
-        {:halt, expr}
-
-      %Ref{relationship_path: []} = ref ->
-        {:halt, %Ash.Query.Parent{expr: ref}}
-
-      other ->
-        other
-    end)
   end
 
   defp to_joins(paths, filter, resource) do
@@ -479,7 +514,9 @@ defmodule AshSql.Join do
           # Get the first relationship
           relationship = Ash.Resource.Info.relationship(resource, first_rel_name)
 
-          if relationship && relationship.filter do
+          # Cartesian parent paths are joined inside the EXISTS instead, see `parent_source_exists_expr/2`
+          if relationship && relationship.filter &&
+               !cartesian_parent_join?(hydrated_relationship_filter(relationship), resource) do
             # Extract parent expressions from the relationship filter
             extract_parent_refs_from_filter(relationship.filter)
           else
