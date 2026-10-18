@@ -212,7 +212,7 @@ defmodule AshSql.AggregateTest do
       # bound at the root and at a related path in one query.
       query =
         Ecto.Query.from(row in "posts", as: ^0, select: %{})
-        |> AshSql.Bindings.default_bindings(Post, __MODULE__)
+        |> AshSql.Bindings.default_bindings(Post, SqlImplementation)
         |> AshSql.Bindings.add_binding(%{type: :aggregate, path: [], aggregates: [aggregate]})
         |> AshSql.Bindings.add_binding(%{
           type: :aggregate,
@@ -242,6 +242,25 @@ defmodule AshSql.AggregateTest do
         )
 
       assert selected_bindings(query) == [2]
+    end
+
+    test "selects an already joined query aggregate into the aggregates map", context do
+      aggregate = %{context.aggregate | load: nil}
+
+      {:ok, query} =
+        AshSql.Aggregate.Lateral.add_aggregates(context.query, [aggregate], Post, true, 0)
+
+      assert {:%{}, _, [aggregates: aggregates]} = query.select.expr
+      assert selected_keys(aggregates) == [:same_name]
+    end
+
+    test "selects an already joined resource aggregate into its load field", context do
+      aggregate = %{context.aggregate | load: :count_of_comments}
+
+      {:ok, query} =
+        AshSql.Aggregate.Lateral.add_aggregates(context.query, [aggregate], Post, true, 0)
+
+      assert selected_keys(query.select.expr) == [:count_of_comments]
     end
   end
 
@@ -388,6 +407,8 @@ defmodule AshSql.AggregateTest do
   defp filtered_join?(%{wheres: [_ | _]}), do: true
   defp filtered_join?(%{from: %{source: %Ecto.SubQuery{query: query}}}), do: filtered_join?(query)
   defp filtered_join?(_), do: false
+
+  defp selected_keys({:%{}, _, fields}), do: fields |> Keyword.keys() |> Enum.sort()
 
   defp selected_bindings(query) do
     query.select.expr

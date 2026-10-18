@@ -2416,9 +2416,11 @@ defmodule AshSql.Expr do
 
           {ref_binding, aggregate.field, value, acc}
         else
+          # Unrelated first aggregates are joined as a subquery that selects
+          # the value under the aggregate's name.
           ref_binding = ref_binding(ref, bindings)
 
-          {ref_binding, aggregate.field, nil, acc}
+          {ref_binding, aggregate.name, nil, acc}
         end
       else
         ref_binding = ref_binding(ref, bindings)

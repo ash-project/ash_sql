@@ -43,53 +43,35 @@ defmodule AshSql.Aggregate.Lateral do
       |> Enum.uniq_by(& &1.name)
       |> Enum.split_with(&already_added?(&1, query.__ash_bindings__, root_data_path))
 
-    query =
-      if Enum.any?(already_computed_aggregates) && select? do
-        query.__ash_bindings__.bindings
-        |> Enum.filter(fn
-          {_binding, %{type: :aggregate, path: ^root_data_path}} -> true
-          _ -> false
-        end)
-        |> Enum.reduce(query, fn {agg_binding, %{aggregates: aggs}}, q ->
-          q = update_in(q.__ash_bindings__, &Map.put_new(&1, :select_aggregates, []))
-
-          Enum.reduce(aggs, q, fn agg, q ->
-            if Enum.any?(already_computed_aggregates, &(&1.name == agg.name)) do
-              q =
-                update_in(q.__ash_bindings__.select_aggregates, fn select_aggs ->
-                  [agg.name | select_aggs]
-                end)
-
-              if is_nil(agg.default_value) do
-                from(row in q,
-                  select_merge: %{^agg.name => field(as(^agg_binding), ^agg.name)}
-                )
-              else
-                from(row in q,
-                  select_merge: %{
-                    ^agg.name => coalesce(field(as(^agg_binding), ^agg.name), ^agg.default_value)
-                  }
-                )
-              end
-            else
-              q
-            end
-          end)
-        end)
+    # Select already joined aggregates through the requested aggregate, whose
+    # `load` decides between a struct field and the `aggregates` map.
+    already_computed_dynamics =
+      if select? do
+        Enum.map(
+          already_computed_aggregates,
+          &already_computed_dynamic(resource, query, &1, root_data_path)
+        )
       else
-        query
+        []
       end
 
-    query =
+    {query, initial_dynamics} =
       if (query.limit || query.offset || query.distinct) && root_data_path == [] && select? &&
            !query.__ash_bindings__[:lateral_join?] &&
            Enum.any?(
              remaining_aggregates,
              &(not optimizable_first_aggregate?(resource, &1, query))
            ) do
-        wrap_in_subquery_for_aggregates(query)
+        # Already joined aggregates end up inside the subquery, so they have
+        # to be selected before wrapping to be carried out of it.
+        query =
+          query
+          |> select_before_wrapping(already_computed_dynamics)
+          |> wrap_in_subquery_for_aggregates()
+
+        {query, []}
       else
-        query
+        {query, already_computed_dynamics}
       end
 
     result =
@@ -118,7 +100,7 @@ defmodule AshSql.Aggregate.Lateral do
           false
       end)
       |> Enum.reduce_while(
-        {:ok, query, []},
+        {:ok, query, initial_dynamics},
         fn {{path, resource, join_filters, read_action}, aggregates}, {:ok, query, dynamics} ->
           related = Ash.Resource.Info.related(resource, path)
           read_action = Ash.Resource.Info.action(related, read_action)
@@ -337,13 +319,34 @@ defmodule AshSql.Aggregate.Lateral do
   end
 
   defp already_added?(aggregate, bindings, root_data_path) do
-    Enum.any?(bindings.bindings, fn
-      {_, %{type: :aggregate, aggregates: aggregates, path: ^root_data_path}} ->
-        aggregate.name in Enum.map(aggregates, & &1.name)
+    not is_nil(aggregate_binding(aggregate, bindings, root_data_path))
+  end
+
+  defp aggregate_binding(aggregate, bindings, root_data_path) do
+    Enum.find_value(bindings.bindings, fn
+      {binding, %{type: :aggregate, aggregates: aggregates, path: ^root_data_path}} ->
+        if aggregate.name in Enum.map(aggregates, & &1.name), do: binding
 
       _other ->
-        false
+        nil
     end)
+  end
+
+  defp already_computed_dynamic(resource, query, aggregate, root_data_path) do
+    binding = aggregate_binding(aggregate, query.__ash_bindings__, root_data_path)
+    {aggregate.load, aggregate.name, select_dynamic(resource, query, aggregate, binding)}
+  end
+
+  defp select_before_wrapping(query, []), do: query
+
+  defp select_before_wrapping(query, dynamics) do
+    loads = for {load, _name, _dynamic} <- dynamics, not is_nil(load), do: load
+
+    query
+    |> Map.update!(:__ash_bindings__, fn bindings ->
+      Map.update(bindings, :select_aggregates, loads, &(loads ++ &1))
+    end)
+    |> add_aggregate_selects(dynamics)
   end
 
   defp get_subquery(
@@ -982,7 +985,7 @@ defmodule AshSql.Aggregate.Lateral do
          %{related?: false} = aggregate,
          root_data,
          _,
-         source_binding
+         _source_binding
        ) do
     path =
       case root_data do
@@ -1010,186 +1013,66 @@ defmodule AshSql.Aggregate.Lateral do
       |> Ash.Query.limit(1)
       |> Ash.Query.data_layer_query()
 
-    case subquery_result do
-      {:ok, ecto_query} ->
-        ref =
-          %Ash.Query.Ref{
-            attribute: aggregate.field,
-            resource: aggregate.query.resource
-          }
+    with {:ok, ecto_query} <- subquery_result,
+         {:ok, ecto_query} <- select_unrelated_first_value(ecto_query, aggregate, query) do
+      value =
+        Ecto.Query.dynamic(field(as(^query.__ash_bindings__.current), ^aggregate.name))
 
-        {:ok, ecto_query} = AshSql.Join.join_all_relationships(ecto_query, ref)
-
-        ecto_query =
-          case aggregate.field do
-            %Ash.Query.Aggregate{} = aggregate ->
-              {:ok, ecto_query} =
-                AshSql.Aggregate.add_aggregates(
-                  ecto_query,
-                  [aggregate],
-                  aggregate.query.resource,
-                  true,
-                  source_binding,
-                  root_data
-                )
-
-              ecto_query
-
-            %Ash.Resource.Aggregate{} = aggregate ->
-              {:ok, ecto_query} =
-                AshSql.Aggregate.add_aggregates(
-                  ecto_query,
-                  [aggregate],
-                  Ash.Resource.Info.related(aggregate.resource, aggregate.relationship_path),
-                  true,
-                  source_binding,
-                  root_data
-                )
-
-              ecto_query
-
-            %Ash.Resource.Calculation{
-              name: name,
-              calculation: {module, opts},
-              type: type,
-              constraints: constraints
-            } ->
-              {:ok, new_calc} = Ash.Query.Calculation.new(name, module, opts, type, constraints)
-              expression = module.expression(opts, new_calc.context)
-
-              expression =
-                Ash.Expr.fill_template(
-                  expression,
-                  actor: aggregate.context.actor,
-                  tenant: aggregate.query.to_tenant,
-                  args: %{},
-                  context: aggregate.context
-                )
-
-              {:ok, expression} =
-                Ash.Filter.hydrate_refs(expression, %{
-                  resource: ecto_query.__ash_bindings__.resource,
-                  public?: false
-                })
-
-              {:ok, ecto_query} =
-                AshSql.Calculation.add_calculations(
-                  ecto_query,
-                  [{new_calc, expression}],
-                  ecto_query.__ash_bindings__.resource,
-                  source_binding,
-                  true
-                )
-
-              ecto_query
-
-            %Ash.Query.Calculation{
-              module: module,
-              opts: opts,
-              context: context
-            } = calc ->
-              expression = module.expression(opts, context)
-
-              expression =
-                Ash.Expr.fill_template(
-                  expression,
-                  actor: context.actor,
-                  tenant: aggregate.query.to_tenant,
-                  args: context.arguments,
-                  context: context.source_context
-                )
-
-              {:ok, expression} =
-                Ash.Filter.hydrate_refs(expression, %{
-                  resource: ecto_query.__ash_bindings__.resource,
-                  public?: false
-                })
-
-              {:ok, ecto_query} =
-                AshSql.Calculation.add_calculations(
-                  ecto_query,
-                  [{calc, expression}],
-                  ecto_query.__ash_bindings__.resource,
-                  source_binding,
-                  true
-                )
-
-              ecto_query
-
-            _ ->
-              ecto_query
-          end
-
-        ref =
-          %Ash.Query.Ref{
-            attribute: aggregate_field(aggregate, aggregate.query.resource, query),
-            relationship_path: [],
-            resource: aggregate.query.resource
-          }
-
-        value =
-          Ecto.Query.dynamic(field(as(^query.__ash_bindings__.current), ^ref.attribute.name))
-
-        AshSql.Expr.dynamic_expr(query, ref, query.__ash_bindings__, false)
-
-        query =
-          if has_parent_expr?(aggregate.query.filter) do
-            from(row in query,
-              left_lateral_join: related in subquery(ecto_query),
-              on: true,
-              as: ^query.__ash_bindings__.current
-            )
-          else
-            from(row in query,
-              left_join: related in subquery(ecto_query),
-              on: true,
-              as: ^query.__ash_bindings__.current
-            )
-          end
-
-        query =
-          AshSql.Bindings.add_binding(
-            query,
-            %{
-              path: path,
-              type: :aggregate,
-              aggregates: [aggregate]
-            }
+      query =
+        if has_parent_expr?(aggregate.query.filter) do
+          from(row in query,
+            left_lateral_join: related in subquery(ecto_query),
+            on: true,
+            as: ^query.__ash_bindings__.current
           )
-
-        type =
-          AshSql.Expr.parameterized_type(
-            query.__ash_bindings__.sql_behaviour,
-            aggregate.type,
-            aggregate.constraints,
-            :aggregate
+        else
+          from(row in query,
+            left_join: related in subquery(ecto_query),
+            on: true,
+            as: ^query.__ash_bindings__.current
           )
+        end
 
-        with_default =
-          if is_nil(aggregate.default_value) do
-            value
-          else
-            if type do
-              type_expr =
-                query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
+      query =
+        AshSql.Bindings.add_binding(
+          query,
+          %{
+            path: path,
+            type: :aggregate,
+            aggregates: [aggregate]
+          }
+        )
 
-              Ecto.Query.dynamic(coalesce(^value, ^type_expr))
-            else
-              Ecto.Query.dynamic(coalesce(^value, ^aggregate.default_value))
-            end
-          end
+      type =
+        AshSql.Expr.parameterized_type(
+          query.__ash_bindings__.sql_behaviour,
+          aggregate.type,
+          aggregate.constraints,
+          :aggregate
+        )
 
-        casted =
+      with_default =
+        if is_nil(aggregate.default_value) do
+          value
+        else
           if type do
-            query.__ash_bindings__.sql_behaviour.type_expr(with_default, type)
+            type_expr =
+              query.__ash_bindings__.sql_behaviour.type_expr(aggregate.default_value, type)
+
+            Ecto.Query.dynamic(coalesce(^value, ^type_expr))
           else
-            with_default
+            Ecto.Query.dynamic(coalesce(^value, ^aggregate.default_value))
           end
+        end
 
-        {:ok, query, casted}
+      casted =
+        if type do
+          query.__ash_bindings__.sql_behaviour.type_expr(with_default, type)
+        else
+          with_default
+        end
 
-      {:error, error} ->
-        {:error, error}
+      {:ok, query, casted}
     end
   end
 
@@ -1285,6 +1168,32 @@ defmodule AshSql.Aggregate.Lateral do
 
       {:error, error} ->
         {:error, error}
+    end
+  end
+
+  # Expose the value under the aggregate's name, so the binding is read like
+  # every other aggregate binding when filtering, sorting and reselecting.
+  defp select_unrelated_first_value(ecto_query, aggregate, query) do
+    ref =
+      %Ash.Query.Ref{
+        attribute: aggregate_field(aggregate, aggregate.query.resource, query),
+        relationship_path: [],
+        resource: aggregate.query.resource
+      }
+
+    with {:ok, ecto_query} <- AshSql.Join.join_all_relationships(ecto_query, ref) do
+      case AshSql.Expr.dynamic_expr(ecto_query, ref, ecto_query.__ash_bindings__, false) do
+        {:error, error} ->
+          {:error, error}
+
+        {value, acc} ->
+          {:ok,
+           ecto_query
+           |> AshSql.Bindings.merge_expr_accumulator(acc)
+           |> Ecto.Query.exclude(:select)
+           |> Ecto.Query.select(%{})
+           |> Ecto.Query.select_merge(^%{aggregate.name => value})}
+      end
     end
   end
 
@@ -1989,7 +1898,7 @@ defmodule AshSql.Aggregate.Lateral do
       end
 
     {sorted, include_nil_filter_field, query} =
-      if has_sort? || first_relationship.sort not in [nil, []] do
+      if has_sort? || (first_relationship && first_relationship.sort not in [nil, []]) do
         {sort, binding} =
           if has_sort? do
             {aggregate.query.sort, binding}
