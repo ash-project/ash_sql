@@ -292,7 +292,9 @@ defmodule AshSql.Join do
         {:ok, query}
 
       lateral_join_source_query ->
-        case join_all_relationships(lateral_join_source_query, parent_expr(filter)) do
+        # Two or more parent to-many paths joined onto the source cartesian-product
+        # rows. Keep those joins inside a correlated EXISTS instead.
+        case maybe_join_parent_expr(lateral_join_source_query, filter) do
           {:ok, lateral_join_source_query} ->
             {:ok,
              put_in(query.__ash_bindings__.lateral_join_source_query, lateral_join_source_query)
@@ -312,6 +314,175 @@ defmodule AshSql.Join do
 
   defp join_parent_paths(query, _filter, _relationship_paths) do
     {:ok, query}
+  end
+
+  # Skip joining parent() paths onto `query` when that would cartesian-product to-many lists.
+  @doc false
+  def maybe_join_parent_expr(query, destination_filter, opts \\ []) do
+    source =
+      case opts[:path] do
+        [_ | _] = path -> List.last(path).destination
+        _ -> query.__ash_bindings__.resource
+      end
+
+    if cartesian_parent_join?(destination_filter, source) do
+      {:ok, query}
+    else
+      join_all_relationships(
+        query,
+        Keyword.get(opts, :parent_expr, parent_expr(destination_filter)),
+        opts[:join_opts] || [],
+        opts[:relationship_paths],
+        opts[:path] || [],
+        opts[:source],
+        Keyword.get(opts, :sort?, true),
+        opts[:join_filters],
+        opts[:parent_query],
+        Keyword.get(opts, :no_inner_join?, false)
+      )
+    end
+  end
+
+  # When `maybe_join_parent_expr/3` skipped the parent joins, every statement that
+  # references parent() is compiled together into one EXISTS over the source.
+  @doc false
+  def group_cartesian_parent_statements(statements, query) do
+    with %{} = parent_bindings <- query.__ash_bindings__[:parent_bindings],
+         {[_ | _] = parent_statements, rest} <- Enum.split_with(statements, &parent_ref?/1),
+         true <-
+           cartesian_parent_join?(and_all(parent_statements), parent_source(parent_bindings)) do
+      [{:parent_source_exists, and_all(parent_statements)} | rest]
+    else
+      _ -> statements
+    end
+  end
+
+  # EXISTS (SELECT 1 FROM source s JOIN <parent paths> WHERE s.pk = <source row>.pk AND filter)
+  #
+  # The filter is compiled from the destination with its bindings swapped: destination refs
+  # resolve to `parent_as` the outer query, and parent() refs resolve to `as` inside the subquery.
+  @doc false
+  def parent_source_exists_expr(query, filter) do
+    bindings = query.__ash_bindings__
+    parent_bindings = bindings.parent_bindings
+    source = parent_source(parent_bindings)
+    parent_expr = parent_expr(filter)
+
+    with {:ok, source_query} <-
+           source
+           |> Ash.Query.new()
+           |> Ash.Query.set_tenant(bindings.context[:private][:tenant])
+           |> Ash.Query.set_context(%{data_layer: %{start_bindings_at: bindings.current + 1}})
+           |> Ash.Query.data_layer_query(),
+         source_query =
+           put_in(
+             source_query.__ash_bindings__[:parent_bindings],
+             parent_bindings[:parent_bindings]
+           ),
+         {:ok, source_query} <- join_all_relationships(source_query, parent_expr),
+         {:ok, source_query} <-
+           AshSql.Aggregate.add_aggregates(
+             source_query,
+             Ash.Filter.used_aggregates(parent_expr, []),
+             source,
+             false,
+             source_query.__ash_bindings__.root_binding
+           ) do
+      inner_bindings =
+        bindings
+        |> Map.merge(%{
+          parent?: true,
+          location: :filter,
+          current: source_query.__ash_bindings__.current,
+          parent_bindings: Map.put(source_query.__ash_bindings__, :parent_is_parent_as?, false)
+        })
+
+      {dynamic, acc} =
+        AshSql.Expr.dynamic_expr(
+          %{query | __ash_bindings__: inner_bindings},
+          filter,
+          inner_bindings
+        )
+
+      root_binding = source_query.__ash_bindings__.root_binding
+
+      source_query =
+        source
+        |> Ash.Resource.Info.primary_key()
+        |> Enum.reduce(source_query, fn pk, source_query ->
+          source_row_binding =
+            AshSql.Expr.ref_binding(
+              %Ref{
+                attribute: Ash.Resource.Info.attribute(source, pk),
+                relationship_path: [],
+                resource: source
+              },
+              parent_bindings
+            )
+
+          from(row in source_query,
+            where: field(as(^root_binding), ^pk) == field(parent_as(^source_row_binding), ^pk)
+          )
+        end)
+        |> Ecto.Query.where(^dynamic)
+        |> Ecto.Query.exclude(:select)
+        |> Ecto.Query.exclude(:distinct)
+
+      {Ecto.Query.dynamic(exists(source_query)), acc}
+    else
+      {:error, error} -> raise Ash.Error.to_ash_error(error)
+    end
+  end
+
+  @doc false
+  def hydrated_relationship_filter(%{filter: nil}), do: nil
+
+  def hydrated_relationship_filter(relationship) do
+    case Ash.Filter.hydrate_refs(relationship.filter, %{
+           resource: relationship.destination,
+           parent_stack: [relationship.source]
+         }) do
+      {:ok, filter} -> filter
+      _ -> relationship.filter
+    end
+  end
+
+  defp parent_source(parent_bindings) do
+    Ash.Resource.Info.related(parent_bindings.resource, parent_bindings[:refs_at_path] || [])
+  end
+
+  defp parent_ref?(statement) do
+    !!Ash.Filter.find(statement, &match?(%Ash.Query.Parent{}, &1))
+  end
+
+  defp and_all(statements) do
+    Enum.reduce(statements, &Ash.Query.BooleanExpression.optimized_new(:and, &2, &1))
+  end
+
+  defp cartesian_parent_join?(filter, _parent_resource)
+       when is_nil(filter) or filter in [true, false] do
+    false
+  end
+
+  defp cartesian_parent_join?(filter, parent_resource) do
+    filter
+    |> parent_expr()
+    |> Ash.Filter.relationship_paths()
+    |> Enum.reject(&(&1 == []))
+    |> Enum.uniq()
+    |> Enum.filter(&to_many_in_path?(parent_resource, &1))
+    |> length()
+    |> Kernel.>=(2)
+  end
+
+  defp to_many_in_path?(_resource, []), do: false
+
+  defp to_many_in_path?(resource, [name | rest]) do
+    case Ash.Resource.Info.relationship(resource, name) do
+      %{cardinality: :many} -> true
+      %{destination: dest} -> to_many_in_path?(dest, rest)
+      _ -> false
+    end
   end
 
   defp to_joins(paths, filter, resource) do
@@ -343,7 +514,9 @@ defmodule AshSql.Join do
           # Get the first relationship
           relationship = Ash.Resource.Info.relationship(resource, first_rel_name)
 
-          if relationship && relationship.filter do
+          # Cartesian parent paths are joined inside the EXISTS instead, see `parent_source_exists_expr/2`
+          if relationship && relationship.filter &&
+               !cartesian_parent_join?(hydrated_relationship_filter(relationship), resource) do
             # Extract parent expressions from the relationship filter
             extract_parent_refs_from_filter(relationship.filter)
           else
@@ -1109,7 +1282,7 @@ defmodule AshSql.Join do
         sort?,
         apply_filter,
         used_parent_aggregates,
-        parent_expr
+        destination_filter
       )
     else
       join_relationship =
@@ -1134,7 +1307,7 @@ defmodule AshSql.Join do
         })
         |> AshSql.Bindings.add_binding(binding_data)
 
-      with {:ok, query} <- join_all_relationships(query, parent_expr),
+      with {:ok, query} <- maybe_join_parent_expr(query, destination_filter),
            {:ok, relationship_through} <- related_subquery(join_relationship, query),
            {:ok, relationship_destination} <-
              related_subquery(relationship, query,
@@ -1279,12 +1452,8 @@ defmodule AshSql.Join do
     require_lateral? = !Enum.empty?(used_parent_aggregates)
 
     with {:ok, query} <-
-           join_all_relationships(
-             query,
-             parent_expr,
-             [],
-             nil,
-             relationship_path_to_relationships(query.__ash_bindings__.resource, path)
+           maybe_join_parent_expr(query, destination_filter,
+             path: relationship_path_to_relationships(query.__ash_bindings__.resource, path)
            ),
          {:ok, query} <-
            AshSql.Aggregate.add_aggregates(
@@ -1448,7 +1617,7 @@ defmodule AshSql.Join do
          sort?,
          apply_filter,
          used_parent_aggregates,
-         parent_expr
+         destination_filter
        ) do
     join_relationship =
       Ash.Resource.Info.relationship(relationship.source, relationship.join_relationship)
@@ -1500,12 +1669,8 @@ defmodule AshSql.Join do
       )
 
     with {:ok, query} <-
-           join_all_relationships(
-             query,
-             parent_expr,
-             [],
-             nil,
-             relationship_path_to_relationships(query.__ash_bindings__.resource, path)
+           maybe_join_parent_expr(query, destination_filter,
+             path: relationship_path_to_relationships(query.__ash_bindings__.resource, path)
            ),
          {:ok, query} <-
            AshSql.Aggregate.add_aggregates(

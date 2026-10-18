@@ -37,13 +37,9 @@ defmodule AshSql.Filter do
   def add_filter_expression(query, filter) do
     filter
     |> AshSql.Expr.split_statements(:and)
+    |> AshSql.Join.group_cartesian_parent_statements(query)
     |> Enum.reduce(query, fn filter, query ->
-      {dynamic, acc} =
-        AshSql.Expr.dynamic_expr(
-          query,
-          filter,
-          Map.put(query.__ash_bindings__, :location, :filter)
-        )
+      {dynamic, acc} = filter_dynamic(query, filter)
 
       dynamic =
         if is_nil(dynamic) do
@@ -56,5 +52,13 @@ defmodule AshSql.Filter do
       |> Ecto.Query.where([], ^dynamic)
       |> AshSql.Expr.merge_accumulator(acc)
     end)
+  end
+
+  defp filter_dynamic(query, {:parent_source_exists, filter}) do
+    AshSql.Join.parent_source_exists_expr(query, filter)
+  end
+
+  defp filter_dynamic(query, filter) do
+    AshSql.Expr.dynamic_expr(query, filter, Map.put(query.__ash_bindings__, :location, :filter))
   end
 end

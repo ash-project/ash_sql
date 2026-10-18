@@ -164,12 +164,8 @@ defmodule AshSql.Aggregate.Lateral do
 
           parent_expr =
             if first_relationship do
-              first_relationship.filter
-              |> Ash.Filter.hydrate_refs(%{
-                resource: first_relationship.destination,
-                parent_stack: [first_relationship.source]
-              })
-              |> elem(1)
+              first_relationship
+              |> AshSql.Join.hydrated_relationship_filter()
               |> then(&[&1 | hydrated_agg_refs])
               |> AshSql.Join.parent_expr()
             end
@@ -187,17 +183,12 @@ defmodule AshSql.Aggregate.Lateral do
             )
 
           {:ok, query} =
-            AshSql.Join.join_all_relationships(
+            AshSql.Join.maybe_join_parent_expr(
               query,
-              parent_expr,
-              [],
-              nil,
-              [],
-              nil,
-              true,
-              nil,
-              nil,
-              true
+              first_relationship && AshSql.Join.hydrated_relationship_filter(first_relationship),
+              parent_expr: parent_expr,
+              sort?: true,
+              no_inner_join?: true
             )
 
           is_single? = match?([_], aggregates)
