@@ -40,7 +40,15 @@ defmodule AshSql.Aggregate.Lateral.Query do
               |> Ecto.Query.exclude(:order_by)
               |> Map.put(:windows, [])
 
-            from(row in subquery(query), as: ^query.__ash_bindings__.root_binding, select: %{})
+            root_binding = query.__ash_bindings__.root_binding
+
+            # the original query's joins are inside the subquery, so only the root
+            # binding can be referenced from the outer query
+            from(row in subquery(query), as: ^root_binding, select: %{})
+            |> Map.put(:__ash_bindings__, %{
+              query.__ash_bindings__
+              | bindings: Map.take(query.__ash_bindings__.bindings, [root_binding])
+            })
           else
             query
             |> Ecto.Query.exclude(:select)
@@ -48,38 +56,56 @@ defmodule AshSql.Aggregate.Lateral.Query do
             |> Map.put(:windows, [])
             |> Ecto.Query.select(%{})
           end
-          |> Map.put(:__ash_bindings__, query.__ash_bindings__)
 
         group_query =
-          Enum.reduce(
+          Enum.reduce_while(
             can_group,
-            query,
-            fn agg, query ->
+            {:ok, query},
+            fn agg, {:ok, query} ->
               first_relationship =
                 Ash.Resource.Info.relationship(resource, agg.relationship_path |> Enum.at(0))
 
-              AshSql.Aggregate.add_subquery_aggregate_select(
-                query,
-                agg.relationship_path |> Enum.drop(1),
-                agg,
-                resource,
-                false,
-                first_relationship
-              )
+              ref =
+                AshSql.Aggregate.aggregate_field_ref(
+                  agg,
+                  resource,
+                  agg.relationship_path |> Enum.drop(1),
+                  query,
+                  first_relationship
+                )
+
+              case AshSql.Aggregate.add_field_dependencies(query, ref, resource, left_only?: true) do
+                {:ok, query} ->
+                  {:cont,
+                   {:ok,
+                    AshSql.Aggregate.add_subquery_aggregate_select(
+                      query,
+                      agg.relationship_path |> Enum.drop(1),
+                      agg,
+                      resource,
+                      false,
+                      first_relationship
+                    )}}
+
+                {:error, error} ->
+                  {:halt, {:error, error}}
+              end
             end
           )
 
-        result =
-          case can_group do
-            [] ->
-              %{}
+        with {:ok, group_query} <- group_query do
+          result =
+            case can_group do
+              [] ->
+                %{}
 
-            _ ->
-              repo = AshSql.dynamic_repo(resource, implementation, query)
-              repo.one(group_query, AshSql.repo_opts(repo, implementation, nil, nil, resource))
-          end
+              _ ->
+                repo = AshSql.dynamic_repo(resource, implementation, query)
+                repo.one(group_query, AshSql.repo_opts(repo, implementation, nil, nil, resource))
+            end
 
-        {:ok, add_single_aggs(result, resource, query, cant_group, implementation)}
+          {:ok, add_single_aggs(result, resource, query, cant_group, implementation)}
+        end
     end
   end
 
