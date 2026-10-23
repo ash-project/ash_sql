@@ -2131,6 +2131,18 @@ defmodule AshSql.Aggregate.Lateral do
             :return
           )
 
+        # `DISTINCT` needs each `ORDER BY` to match the aggregated expression exactly,
+        # including its cast, so order by `field` itself rather than the bare column.
+        sort_expr =
+          if Map.get(aggregate, :uniq?) && !dedupe_sorted? do
+            sort
+            |> AshSql.Sort.sanitize_sort()
+            |> Enum.map(fn {order, _} -> {order, field} end)
+            |> AshSql.Sort.order_to_fragments()
+          else
+            sort_expr
+          end
+
         question_marks = Enum.map(sort_expr, fn _ -> " ? " end)
 
         distinct =
