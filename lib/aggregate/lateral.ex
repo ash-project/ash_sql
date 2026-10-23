@@ -2611,23 +2611,20 @@ defmodule AshSql.Aggregate.Lateral do
     to_select =
       Enum.reject(all_attr_names, &(&1 in selected_fields or &1 not in available_attr_names))
 
+    root_binding = query.__ash_bindings__.root_binding
+
+    root_fields =
+      Enum.map(to_select, &{&1, {{:., [], [{:&, [], [root_binding]}, &1]}, [], []}})
+
     query_with_all_attrs =
       case query.select do
         %Ecto.Query.SelectExpr{expr: {:merge, _, [l, {:%{}, [], kw}]}} ->
-          put_in(
-            query.select.expr,
-            {:merge, [],
-             [
-               l,
-               {:%{}, [],
-                kw ++
-                  Enum.map(
-                    to_select,
-                    &{&1,
-                     {{:., [], [{:&, [], [query.__ash_bindings__.root_binding]}, &1]}, [], []}}
-                  )}
-             ]}
-          )
+          put_in(query.select.expr, {:merge, [], [l, {:%{}, [], kw ++ root_fields}]})
+
+        # A distinct query whose `DISTINCT ON` is in a joined subquery selects that subquery,
+        # which only has the selected fields, so the rest come from the table it's joined to.
+        %Ecto.Query.SelectExpr{expr: {:&, _, [binding]} = expr} when binding != root_binding ->
+          put_in(query.select.expr, {:merge, [], [expr, {:%{}, [], root_fields}]})
 
         _ ->
           from(row in query,
@@ -2666,8 +2663,6 @@ defmodule AshSql.Aggregate.Lateral do
     # `map/2` would drop field type info — merge each field explicitly instead.
     subquery_query =
       if query.__ash_bindings__[:subquery_upgrade?] do
-        root_binding = query.__ash_bindings__.root_binding
-
         base =
           from(row in subquery(query_with_all_attrs),
             as: ^root_binding,
@@ -2683,8 +2678,6 @@ defmodule AshSql.Aggregate.Lateral do
           select: struct(row, ^reselected_fields)
         )
       end
-
-    root_binding = query.__ash_bindings__.root_binding
 
     only_root_binding = %{
       root_binding => query.__ash_bindings__.bindings[root_binding]
