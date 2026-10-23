@@ -27,7 +27,10 @@ defmodule AshSql.AggregateTest do
   # Build real SQL joins without requiring a database or a downstream data layer.
   defmodule SqlDataLayer do
     require Ecto.Query
-    def can?(_, {:aggregate, kind}) when kind in [:count, :exists, :first], do: true
+
+    def can?(_, {:aggregate, kind}) when kind in [:count, :exists, :first, :unrelated],
+      do: true
+
     def can?(_, {:join, _}), do: true
     def can?(_, {:filter_relationship, _}), do: true
     def can?(_, {:filter_expr, _}), do: true
@@ -473,6 +476,39 @@ defmodule AshSql.AggregateTest do
         {exists, _} = AshSql.Expr.dynamic_expr(query, ref, query.__ash_bindings__)
 
         assert "acme" in bound_values(Ecto.Query.where(query, ^exists)) == filtered?
+      end
+    end
+
+    # Aggregates referenced in filters have no tenant of their own.
+    test "unrelated aggregates read in the query's tenant unless they bypass it",
+         %{query: query} do
+      for {multitenancy, filtered?} <- [{[multitenancy: :bypass], false}, {[], true}] do
+        {:ok, aggregate} =
+          Ash.Query.Aggregate.new(Venue, :seats, :count, [resource: Seat] ++ multitenancy)
+
+        {:ok, query} = AshSql.Aggregate.add_aggregates(query, [aggregate], Venue, true, 0)
+
+        assert "acme" in bound_values(query) == filtered?
+      end
+    end
+
+    test "unrelated exists aggregate references read in the query's tenant unless they bypass it",
+         %{query: query} do
+      for {multitenancy, filtered?} <- [{[multitenancy: :bypass], false}, {[], true}] do
+        {:ok, aggregate} =
+          Ash.Query.Aggregate.new(
+            Venue,
+            :any_seats,
+            :exists,
+            [resource: Seat, query: [filter: [org: "other"]]] ++ multitenancy
+          )
+
+        ref = %Ash.Query.Ref{attribute: aggregate, resource: Venue}
+        {exists, _} = AshSql.Expr.dynamic_expr(query, ref, query.__ash_bindings__)
+        values = bound_values(Ecto.Query.where(query, ^exists))
+
+        assert "other" in values
+        assert "acme" in values == filtered?
       end
     end
   end

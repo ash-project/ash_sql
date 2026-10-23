@@ -2278,15 +2278,11 @@ defmodule AshSql.Expr do
     related? = Map.get(aggregate, :related?, true)
 
     if related? == false do
-      filter =
-        if is_nil(agg_query.filter) do
-          true
-        else
-          agg_query.filter
-        end
-
       subquery_result =
-        aggregate.query
+        agg_query
+        |> AshSql.Join.handle_attribute_multitenancy(
+          query.__ash_bindings__.context[:private][:tenant]
+        )
         |> Ash.Query.set_context(query.__ash_bindings__.context)
         |> Ash.Query.set_context(%{
           data_layer: %{
@@ -2295,13 +2291,6 @@ defmodule AshSql.Expr do
             start_bindings_at: (query.__ash_bindings__.current || 0) + 1
           }
         })
-        |> then(fn ash_query ->
-          if filter != true do
-            Ash.Query.filter(ash_query, filter)
-          else
-            ash_query
-          end
-        end)
         |> Ash.Query.data_layer_query()
 
       case subquery_result do

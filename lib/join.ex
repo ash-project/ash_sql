@@ -851,7 +851,9 @@ defmodule AshSql.Join do
 
       if multitenancy_attribute do
         {m, f, a} = Ash.Resource.Info.multitenancy_parse_attribute(query.resource)
-        attribute_value = apply(m, f, [query.to_tenant | a])
+        # Aggregate queries built from filter references don't have a tenant of their own.
+        to_tenant = query.to_tenant || Ash.ToTenant.to_tenant(tenant, query.resource)
+        attribute_value = apply(m, f, [to_tenant | a])
 
         query
         |> Ash.Query.set_tenant(tenant)

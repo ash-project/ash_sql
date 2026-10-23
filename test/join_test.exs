@@ -68,6 +68,13 @@ defmodule AshSql.JoinTest do
 
       assert filtered?(Join.handle_attribute_multitenancy(query, "acme"))
     end
+
+    test "the tenant filter uses the given tenant when the query has none" do
+      query = Ash.Query.for_read(Tenanted, :read)
+
+      assert inspect(Join.handle_attribute_multitenancy(query, "acme").filter) =~
+               ~s(tenant_id == "acme")
+    end
   end
 
   defp tenanted_query(context, action) do
