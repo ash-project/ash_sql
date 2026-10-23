@@ -824,6 +824,24 @@ defmodule AshSql.Join do
   end
 
   @doc false
+  # Related queries take their multitenancy from the context of the query they're built
+  # from, so an aggregate that bypasses multitenancy has to read its whole relationship
+  # path from a query that bypasses it too.
+  def aggregate_multitenancy_query(query, aggregate_query) do
+    if context_multitenancy(aggregate_query) in [:bypass, :bypass_all] do
+      bypass = %{private: %{multitenancy: :bypass_all}}
+
+      update_in(query.__ash_bindings__.context, fn context ->
+        context
+        |> Ash.Helpers.deep_merge_maps(%{shared: bypass})
+        |> Ash.Helpers.deep_merge_maps(bypass)
+      end)
+    else
+      query
+    end
+  end
+
+  @doc false
   def handle_attribute_multitenancy(query, tenant, read_action \\ nil) do
     multitenancy = context_multitenancy(query) || (read_action && read_action.multitenancy)
 

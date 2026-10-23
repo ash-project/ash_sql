@@ -167,7 +167,8 @@ defmodule AshSql.Aggregate.Common do
         implementation: aggregate.implementation,
         uniq?: aggregate.uniq?,
         read_action: read_action,
-        authorize?: aggregate.authorize?
+        authorize?: aggregate.authorize?,
+        multitenancy: aggregate.multitenancy
       )
     else
       %{errors: errors} ->

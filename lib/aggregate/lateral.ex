@@ -83,14 +83,14 @@ defmodule AshSql.Aggregate.Lateral do
           |> Enum.map(& &1.name)
 
         {expanded_path, aggregate.resource, aggregate.join_filters || %{},
-         aggregate.query.action.name}
+         aggregate.query.action.name, AshSql.Join.context_multitenancy(aggregate.query)}
       end)
-      |> Enum.flat_map(fn {{path, resource, join_filters, read_action}, aggregates} ->
+      |> Enum.flat_map(fn {{_path, resource, _join_filters, _read_action, _multitenancy} = key,
+                           aggregates} ->
         {can_group, cant_group} =
           Enum.split_with(aggregates, &can_group?(resource, &1, query))
 
-        [{{path, resource, join_filters, read_action}, can_group}] ++
-          Enum.map(cant_group, &{{path, resource, join_filters, read_action}, [&1]})
+        [{key, can_group}] ++ Enum.map(cant_group, &{key, [&1]})
       end)
       |> Enum.reject(fn
         {_, []} ->
@@ -101,7 +101,8 @@ defmodule AshSql.Aggregate.Lateral do
       end)
       |> Enum.reduce_while(
         {:ok, query, initial_dynamics},
-        fn {{path, resource, join_filters, read_action}, aggregates}, {:ok, query, dynamics} ->
+        fn {{path, resource, join_filters, read_action, _multitenancy}, aggregates},
+           {:ok, query, dynamics} ->
           related = Ash.Resource.Info.related(resource, path)
           read_action = Ash.Resource.Info.action(related, read_action)
 
@@ -175,6 +176,9 @@ defmodule AshSql.Aggregate.Lateral do
 
           is_single? = match?([_], aggregates)
 
+          # Builds the aggregate's own reads, leaving `query` to join them.
+          input_query = AshSql.Join.aggregate_multitenancy_query(query, hd(aggregates).query)
+
           cond do
             is_single? &&
                 optimizable_first_aggregate?(
@@ -216,14 +220,14 @@ defmodule AshSql.Aggregate.Lateral do
 
               {exists, acc} =
                 AshSql.Expr.dynamic_expr(
-                  query,
+                  input_query,
                   %Ash.Query.Exists{
                     path: root_data_path ++ aggregate.relationship_path,
                     related?: aggregate.related?,
                     resource: aggregate.query.resource,
                     expr: expr
                   },
-                  query.__ash_bindings__
+                  input_query.__ash_bindings__
                 )
 
               {:cont,
@@ -233,7 +237,7 @@ defmodule AshSql.Aggregate.Lateral do
             true ->
               tmp_query =
                 if first_relationship && first_relationship.type == :many_to_many do
-                  put_in(query.__ash_bindings__[:lateral_join_bindings], [
+                  put_in(input_query.__ash_bindings__[:lateral_join_bindings], [
                     query.__ash_bindings__.current
                   ])
                   |> AshSql.Bindings.explicitly_set_binding(
@@ -244,7 +248,7 @@ defmodule AshSql.Aggregate.Lateral do
                     query.__ash_bindings__.current
                   )
                 else
-                  query
+                  input_query
                 end
 
               start_bindings_at =
@@ -262,7 +266,7 @@ defmodule AshSql.Aggregate.Lateral do
                      relationship_path,
                      tmp_query,
                      start_bindings_at,
-                     query,
+                     input_query,
                      source_binding,
                      root_data_path,
                      tenant,
@@ -1646,6 +1650,16 @@ defmodule AshSql.Aggregate.Lateral do
   end
 
   @doc false
+  # A join reads the relationship in the parent query's tenant.
+  def optimizable_first_aggregate?(
+        _resource,
+        %{query: %{context: %{private: %{multitenancy: multitenancy}}}},
+        _query
+      )
+      when multitenancy in [:bypass, :bypass_all] do
+    false
+  end
+
   def optimizable_first_aggregate?(
         resource,
         %{

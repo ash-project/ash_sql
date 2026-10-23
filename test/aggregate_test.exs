@@ -17,6 +17,7 @@ defmodule AshSql.AggregateTest do
     def determine_types(_, values), do: {Enum.map(values, fn _ -> nil end), nil}
     def manual_relationship_function, do: :ash_sql_test_join
     def manual_relationship_subquery_function, do: :ash_sql_test_subquery
+    def list_aggregate(_), do: "array_agg"
   end
 
   defmodule SqlRepo do
@@ -26,7 +27,7 @@ defmodule AshSql.AggregateTest do
   # Build real SQL joins without requiring a database or a downstream data layer.
   defmodule SqlDataLayer do
     require Ecto.Query
-    def can?(_, {:aggregate, :first}), do: true
+    def can?(_, {:aggregate, kind}) when kind in [:count, :exists, :first], do: true
     def can?(_, {:join, _}), do: true
     def can?(_, {:filter_relationship, _}), do: true
     def can?(_, {:filter_expr, _}), do: true
@@ -70,6 +71,42 @@ defmodule AshSql.AggregateTest do
     relationships do
       belongs_to(:assignee, Member, attribute_type: :integer)
       has_one(:peer, __MODULE__, source_attribute: :id, destination_attribute: :id)
+    end
+
+    actions do
+      defaults([:read])
+    end
+  end
+
+  defmodule Seat do
+    use Ash.Resource, domain: AshSql.AggregateTest.Domain, data_layer: SqlDataLayer
+
+    multitenancy do
+      strategy(:attribute)
+      attribute(:org)
+      global?(true)
+    end
+
+    attributes do
+      integer_primary_key(:id)
+      attribute(:org, :string)
+      attribute(:venue_id, :integer)
+    end
+
+    actions do
+      defaults([:read])
+    end
+  end
+
+  defmodule Venue do
+    use Ash.Resource, domain: AshSql.AggregateTest.Domain, data_layer: SqlDataLayer
+
+    attributes do
+      integer_primary_key(:id)
+    end
+
+    relationships do
+      has_many(:seats, Seat, destination_attribute: :venue_id)
     end
 
     actions do
@@ -125,6 +162,8 @@ defmodule AshSql.AggregateTest do
       resource(Comment)
       resource(Member)
       resource(Ticket)
+      resource(Seat)
+      resource(Venue)
     end
   end
 
@@ -391,6 +430,90 @@ defmodule AshSql.AggregateTest do
       end
     end
   end
+
+  describe "aggregates that bypass multitenancy" do
+    setup do
+      {:ok, query} =
+        Venue
+        |> Ash.Query.for_read(:read, %{}, actor: %{id: 1}, tenant: "acme")
+        |> Ash.Query.data_layer_query()
+
+      %{query: query}
+    end
+
+    for {kind, opts} <- [count: [], exists: [], first: [field: :org]] do
+      test "#{kind} aggregates read across tenants", %{query: query} do
+        for {multitenancy, filtered?} <- [{[multitenancy: :bypass], false}, {[], true}] do
+          aggregate = seats_aggregate(unquote(kind), unquote(kind), multitenancy ++ unquote(opts))
+          {:ok, query} = AshSql.Aggregate.add_aggregates(query, [aggregate], Venue, true, 0)
+
+          assert "acme" in bound_values(query) == filtered?
+        end
+      end
+    end
+
+    test "aggregates read across tenants apart from those on the same path that don't",
+         %{query: query} do
+      everyone = seats_aggregate(:everyone, :count, multitenancy: :bypass)
+      tenant = seats_aggregate(:tenant, :count)
+
+      {:ok, query} = AshSql.Aggregate.add_aggregates(query, [everyone, tenant], Venue, true, 0)
+
+      refute "acme" in bound_values(aggregate_join(query, :everyone))
+      assert "acme" in bound_values(aggregate_join(query, :tenant))
+    end
+
+    test "exists aggregate references read across tenants", %{query: query} do
+      for {multitenancy, filtered?} <- [{[multitenancy: :bypass], false}, {[], true}] do
+        ref = %Ash.Query.Ref{
+          attribute: seats_aggregate(:any_seats, :exists, multitenancy),
+          resource: Venue
+        }
+
+        {exists, _} = AshSql.Expr.dynamic_expr(query, ref, query.__ash_bindings__)
+
+        assert "acme" in bound_values(Ecto.Query.where(query, ^exists)) == filtered?
+      end
+    end
+  end
+
+  defp seats_aggregate(name, kind, opts \\ []) do
+    {:ok, aggregate} =
+      Ash.Query.Aggregate.new(Venue, name, kind, [path: [:seats], tenant: "acme"] ++ opts)
+
+    aggregate
+  end
+
+  defp aggregate_join(query, name) do
+    {binding, _} =
+      Enum.find(query.__ash_bindings__.bindings, fn {_, binding} ->
+        Enum.any?(binding[:aggregates] || [], &(&1.name == name))
+      end)
+
+    Enum.find(query.joins, &(&1.as == binding))
+  end
+
+  # Every value bound in a query, including in its joins and subqueries.
+  defp bound_values(%Ecto.SubQuery{query: query}), do: bound_values(query)
+
+  defp bound_values(%Ecto.Query.JoinExpr{} = join) do
+    expr_values(join) ++ expr_values(join.on) ++ bound_values(join.source)
+  end
+
+  defp bound_values(%Ecto.Query{} = query) do
+    bound_values(query.from.source) ++
+      Enum.flat_map(query.joins, &bound_values/1) ++
+      Enum.flat_map([query.select | query.wheres], &expr_values/1)
+  end
+
+  defp bound_values(_), do: []
+
+  defp expr_values(%{params: params} = expr) do
+    Enum.map(params || [], &elem(&1, 0)) ++
+      Enum.flat_map(Map.get(expr, :subqueries, []), &bound_values/1)
+  end
+
+  defp expr_values(_), do: []
 
   defp expression_bindings(expr) do
     expr

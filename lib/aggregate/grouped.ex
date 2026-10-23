@@ -321,21 +321,16 @@ defmodule AshSql.Aggregate.Grouped do
   defp aggregate_input_query(query, aggregate) do
     shared_context = aggregate.query.context[:shared] || %{}
 
-    shared_context =
-      if AshSql.Join.context_multitenancy(aggregate.query) == :bypass_all do
-        # Ash may clear the shared wrapper after merging it into private context.
-        Ash.Helpers.deep_merge_maps(shared_context, %{private: %{multitenancy: :bypass_all}})
-      else
-        shared_context
-      end
-
     # Shared aggregate context applies along the whole path, without changing
     # the parent query or the context used to build sibling aggregates.
-    update_in(query.__ash_bindings__.context, fn context ->
-      context
-      |> Ash.Helpers.deep_merge_maps(%{shared: shared_context})
-      |> Ash.Helpers.deep_merge_maps(shared_context)
-    end)
+    query =
+      update_in(query.__ash_bindings__.context, fn context ->
+        context
+        |> Ash.Helpers.deep_merge_maps(%{shared: shared_context})
+        |> Ash.Helpers.deep_merge_maps(shared_context)
+      end)
+
+    AshSql.Join.aggregate_multitenancy_query(query, aggregate.query)
   end
 
   defp aggregate_query(parent_query, [relationship], [%{kind: kind} = aggregate], binding)

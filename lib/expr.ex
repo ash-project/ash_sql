@@ -2321,7 +2321,7 @@ defmodule AshSql.Expr do
         end
 
       related_exists_expr(
-        query,
+        AshSql.Join.aggregate_multitenancy_query(query, agg_query),
         %Ash.Query.Exists{
           path: agg_relationship_path,
           expr: filter,
