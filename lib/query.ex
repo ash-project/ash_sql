@@ -148,8 +148,11 @@ defmodule AshSql.Query do
           end
           |> case do
             {:ok, lateral_join_source_query} ->
+              # A many_to_many's join resource is joined into the destination query, so
+              # `parent(join_relationship.field)` there refers to the joined row. The steps of a
+              # through path aren't relationships of the source, so this doesn't apply to them.
               lateral_join_source_query =
-                if Enum.count(path) >= 2 do
+                if match?([{_, _, _, %{type: :many_to_many}}, _], path) do
                   through_entries = Enum.drop(path, 1)
 
                   Map.update!(lateral_join_source_query, :__ash_bindings__, fn bindings ->
