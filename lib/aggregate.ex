@@ -114,12 +114,12 @@ defmodule AshSql.Aggregate do
   def add_field_dependencies(query, nil, _resource, _opts), do: {:ok, query}
 
   def add_field_dependencies(query, ref, resource, opts) do
-    with {:ok, query} <- add_field_aggregates(query, ref.attribute, resource, opts) do
+    with {:ok, query} <- add_field_aggregates(query, ref, resource, opts) do
       AshSql.Join.join_all_relationships(query, ref, opts)
     end
   end
 
-  defp add_field_aggregates(query, %struct{} = aggregate, resource, _opts)
+  defp add_field_aggregates(query, %{attribute: %struct{} = aggregate}, resource, _opts)
        when struct in [Ash.Query.Aggregate, Ash.Resource.Aggregate] do
     add_aggregates(
       query,
@@ -130,8 +130,14 @@ defmodule AshSql.Aggregate do
     )
   end
 
-  defp add_field_aggregates(query, %Ash.Query.Calculation{} = calculation, resource, opts) do
-    used_aggregates = Ash.Filter.used_aggregates(calculation, [])
+  defp add_field_aggregates(
+         query,
+         %{attribute: %Ash.Query.Calculation{} = calculation} = ref,
+         resource,
+         opts
+       ) do
+    # calculations are only expanded when wrapped in a ref
+    used_aggregates = Ash.Filter.used_aggregates(ref, [])
 
     with {:ok, query} <- AshSql.Join.join_all_relationships(query, calculation, opts) do
       add_aggregates(
