@@ -2122,14 +2122,17 @@ defmodule AshSql.Aggregate.Lateral do
         {sort, binding} = sort
 
         {:ok, sort_expr, query} =
-          AshSql.Sort.sort(
-            query,
-            sort,
-            related,
-            relationship_path,
-            binding,
-            :return
-          )
+          if Map.get(aggregate, :uniq?) && !dedupe_sorted? do
+            # `DISTINCT` requires each `ORDER BY` to be the aggregated expression itself,
+            # cast included, and every sort here is on the aggregated field.
+            {:ok,
+             sort
+             |> AshSql.Sort.sanitize_sort()
+             |> Enum.map(fn {order, _} -> {order, field} end)
+             |> AshSql.Sort.order_to_fragments(), query}
+          else
+            AshSql.Sort.sort(query, sort, related, relationship_path, binding, :return)
+          end
 
         question_marks = Enum.map(sort_expr, fn _ -> " ? " end)
 
