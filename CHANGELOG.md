@@ -11,6 +11,29 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.8.4](https://github.com/ash-project/ash_sql/compare/v0.8.3...v0.8.4) (2026-10-25)
+
+
+
+
+### Bug Fixes:
+
+* order uniq list aggregates by their cast field by [@zachdaniel](https://github.com/zachdaniel)
+
+* add aggregates referenced by calcs used as aggregate fields by [@zachdaniel](https://github.com/zachdaniel)
+
+* properly select bindings for distinct queries by [@zachdaniel](https://github.com/zachdaniel)
+
+* ensure tenant properly scopes all aggregate values by [@zachdaniel](https://github.com/zachdaniel)
+
+* don't apply filter unnecessarily on resource aggregates by [@zachdaniel](https://github.com/zachdaniel)
+
+* ensure that multitenancy bypass is honored in aggregates by [@zachdaniel](https://github.com/zachdaniel)
+
+* properly join many to many for parent references to work by [@zachdaniel](https://github.com/zachdaniel)
+
+* ensure that aggregate fields are joined by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.8.3](https://github.com/ash-project/ash_sql/compare/v0.8.2...v0.8.3) (2026-10-18)
 
 
