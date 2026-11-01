@@ -82,6 +82,34 @@ defmodule AshSql.Join do
         parent_query,
         no_inner_join?
       ) do
+    do_join_all_relationships(
+      query,
+      filter,
+      opts,
+      relationship_paths,
+      path,
+      source,
+      sort?,
+      join_filters,
+      parent_query,
+      no_inner_join?,
+      nil
+    )
+  end
+
+  defp do_join_all_relationships(
+         query,
+         filter,
+         opts,
+         relationship_paths,
+         path,
+         source,
+         sort?,
+         join_filters,
+         parent_query,
+         no_inner_join?,
+         aggregates_by_path
+       ) do
     no_inner_join? = left_join_only?(query, opts, no_inner_join?)
 
     case join_parent_paths(query, filter, relationship_paths) do
@@ -107,6 +135,12 @@ defmodule AshSql.Join do
             updated_query = put_in(query.__ash_bindings__[:processed_parent_paths], true)
             {updated_query, relationship_paths ++ parent_relationship_paths}
           end
+
+        aggregates_by_path =
+          aggregates_by_path ||
+            if Enum.any?(relationship_paths, &match?({_join_type, [_ | _]}, &1)) do
+              aggregates_by_path(filter)
+            end
 
         Enum.reduce_while(relationship_paths, {:ok, query}, fn
           {_join_type, []}, {:ok, query} ->
@@ -144,7 +178,7 @@ defmodule AshSql.Join do
             # We can't reuse joins if we're adding filters/have a separate parent binding
             if is_nil(join_filters) && is_nil(parent_query) && binding do
               full_path = Enum.map(current_path, & &1.name)
-              used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
+              used_aggregates = Map.get(aggregates_by_path, full_path, [])
 
               case AshSql.Aggregate.add_aggregates(
                      query,
@@ -155,14 +189,18 @@ defmodule AshSql.Join do
                      {query.__ash_bindings__.resource, full_path}
                    ) do
                 {:ok, query} ->
-                  case join_all_relationships(
+                  case do_join_all_relationships(
                          query,
                          filter,
                          opts,
                          [{join_type, rest_rels}],
                          current_path,
                          source,
-                         sort?
+                         sort?,
+                         nil,
+                         nil,
+                         false,
+                         aggregates_by_path
                        ) do
                     {:ok, query} ->
                       {:cont, {:ok, query}}
@@ -181,14 +219,14 @@ defmodule AshSql.Join do
                      Enum.map(path, & &1.name),
                      current_join_type,
                      source,
-                     filter,
+                     aggregates_by_path,
                      sort?,
                      join_filters[Enum.map(current_path, & &1.name)]
                    ) do
                 {:ok, joined_query, _binding} ->
                   joined_query_with_distinct = add_distinct(relationship, join_type, joined_query)
 
-                  case join_all_relationships(
+                  case do_join_all_relationships(
                          joined_query_with_distinct,
                          filter,
                          opts,
@@ -207,7 +245,9 @@ defmodule AshSql.Join do
                                Enum.map(path, & &1.name) ++ [relationship.name]
                              )
                            end
-                         )
+                         ),
+                         false,
+                         aggregates_by_path
                        ) do
                     {:ok, query} ->
                       {:cont, {:ok, query}}
@@ -227,6 +267,13 @@ defmodule AshSql.Join do
     end
   end
 
+  defp aggregates_by_path(filter) do
+    filter
+    |> Ash.Filter.used_aggregates(:*, true)
+    |> Enum.group_by(&(&1.relationship_path || []), & &1.attribute)
+    |> Map.new(fn {path, aggregates} -> {path, Enum.uniq(aggregates)} end)
+  end
+
   @doc false
   def join_relationship_path(query, resource, relationship_path, join_filters) do
     relationships = relationship_path_to_relationships(resource, relationship_path)
@@ -241,7 +288,7 @@ defmodule AshSql.Join do
              path,
              :left,
              resource,
-             nil,
+             %{},
              false,
              join_filters[full_path]
            ) do
@@ -1190,7 +1237,7 @@ defmodule AshSql.Join do
          path,
          kind,
          source,
-         filter,
+         aggregates_by_path,
          sort?,
          apply_filter
        ) do
@@ -1201,7 +1248,7 @@ defmodule AshSql.Join do
 
     query = AshSql.Bindings.add_binding(query, binding_data)
 
-    used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
+    used_aggregates = Map.get(aggregates_by_path, full_path, [])
 
     with {:ok, relationship_destination} <-
            related_subquery(relationship, query,
@@ -1273,7 +1320,7 @@ defmodule AshSql.Join do
          path,
          kind,
          source,
-         filter,
+         aggregates_by_path,
          sort?,
          apply_filter
        ) do
@@ -1298,7 +1345,7 @@ defmodule AshSql.Join do
         path,
         kind,
         source,
-        filter,
+        aggregates_by_path,
         sort?,
         apply_filter,
         used_parent_aggregates,
@@ -1316,7 +1363,7 @@ defmodule AshSql.Join do
 
       binding_data = %{type: kind, path: full_path, source: source}
 
-      used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
+      used_aggregates = Map.get(aggregates_by_path, full_path, [])
 
       query =
         query
@@ -1425,7 +1472,7 @@ defmodule AshSql.Join do
          path,
          kind,
          source,
-         filter,
+         aggregates_by_path,
          _sort?,
          apply_filter
        ) do
@@ -1436,7 +1483,7 @@ defmodule AshSql.Join do
 
     query = AshSql.Bindings.add_binding(query, binding_data)
 
-    used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
+    used_aggregates = Map.get(aggregates_by_path, full_path, [])
 
     binding_kinds =
       case kind do
@@ -1633,7 +1680,7 @@ defmodule AshSql.Join do
          path,
          kind,
          source,
-         filter,
+         aggregates_by_path,
          sort?,
          apply_filter,
          used_parent_aggregates,
@@ -1650,7 +1697,7 @@ defmodule AshSql.Join do
 
     binding_data = %{type: kind, path: full_path, source: source}
 
-    used_aggregates = Ash.Filter.used_aggregates(filter, full_path)
+    used_aggregates = Map.get(aggregates_by_path, full_path, [])
 
     binding_kinds =
       case kind do
