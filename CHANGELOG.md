@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.8.5](https://github.com/ash-project/ash_sql/compare/v0.8.4...v0.8.5) (2026-11-02)
+
+
+
+
+### Improvements:
+
+* only calculate per-path aggregates once while joining by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.8.4](https://github.com/ash-project/ash_sql/compare/v0.8.3...v0.8.4) (2026-10-25)
 
 
