@@ -138,6 +138,7 @@ defmodule AshSql.AggregateTest do
 
     attributes do
       uuid_primary_key(:id)
+      attribute(:min_score, :integer)
     end
 
     relationships do
@@ -146,6 +147,7 @@ defmodule AshSql.AggregateTest do
 
     aggregates do
       max(:highest_score, :comments, :score)
+      count(:high_score_comments, :comments, filter: expr(score >= parent(min_score)))
     end
 
     actions do
@@ -176,6 +178,13 @@ defmodule AshSql.AggregateTest do
       Ash.Resource.Info.aggregate(Post, :highest_score),
       opts
     )
+  end
+
+  test "a parent in a nested aggregate filter does not prevent grouping" do
+    query = Ash.Query.filter(Post, high_score_comments > 0)
+    {:ok, aggregate} = Ash.Query.Aggregate.new(Post, :matching_posts, :count, query: query)
+
+    assert AshSql.Aggregate.can_group?(Post, aggregate, %Ecto.Query{})
   end
 
   describe "resource_aggregate_to_aggregate/3" do
