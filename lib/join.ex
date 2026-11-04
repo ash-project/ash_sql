@@ -662,10 +662,12 @@ defmodule AshSql.Join do
             subquery(query)
 
           Enum.empty?(query.joins) && Enum.empty?(query.order_bys) && Enum.empty?(query.wheres) &&
-            Enum.empty?(query.group_bys) && is_nil(query.limit) ->
+            Enum.empty?(query.group_bys) && is_nil(query.limit) &&
+              !prefix_varies_by_tenant?(relationship, query) ->
             query
 
           opts[:join_binding] && !has_parent_expr? &&
+            !prefix_varies_by_tenant?(relationship, query) &&
               where_only_join_query?(query, opts[:join_binding]) ->
             # Joined directly, its `where`s become the join's `ON` conditions,
             # instead of a subquery that has to select every column.
@@ -695,6 +697,21 @@ defmodule AshSql.Join do
       {:ok, query}
     end
   end
+
+  defp prefix_varies_by_tenant?(relationship, query) do
+    relationship
+    |> prefix_resources()
+    |> Enum.any?(fn resource ->
+      Ash.Resource.Info.multitenancy_strategy(resource) == :context &&
+        is_nil(query.__ash_bindings__.sql_behaviour.schema(resource))
+    end)
+  end
+
+  defp prefix_resources(%{type: :many_to_many, through: through} = relationship)
+       when not is_list(through),
+       do: [relationship.destination, through]
+
+  defp prefix_resources(relationship), do: [relationship.destination]
 
   # Ecto only allows a query with nothing but `where`s to be joined directly, and
   # the `ON` clause it moves them into can't carry subqueries.
