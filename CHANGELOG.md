@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.8.6](https://github.com/ash-project/ash_sql/compare/v0.8.5...v0.8.6) (2026-11-04)
+
+
+
+
+### Bug Fixes:
+
+* prevent ecto query planning bug by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.8.5](https://github.com/ash-project/ash_sql/compare/v0.8.4...v0.8.5) (2026-11-02)
 
 
