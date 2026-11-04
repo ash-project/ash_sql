@@ -11,6 +11,15 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.8.7](https://github.com/ash-project/ash_sql/compare/v0.8.6...v0.8.7) (2026-11-04)
+
+
+
+
+### Bug Fixes:
+
+* don't use join table to determine if subquery is needed by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.8.6](https://github.com/ash-project/ash_sql/compare/v0.8.5...v0.8.6) (2026-11-04)
 
 
