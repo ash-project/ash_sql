@@ -698,20 +698,10 @@ defmodule AshSql.Join do
     end
   end
 
-  defp prefix_varies_by_tenant?(relationship, query) do
-    relationship
-    |> prefix_resources()
-    |> Enum.any?(fn resource ->
-      Ash.Resource.Info.multitenancy_strategy(resource) == :context &&
-        is_nil(query.__ash_bindings__.sql_behaviour.schema(resource))
-    end)
+  defp prefix_varies_by_tenant?(%{destination: destination}, query) do
+    Ash.Resource.Info.multitenancy_strategy(destination) == :context &&
+      is_nil(query.__ash_bindings__.sql_behaviour.schema(destination))
   end
-
-  defp prefix_resources(%{type: :many_to_many, through: through} = relationship)
-       when not is_list(through),
-       do: [relationship.destination, through]
-
-  defp prefix_resources(relationship), do: [relationship.destination]
 
   # Ecto only allows a query with nothing but `where`s to be joined directly, and
   # the `ON` clause it moves them into can't carry subqueries.
@@ -855,18 +845,9 @@ defmodule AshSql.Join do
                 ecto_query
               end
 
-            resource_for_prefix =
-              case relationship do
-                %{type: :many_to_many, through: through} when not is_list(through) ->
-                  through
-
-                _ ->
-                  relationship.destination
-              end
-
             {:ok,
              ecto_query
-             |> set_join_prefix(query, resource_for_prefix)
+             |> set_join_prefix(query, relationship.destination)
              |> Ecto.Query.exclude(:select)}
 
           {:error, error} ->
