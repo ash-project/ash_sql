@@ -2712,6 +2712,7 @@ defmodule AshSql.Aggregate.Lateral do
 
   defp root_field(_, _), do: :error
 
+  # sobelow_skip ["DOS.BinToAtom"]
   defp select_order_expr(query, root_binding, direction, expr, by_expr, index) do
     name = :"__order_#{index}__"
 
