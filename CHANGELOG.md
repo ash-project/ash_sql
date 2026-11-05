@@ -11,6 +11,17 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.8.8](https://github.com/ash-project/ash_sql/compare/v0.8.7...v0.8.8) (2026-11-05)
+
+
+
+
+### Bug Fixes:
+
+* detect `parent/1` in aggregate filters with `Ash.Filter.has_parent_expr?/1` by [@zachdaniel](https://github.com/zachdaniel)
+
+* extract sort outside of subquery for aggregate loading by [@zachdaniel](https://github.com/zachdaniel)
+
 ## [v0.8.7](https://github.com/ash-project/ash_sql/compare/v0.8.6...v0.8.7) (2026-11-04)
 
 
