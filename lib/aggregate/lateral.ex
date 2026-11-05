@@ -1023,7 +1023,7 @@ defmodule AshSql.Aggregate.Lateral do
         Ecto.Query.dynamic(field(as(^query.__ash_bindings__.current), ^aggregate.name))
 
       query =
-        if has_parent_expr?(aggregate.query.filter) do
+        if Ash.Filter.has_parent_expr?(aggregate.query.filter) do
           from(row in query,
             left_lateral_join: related in subquery(ecto_query),
             on: true,
@@ -1557,51 +1557,7 @@ defmodule AshSql.Aggregate.Lateral do
       !references_to_many_relationships?(aggregate) &&
       !optimizable_first_aggregate?(resource, aggregate, query) &&
       !limit_one_first_aggregate?(resource, aggregate) &&
-      !has_parent_expr?(aggregate.query.filter)
-  end
-
-  defp has_parent_expr?(filter, depth \\ 0) do
-    not is_nil(
-      Ash.Filter.find(
-        filter,
-        fn
-          %Ash.Query.Call{name: :parent, args: [expr]} ->
-            if depth == 0 do
-              true
-            else
-              has_parent_expr?(expr, depth - 1)
-            end
-
-          %Ash.Query.Exists{expr: expr} ->
-            has_parent_expr?(expr, depth + 1)
-
-          %Ash.Query.Parent{expr: expr} ->
-            if depth == 0 do
-              true
-            else
-              has_parent_expr?(expr, depth - 1)
-            end
-
-          %Ash.Query.Ref{
-            attribute: %Ash.Query.Aggregate{
-              field: %Ash.Query.Calculation{module: module, opts: opts, context: context}
-            }
-          } ->
-            if module.has_expression?() do
-              Ash.Resource.Calculation.expression(module, opts, context)
-              |> has_parent_expr?(depth + 1)
-            else
-              false
-            end
-
-          _other ->
-            false
-        end,
-        true,
-        true,
-        true
-      )
-    )
+      !Ash.Filter.has_parent_expr?(aggregate.query.filter)
   end
 
   # We can potentially optimize this. We don't have to prevent aggregates that reference
