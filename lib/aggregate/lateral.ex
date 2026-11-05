@@ -2599,16 +2599,27 @@ defmodule AshSql.Aggregate.Lateral do
       |> Ash.Resource.Info.attribute_names()
       |> MapSet.to_list()
 
-    # An upgraded combination query's source only exposes the default
-    # attributes plus the combination fieldset; others can't be re-selected.
+    combination_of_queries? =
+      query.__ash_bindings__.context[:data_layer][:combination_of_queries?]
+
+    # A combination query's source only exposes the combination fieldset, and
+    # an upgraded one's only the default attributes plus that fieldset; others
+    # can't be re-selected.
     available_attr_names =
-      if query.__ash_bindings__[:subquery_upgrade?] do
-        MapSet.union(
-          selected_by_default,
-          MapSet.new(query.__ash_bindings__[:already_selected] || [])
-        )
-      else
-        MapSet.new(all_attr_names)
+      cond do
+        query.__ash_bindings__[:subquery_upgrade?] ->
+          MapSet.union(
+            selected_by_default,
+            MapSet.new(query.__ash_bindings__[:already_selected] || [])
+          )
+
+        combination_of_queries? ->
+          MapSet.new(
+            query.__ash_bindings__.context[:data_layer][:combination_fieldset] || all_attr_names
+          )
+
+        true ->
+          MapSet.new(all_attr_names)
       end
 
     to_select =
@@ -2617,12 +2628,16 @@ defmodule AshSql.Aggregate.Lateral do
     root_binding = query.__ash_bindings__.root_binding
 
     root_fields =
-      Enum.map(to_select, &{&1, {{:., [], [{:&, [], [root_binding]}, &1]}, [], []}})
+      Enum.map(to_select, &{&1, {{:., [], [{:as, [], [root_binding]}, &1]}, [], []}})
 
     query_with_all_attrs =
       case query.select do
         %Ecto.Query.SelectExpr{expr: {:merge, _, [l, {:%{}, [], kw}]}} ->
           put_in(query.select.expr, {:merge, [], [l, {:%{}, [], kw ++ root_fields}]})
+
+        # Combination queries select a map.
+        %Ecto.Query.SelectExpr{expr: {:%{}, _, kw}} ->
+          put_in(query.select.expr, {:%{}, [], kw ++ root_fields})
 
         # A distinct query whose `DISTINCT ON` is in a joined subquery selects that subquery,
         # which only has the selected fields, so the rest come from the table it's joined to.
@@ -2662,10 +2677,17 @@ defmodule AshSql.Aggregate.Lateral do
         flattened_agg_fields
       ])
 
-    # Upgraded combination queries return maps, which `struct/2` rejects, and
-    # `map/2` would drop field type info — merge each field explicitly instead.
+    {outer_order_bys, query_with_all_attrs} =
+      order_outside_subquery(
+        query_with_all_attrs,
+        root_binding,
+        MapSet.new(selected_fields ++ to_select)
+      )
+
+    # Combination queries return maps, which `struct/2` rejects, and `map/2`
+    # would drop field type info — merge each field explicitly instead.
     subquery_query =
-      if query.__ash_bindings__[:subquery_upgrade?] do
+      if combination_of_queries? || query.__ash_bindings__[:subquery_upgrade?] do
         base =
           from(row in subquery(query_with_all_attrs),
             as: ^root_binding,
@@ -2681,6 +2703,8 @@ defmodule AshSql.Aggregate.Lateral do
           select: struct(row, ^reselected_fields)
         )
       end
+
+    subquery_query = Ecto.Query.order_by(subquery_query, ^outer_order_bys)
 
     only_root_binding = %{
       root_binding => query.__ash_bindings__.bindings[root_binding]
@@ -2702,6 +2726,50 @@ defmodule AshSql.Aggregate.Lateral do
       )
 
     Map.put(subquery_query, :__ash_bindings__, new_bindings)
+  end
+
+  # The subquery's `ORDER BY` picks the rows its `LIMIT`/`OFFSET` keep, but
+  # without an `ORDER BY` of its own the outer query can return them in any
+  # order. Sorts on root attributes order by the subquery's column for that
+  # attribute; any other sort expression is selected out of the subquery so the
+  # outer query can order by it.
+  defp order_outside_subquery(query, root_binding, subquery_fields) do
+    query.order_bys
+    |> Enum.flat_map(fn by_expr -> Enum.map(by_expr.expr, &{&1, by_expr}) end)
+    |> Enum.with_index()
+    |> Enum.map_reduce(query, fn {{{direction, expr}, by_expr}, index}, query ->
+      with {:ok, field} <- root_field(expr, root_binding),
+           true <- MapSet.member?(subquery_fields, field) do
+        {{direction, Ecto.Query.dynamic(field(as(^root_binding), ^field))}, query}
+      else
+        _ -> select_order_expr(query, root_binding, direction, expr, by_expr, index)
+      end
+    end)
+  end
+
+  defp root_field({{:., _, [{:as, _, [root_binding]}, field]}, _, []}, root_binding)
+       when is_atom(field),
+       do: {:ok, field}
+
+  defp root_field({{:., _, [{:&, _, [0]}, field]}, _, []}, _root_binding) when is_atom(field),
+    do: {:ok, field}
+
+  defp root_field(_, _), do: :error
+
+  defp select_order_expr(query, root_binding, direction, expr, by_expr, index) do
+    name = :"__order_#{index}__"
+
+    # The expression's params and subqueries are indexed into its own `ORDER BY`
+    # clause, so it's carried over as a dynamic for Ecto to reindex.
+    dynamic = %Ecto.Query.DynamicExpr{
+      fun: fn _query -> {expr, by_expr.params, by_expr.subqueries, %{}} end,
+      binding: [],
+      file: by_expr.file,
+      line: by_expr.line
+    }
+
+    {{direction, Ecto.Query.dynamic(field(as(^root_binding), ^name))},
+     Ecto.Query.select_merge(query, ^%{name => dynamic})}
   end
 
   defp extract_selected_fields(
