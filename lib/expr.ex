@@ -5,9 +5,6 @@
 defmodule AshSql.Expr do
   @moduledoc false
 
-  require Ash.Query
-  require Ash.Expr
-
   alias Ash.Filter
   alias Ash.Query.{BooleanExpression, Exists, Not, Ref}
   alias Ash.Query.Operator.IsNil
