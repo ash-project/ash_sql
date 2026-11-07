@@ -694,6 +694,13 @@ defmodule AshSql.Join do
             )
         end
 
+      query =
+        if opts[:project_relationship?] do
+          put_in(query.__ash_bindings__[:relationship_projection?], true)
+        else
+          query
+        end
+
       {:ok, query}
     end
   end
@@ -1540,6 +1547,8 @@ defmodule AshSql.Join do
              refs_at_path: path,
              require_lateral?: require_lateral?,
              filter_subquery?: true,
+             project_relationship?:
+               Map.get(relationship, :from_many?) && is_nil(relationship.manual),
              join_binding:
                if(!Map.get(relationship, :from_many?), do: initial_ash_bindings.current),
              on_subquery: fn subquery ->
