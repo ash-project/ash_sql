@@ -61,6 +61,17 @@ defmodule AshSql.Query.ProjectionTest do
     assert selected_fields(result).take == %{0 => {:struct, [:title, :likes]}}
   end
 
+  test "retains late-bound fields from an interpolated join filter" do
+    ratings = from(r in "ratings", where: r.score > as(:related_comment).likes)
+
+    result =
+      posts()
+      |> join(:left, [p], r in ^ratings, on: r.post_id == p.id)
+      |> Projection.prune()
+
+    assert selected_fields(result).take == %{0 => {:struct, [:title, :likes]}}
+  end
+
   test "retains a wrapper filter's fields below the relationship limit" do
     source = related_comment() |> where([c], c.likes > 0)
     result = source |> posts() |> Projection.prune()

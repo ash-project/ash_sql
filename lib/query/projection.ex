@@ -100,8 +100,13 @@ defmodule AshSql.Query.Projection do
   defp reference({:&, _, [index]}, field, [{id, _} | _], fields),
     do: add_field(fields, {id, index}, field)
 
-  defp reference({:as, _, [name]}, field, [{id, aliases} | _], fields),
-    do: named_field(fields, id, aliases, name, field)
+  defp reference({:as, _, [name]}, field, scope, fields) do
+    # Ecto can move an interpolated join's WHERE into the outer ON clause,
+    # where late-bound names resolve against the enclosing query's aliases.
+    Enum.reduce(scope, fields, fn {id, aliases}, fields ->
+      named_field(fields, id, aliases, name, field)
+    end)
+  end
 
   defp reference({:parent_as, _, [name]}, field, [_ | parents], fields) do
     # Interpolated join queries can be flattened by Ecto. Retaining matches in
