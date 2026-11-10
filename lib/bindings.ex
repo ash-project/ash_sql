@@ -73,7 +73,14 @@ defmodule AshSql.Bindings do
       calculation_names: %{},
       context: context,
       root_binding: start_bindings,
-      bindings: %{start_bindings => %{path: [], type: :root, source: resource}}
+      bindings: %{
+        start_bindings => %{
+          path: [],
+          type: :root,
+          source: resource,
+          projection: context[:data_layer][:projection]
+        }
+      }
     })
   end
 

@@ -49,11 +49,13 @@ defmodule AshSql.Expr do
     Type
   }
 
+  alias AshSql.Query.Projection
+
   require Ecto.Query
 
   defmodule ExprInfo do
     @moduledoc false
-    defstruct has_error?: false
+    defstruct has_error?: false, projections: %{}
 
     @type t :: %__MODULE__{}
   end
@@ -109,8 +111,15 @@ defmodule AshSql.Expr do
     get_in(query.__ash_bindings__, [:context, :private, :as_of]) || DateTime.utc_now()
   end
 
-  defp do_dynamic_expr(query, expr, bindings, embedded?, acc, type \\ nil) do
+  defp backend_expr(query, expr, bindings, embedded?, acc, type) do
     case bindings.sql_behaviour.expr(query, expr, bindings, embedded?, acc, type) do
+      {:ok, expr, acc} -> {:ok, expr, Projection.unknown(acc)}
+      other -> other
+    end
+  end
+
+  defp do_dynamic_expr(query, expr, bindings, embedded?, acc, type \\ nil) do
+    case backend_expr(query, expr, bindings, embedded?, acc, type) do
       {:ok, expr, acc} -> {expr, acc}
       {:error, error} -> {:error, error}
       :error -> default_dynamic_expr(query, expr, bindings, embedded?, acc, type)
@@ -118,7 +127,7 @@ defmodule AshSql.Expr do
   end
 
   defp default_dynamic_expr(_, {:embed, other}, _bindings, _true, acc, _type) do
-    {other, acc}
+    {other, Projection.unknown(acc)}
   end
 
   defp default_dynamic_expr(query, %Not{expression: expression}, bindings, embedded?, acc, _type) do
@@ -634,7 +643,7 @@ defmodule AshSql.Expr do
          type
        )
        when is_list(right) do
-    case bindings.sql_behaviour.expr(query, expr, bindings, true, acc, type) do
+    case backend_expr(query, expr, bindings, true, acc, type) do
       {:ok, expr, acc} ->
         {expr, acc}
 
@@ -689,7 +698,7 @@ defmodule AshSql.Expr do
          _
        )
        when is_list(right) do
-    case bindings.sql_behaviour.expr(query, expr, bindings, true, acc, type) do
+    case backend_expr(query, expr, bindings, true, acc, type) do
       {:ok, expr, acc} ->
         {expr, acc}
 
@@ -1381,29 +1390,18 @@ defmodule AshSql.Expr do
         ]
       end)
 
-    do_dynamic_expr(
-      query,
-      %Fragment{
-        embedded?: pred_embedded?,
-        arguments:
-          [
-            raw: "(CASE WHEN ",
-            casted_expr: condition,
-            raw: " THEN ",
-            casted_expr: when_true
-          ] ++
-            additional_case_fragments ++
-            [
-              raw: " ELSE ",
-              casted_expr: when_false,
-              raw: " END)"
-            ]
-      },
-      bindings,
-      embedded?,
-      acc,
-      type
-    )
+    arguments =
+      [raw: "(CASE WHEN ", casted_expr: condition, raw: " THEN ", casted_expr: when_true] ++
+        additional_case_fragments ++
+        [raw: " ELSE ", casted_expr: when_false, raw: " END)"]
+
+    fragment = %Fragment{embedded?: pred_embedded?, arguments: arguments}
+
+    case backend_expr(query, fragment, bindings, embedded?, acc, type) do
+      {:ok, expr, acc} -> {expr, acc}
+      {:error, error} -> {:error, error}
+      :error -> build_fragment(query, arguments, bindings, pred_embedded? || embedded?, acc)
+    end
   end
 
   defp default_dynamic_expr(
@@ -1716,62 +1714,13 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    arguments =
-      case arguments do
-        [{:raw, raw} | rest] ->
-          [{:raw, raw} | rest]
-
-        arguments ->
-          [{:raw, ""} | arguments]
-      end
-
-    arguments =
-      case List.last(arguments) do
-        nil ->
-          arguments
-
-        {:raw, _} ->
-          arguments
-
-        _ ->
-          arguments ++ [{:raw, ""}]
-      end
-
-    {params, fragment_data, _, acc} =
-      Enum.reduce(arguments, {[], [], 0, acc}, fn
-        {:raw, str}, {params, fragment_data, count, acc} ->
-          {params, [{:raw, str} | fragment_data], count, acc}
-
-        {:casted_expr, dynamic}, {params, fragment_data, count, acc} ->
-          {item, params, count} =
-            {{:^, [], [count]}, [{dynamic, :any} | params], count + 1}
-
-          {params, [{:expr, item} | fragment_data], count, acc}
-
-        {:expr, expr}, {params, fragment_data, count, acc} ->
-          {dynamic, acc} =
-            do_dynamic_expr(
-              query,
-              expr,
-              set_location(bindings, :sub_expr),
-              pred_embedded? || embedded?,
-              acc
-            )
-
-          {item, params, count} =
-            {{:^, [], [count]}, [{dynamic, :any} | params], count + 1}
-
-          {params, [{:expr, item} | fragment_data], count, acc}
-      end)
-
-    {%Ecto.Query.DynamicExpr{
-       fun: fn _query ->
-         {{:fragment, [], Enum.reverse(fragment_data)}, Enum.reverse(params), [], %{}}
-       end,
-       binding: [],
-       file: __ENV__.file,
-       line: __ENV__.line
-     }, acc}
+    build_fragment(
+      query,
+      arguments,
+      bindings,
+      pred_embedded? || embedded?,
+      Projection.unknown(acc)
+    )
   end
 
   defp default_dynamic_expr(
@@ -2432,6 +2381,8 @@ defmodule AshSql.Expr do
         field_name
       end
 
+    acc = if value, do: acc, else: Projection.reference(acc, bindings, ref_binding, field_name)
+
     expr =
       if value do
         value
@@ -2917,6 +2868,7 @@ defmodule AshSql.Expr do
          _expr_type
        ) do
     ref_binding = bindings.root_binding
+    acc = Projection.reference(acc, bindings, ref_binding, name)
 
     dynamic =
       if bindings[:parent?] &&
@@ -2948,6 +2900,8 @@ defmodule AshSql.Expr do
     if is_nil(ref_binding) do
       reference_error!(query, ref)
     end
+
+    acc = Projection.reference(acc, bindings, ref_binding, name)
 
     constraints =
       if attr_type do
@@ -3008,6 +2962,8 @@ defmodule AshSql.Expr do
     if is_nil(ref_binding) do
       reference_error!(query, ref)
     end
+
+    acc = Projection.reference(acc, bindings, ref_binding, name)
 
     expr =
       if query.__ash_bindings__[:parent?] &&
@@ -3089,7 +3045,7 @@ defmodule AshSql.Expr do
         if is_list(other) do
           list_expr(query, other, bindings, true, acc, type)
         else
-          case bindings.sql_behaviour.expr(query, other, bindings, true, acc, type) do
+          case backend_expr(query, other, bindings, true, acc, type) do
             {:ok, expr, acc} ->
               {expr, acc}
 
@@ -3144,7 +3100,7 @@ defmodule AshSql.Expr do
       if is_list(value) do
         list_expr(query, value, bindings, false, acc, type)
       else
-        case bindings.sql_behaviour.expr(query, value, bindings, false, acc, type) do
+        case backend_expr(query, value, bindings, false, acc, type) do
           {:ok, expr, acc} ->
             {expr, acc}
 
@@ -3398,7 +3354,89 @@ defmodule AshSql.Expr do
         end
       )
 
+    acc =
+      cond do
+        Map.get(first_relationship, :manual) ->
+          Projection.unknown(acc)
+
+        Map.get(first_relationship, :no_attributes?) ->
+          acc
+
+        true ->
+          source_ref =
+            ref_binding(
+              %Ref{
+                attribute:
+                  Ash.Resource.Info.attribute(resource, first_relationship.source_attribute),
+                relationship_path: at_path,
+                resource: resource
+              },
+              bindings
+            )
+
+          Projection.reference(acc, bindings, source_ref, first_relationship.source_attribute)
+      end
+
     {Ecto.Query.dynamic(exists(subquery)), acc}
+  end
+
+  defp build_fragment(query, arguments, bindings, embedded?, acc) do
+    arguments =
+      case arguments do
+        [{:raw, raw} | rest] ->
+          [{:raw, raw} | rest]
+
+        arguments ->
+          [{:raw, ""} | arguments]
+      end
+
+    arguments =
+      case List.last(arguments) do
+        nil ->
+          arguments
+
+        {:raw, _} ->
+          arguments
+
+        _ ->
+          arguments ++ [{:raw, ""}]
+      end
+
+    {params, fragment_data, _, acc} =
+      Enum.reduce(arguments, {[], [], 0, acc}, fn
+        {:raw, str}, {params, fragment_data, count, acc} ->
+          {params, [{:raw, str} | fragment_data], count, acc}
+
+        {:casted_expr, dynamic}, {params, fragment_data, count, acc} ->
+          {item, params, count} =
+            {{:^, [], [count]}, [{dynamic, :any} | params], count + 1}
+
+          {params, [{:expr, item} | fragment_data], count, acc}
+
+        {:expr, expr}, {params, fragment_data, count, acc} ->
+          {dynamic, acc} =
+            do_dynamic_expr(
+              query,
+              expr,
+              set_location(bindings, :sub_expr),
+              embedded?,
+              acc
+            )
+
+          {item, params, count} =
+            {{:^, [], [count]}, [{dynamic, :any} | params], count + 1}
+
+          {params, [{:expr, item} | fragment_data], count, acc}
+      end)
+
+    {%Ecto.Query.DynamicExpr{
+       fun: fn _query ->
+         {{:fragment, [], Enum.reverse(fragment_data)}, Enum.reverse(params), [], %{}}
+       end,
+       binding: [],
+       file: __ENV__.file,
+       line: __ENV__.line
+     }, acc}
   end
 
   defp range_operand(query, operand, nil, bindings, embedded?, acc) do
@@ -3741,7 +3779,7 @@ defmodule AshSql.Expr do
 
       case bindings.sql_behaviour.list_expr(query, value, bindings, embedded?, acc, type) do
         {:ok, expr, acc} ->
-          {expr, acc}
+          {expr, Projection.unknown(acc)}
 
         {:error, error} ->
           raise "Error while building list expression: #{error}"
@@ -4146,10 +4184,12 @@ defmodule AshSql.Expr do
   end
 
   @doc false
-  def merge_accumulator(%ExprInfo{has_error?: left_has_error?}, %ExprInfo{
-        has_error?: right_has_error?
-      }) do
-    %ExprInfo{has_error?: left_has_error? || right_has_error?}
+  def merge_accumulator(%ExprInfo{} = left, %ExprInfo{} = right) do
+    %ExprInfo{
+      has_error?: left.has_error? || right.has_error?,
+      projections:
+        Projection.merge(Map.get(left, :projections, %{}), Map.get(right, :projections, %{}))
+    }
   end
 
   @doc false

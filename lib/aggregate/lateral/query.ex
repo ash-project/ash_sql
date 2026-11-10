@@ -101,7 +101,11 @@ defmodule AshSql.Aggregate.Lateral.Query do
 
               _ ->
                 repo = AshSql.dynamic_repo(resource, implementation, query)
-                repo.one(group_query, AshSql.repo_opts(repo, implementation, nil, nil, resource))
+
+                repo.one(
+                  AshSql.Query.Projection.prune(group_query),
+                  AshSql.repo_opts(repo, implementation, nil, nil, resource)
+                )
             end
 
           {:ok, add_single_aggs(result, resource, query, cant_group, implementation)}
@@ -244,7 +248,7 @@ defmodule AshSql.Aggregate.Lateral.Query do
         Map.merge(
           result || %{},
           repo.one(
-            query,
+            AshSql.Query.Projection.prune(query),
             AshSql.repo_opts(repo, query.__ash_bindings__.sql_behaviour, nil, nil, resource)
           )
         )

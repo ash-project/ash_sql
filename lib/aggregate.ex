@@ -20,6 +20,8 @@ defmodule AshSql.Aggregate do
   def add_aggregates(query, aggregates, resource, select?, source_binding, root_data) do
     with {:ok, query, aggregates} <-
            AshSql.Aggregate.Common.normalize(query, aggregates, resource, root_data) do
+      query = track_projection_sources(query, aggregates, resource, source_binding)
+
       strategy(query, resource).add_aggregates(
         query,
         aggregates,
@@ -28,6 +30,24 @@ defmodule AshSql.Aggregate do
         source_binding,
         root_data
       )
+    end
+  end
+
+  defp track_projection_sources(query, aggregates, resource, binding) do
+    if get_in(query.__ash_bindings__, [:bindings, binding, :projection]) do
+      Enum.reduce(aggregates, query, fn
+        %{related?: false}, query ->
+          query
+
+        %{relationship_path: [first | _]}, query ->
+          relationship = Ash.Resource.Info.relationship(resource, first)
+          AshSql.Query.Projection.track_source(query, binding, relationship)
+
+        _, query ->
+          query
+      end)
+    else
+      query
     end
   end
 

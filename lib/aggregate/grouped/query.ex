@@ -62,7 +62,11 @@ defmodule AshSql.Aggregate.Grouped.Query do
 
       repo = AshSql.dynamic_repo(resource, implementation, query)
 
-      value = repo.one(query, AshSql.repo_opts(repo, implementation, nil, nil, resource))
+      value =
+        repo.one(
+          AshSql.Query.Projection.prune(query),
+          AshSql.repo_opts(repo, implementation, nil, nil, resource)
+        )
 
       {:ok, maybe_default_value(value, aggregate)}
     end
@@ -78,6 +82,7 @@ defmodule AshSql.Aggregate.Grouped.Query do
 
       result =
         query
+        |> AshSql.Query.Projection.prune()
         |> repo.one(AshSql.repo_opts(repo, implementation, nil, nil, resource))
         |> Map.get(aggregate.name)
 
