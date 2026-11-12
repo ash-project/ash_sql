@@ -2608,8 +2608,22 @@ defmodule AshSql.Aggregate.Lateral do
 
     # Flatten nested calculations/aggregates maps before creating subquery
     # Ecto doesn't allow nested maps in subquery select expressions
-    {calculations_require_rewrite, aggregates_require_rewrite, query_with_all_attrs} =
+    {new_calculations_require_rewrite, new_aggregates_require_rewrite, query_with_all_attrs} =
       AshSql.Query.rewrite_nested_selects(query_with_all_attrs)
+
+    # An earlier subquery, such as the one for `DISTINCT ON`, may have flattened
+    # some already. The outer query must reselect those too.
+    calculations_require_rewrite =
+      Map.merge(
+        query.__ash_bindings__[:calculations_require_rewrite] || %{},
+        new_calculations_require_rewrite
+      )
+
+    aggregates_require_rewrite =
+      Map.merge(
+        query.__ash_bindings__[:aggregates_require_rewrite] || %{},
+        new_aggregates_require_rewrite
+      )
 
     # After flattening, we need to:
     # 1. Use the updated select_calculations from the rewritten query (which excludes :calculations)
@@ -2670,16 +2684,8 @@ defmodule AshSql.Aggregate.Lateral do
       query.__ash_bindings__
       |> Map.put(:bindings, only_root_binding)
       |> Map.delete(:__order__?)
-      |> Map.update(
-        :calculations_require_rewrite,
-        calculations_require_rewrite,
-        &Map.merge(&1, calculations_require_rewrite)
-      )
-      |> Map.update(
-        :aggregates_require_rewrite,
-        aggregates_require_rewrite,
-        &Map.merge(&1, aggregates_require_rewrite)
-      )
+      |> Map.put(:calculations_require_rewrite, calculations_require_rewrite)
+      |> Map.put(:aggregates_require_rewrite, aggregates_require_rewrite)
 
     Map.put(subquery_query, :__ash_bindings__, new_bindings)
   end

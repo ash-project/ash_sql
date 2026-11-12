@@ -226,6 +226,30 @@ defmodule AshSql.QueryTest do
       assert result.limit == query.limit
       assert [asc: {{:., _, [_, :__order__]}, _, []}] = hd(result.order_bys).expr
     end
+
+    test "a subquery for aggregates reselects the calculations the row_number wrapper flattened" do
+      query =
+        from(post in "posts",
+          as: ^0,
+          distinct: [asc: post.id],
+          select: %{id: post.id},
+          limit: ^51
+        )
+        |> select_merge([post], %{calculations: %{sort_key: post.author_id}})
+        |> distinct_query([author_id: :desc], author_id: :desc, id: :asc)
+        |> Map.update!(:__ash_bindings__, &Map.put(&1, :select_calculations, [:calculations]))
+
+      {:ok, query} = AshSql.Query.return_query(query, Post)
+
+      assert query.__ash_bindings__.calculations_require_rewrite == %{
+               __calculations__sort_key: :sort_key
+             }
+
+      query = AshSql.Aggregate.Lateral.wrap_in_subquery_for_aggregates(query)
+
+      assert %{0 => {:struct, fields}} = query.select.take
+      assert :__calculations__sort_key in fields
+    end
   end
 
   describe "nested select rewriting" do
