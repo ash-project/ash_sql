@@ -65,7 +65,9 @@ defmodule AshSql.Query.Projection do
 
   # A read action may change the Ecto query after references have been recorded.
   defp collect(%{__ash_bindings__: %{context: %{action: %{modify_query: modify}}}}, _refs)
-       when not is_nil(modify), do: :unknown
+       when not is_nil(modify) do
+    :unknown
+  end
 
   # Only visit query nodes and their metadata, never expressions or parameter values.
   defp collect(%{__ash_bindings__: %{expression_accumulator: acc}} = query, refs) do
