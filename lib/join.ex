@@ -453,10 +453,10 @@ defmodule AshSql.Join do
 
       root_binding = source_query.__ash_bindings__.root_binding
 
-      source_query =
+      {source_query, acc} =
         source
         |> Ash.Resource.Info.primary_key()
-        |> Enum.reduce(source_query, fn pk, source_query ->
+        |> Enum.reduce({source_query, acc}, fn pk, {source_query, acc} ->
           source_row_binding =
             AshSql.Expr.ref_binding(
               %Ref{
@@ -467,10 +467,17 @@ defmodule AshSql.Join do
               parent_bindings
             )
 
-          from(row in source_query,
-            where: field(as(^root_binding), ^pk) == field(parent_as(^source_row_binding), ^pk)
-          )
+          source_query =
+            from(row in source_query,
+              where: field(as(^root_binding), ^pk) == field(parent_as(^source_row_binding), ^pk)
+            )
+
+          {source_query,
+           AshSql.Query.Projection.reference(acc, parent_bindings, source_row_binding, pk)}
         end)
+
+      source_query =
+        source_query
         |> Ecto.Query.where(^dynamic)
         |> Ecto.Query.exclude(:select)
         |> Ecto.Query.exclude(:distinct)

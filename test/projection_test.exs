@@ -48,4 +48,12 @@ defmodule AshSql.Query.ProjectionTest do
     query = tracked_query() |> Map.delete(:__ash_bindings__)
     assert Projection.prune(query) == query
   end
+
+  test "manual relationships preserve columns used by opaque callbacks" do
+    query =
+      tracked_query()
+      |> Projection.track_source(0, %{manual: {__MODULE__, []}, no_attributes?: true})
+
+    assert Projection.prune(query) == query
+  end
 end

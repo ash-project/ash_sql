@@ -187,6 +187,19 @@ defmodule AshSql.AggregateTest do
     assert AshSql.Aggregate.can_group?(Post, aggregate, %Ecto.Query{})
   end
 
+  test "parent-source EXISTS records the outer primary key" do
+    {:ok, parent} =
+      Ticket |> Ash.Query.for_read(:read, %{}, actor: %{id: 1}) |> Ash.Query.data_layer_query()
+
+    token = make_ref()
+    parent = put_in(parent.__ash_bindings__.bindings[0][:projection], token)
+    query = put_in(parent.__ash_bindings__[:parent_bindings], parent.__ash_bindings__)
+
+    {_, acc} = AshSql.Join.parent_source_exists_expr(query, true)
+
+    assert acc.projections[token] == MapSet.new([:id])
+  end
+
   describe "resource_aggregate_to_aggregate/3" do
     test "passes actor and tenant to the related read which may require an actor" do
       actor = %{id: Ash.UUID.generate()}

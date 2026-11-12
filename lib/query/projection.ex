@@ -33,6 +33,10 @@ defmodule AshSql.Query.Projection do
     end
   end
 
+  def track_source(query, _binding, %{manual: {_, _}}) do
+    update_in(query.__ash_bindings__.expression_accumulator, &unknown/1)
+  end
+
   def track_source(query, _binding, %{no_attributes?: true}), do: query
 
   def track_source(query, binding, %{source_attribute: field}) when not is_nil(field) do
