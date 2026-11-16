@@ -53,7 +53,8 @@ defmodule AshSql.Expr do
 
   defmodule ExprInfo do
     @moduledoc false
-    defstruct has_error?: false
+
+    defstruct has_error?: false, calculations: %{}
 
     @type t :: %__MODULE__{}
   end
@@ -214,9 +215,9 @@ defmodule AshSql.Expr do
          _type
        )
        when mod in [IsDistinctFrom, IsNotDistinctFrom] do
-    {[left_type, right_type], _type} =
+    {[left_type, right_type], _type, [left_tree, right_tree]} =
       determine_types(
-        bindings.sql_behaviour,
+        bindings,
         mod,
         [left, right],
         :boolean
@@ -227,7 +228,7 @@ defmodule AshSql.Expr do
         maybe_type_expr(
           query,
           left,
-          set_location(bindings, :sub_expr),
+          bindings |> with_type_tree(left_tree) |> set_location(:sub_expr),
           pred_embedded? || embedded?,
           acc,
           left_type
@@ -236,7 +237,7 @@ defmodule AshSql.Expr do
         do_dynamic_expr(
           query,
           left,
-          set_location(bindings, :sub_expr),
+          bindings |> with_type_tree(left_tree) |> set_location(:sub_expr),
           pred_embedded? || embedded?,
           acc,
           nil
@@ -248,7 +249,7 @@ defmodule AshSql.Expr do
         maybe_type_expr(
           query,
           right,
-          set_location(bindings, :sub_expr),
+          bindings |> with_type_tree(right_tree) |> set_location(:sub_expr),
           pred_embedded? || embedded?,
           acc,
           right_type
@@ -257,7 +258,7 @@ defmodule AshSql.Expr do
         do_dynamic_expr(
           query,
           right,
-          set_location(bindings, :sub_expr),
+          bindings |> with_type_tree(right_tree) |> set_location(:sub_expr),
           pred_embedded? || embedded?,
           acc,
           nil
@@ -1100,9 +1101,9 @@ defmodule AshSql.Expr do
        ) do
     if bindings.sql_behaviour.array_overlap_operator?() do
       # Postgres
-      {[left_type, right_type], _type} =
+      {[left_type, right_type], _type, [left_tree, right_tree]} =
         determine_types(
-          bindings.sql_behaviour,
+          bindings,
           Ash.Query.Function.Intersects,
           [left, right],
           :boolean
@@ -1113,7 +1114,7 @@ defmodule AshSql.Expr do
           maybe_type_expr(
             query,
             left,
-            set_location(bindings, :sub_expr),
+            bindings |> with_type_tree(left_tree) |> set_location(:sub_expr),
             pred_embedded? || embedded?,
             acc,
             left_type
@@ -1122,7 +1123,7 @@ defmodule AshSql.Expr do
           do_dynamic_expr(
             query,
             left,
-            set_location(bindings, :sub_expr),
+            bindings |> with_type_tree(left_tree) |> set_location(:sub_expr),
             pred_embedded? || embedded?,
             acc,
             nil
@@ -1134,7 +1135,7 @@ defmodule AshSql.Expr do
           maybe_type_expr(
             query,
             right,
-            set_location(bindings, :sub_expr),
+            bindings |> with_type_tree(right_tree) |> set_location(:sub_expr),
             pred_embedded? || embedded?,
             acc,
             right_type
@@ -1143,7 +1144,7 @@ defmodule AshSql.Expr do
           do_dynamic_expr(
             query,
             right,
-            set_location(bindings, :sub_expr),
+            bindings |> with_type_tree(right_tree) |> set_location(:sub_expr),
             pred_embedded? || embedded?,
             acc,
             nil
@@ -1181,14 +1182,28 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    {[left_type, right_type], _type} =
-      determine_types(bindings.sql_behaviour, RangeOverlaps, [left, right], :boolean)
+    {[left_type, right_type], _type, [left_tree, right_tree]} =
+      determine_types(bindings, RangeOverlaps, [left, right], :boolean)
 
     {left_expr, acc} =
-      range_operand(query, left, left_type, bindings, pred_embedded? || embedded?, acc)
+      range_operand(
+        query,
+        left,
+        left_type,
+        with_type_tree(bindings, left_tree),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {right_expr, acc} =
-      range_operand(query, right, right_type, bindings, pred_embedded? || embedded?, acc)
+      range_operand(
+        query,
+        right,
+        right_type,
+        with_type_tree(bindings, right_tree),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {Ecto.Query.dynamic(fragment("(? && ?)", ^left_expr, ^right_expr)), acc}
   end
@@ -1201,14 +1216,28 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    {[left_type, right_type], _type} =
-      determine_types(bindings.sql_behaviour, RangeContains, [left, right], :boolean)
+    {[left_type, right_type], _type, [left_tree, right_tree]} =
+      determine_types(bindings, RangeContains, [left, right], :boolean)
 
     {left_expr, acc} =
-      range_operand(query, left, left_type, bindings, pred_embedded? || embedded?, acc)
+      range_operand(
+        query,
+        left,
+        left_type,
+        with_type_tree(bindings, left_tree),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {right_expr, acc} =
-      range_operand(query, right, right_type, bindings, pred_embedded? || embedded?, acc)
+      range_operand(
+        query,
+        right,
+        right_type,
+        with_type_tree(bindings, right_tree),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {Ecto.Query.dynamic(fragment("(? @> ?)", ^left_expr, ^right_expr)), acc}
   end
@@ -1221,14 +1250,28 @@ defmodule AshSql.Expr do
          acc,
          _type
        ) do
-    {[left_type, right_type], _type} =
-      determine_types(bindings.sql_behaviour, RangeAdjacent, [left, right], :boolean)
+    {[left_type, right_type], _type, [left_tree, right_tree]} =
+      determine_types(bindings, RangeAdjacent, [left, right], :boolean)
 
     {left_expr, acc} =
-      range_operand(query, left, left_type, bindings, pred_embedded? || embedded?, acc)
+      range_operand(
+        query,
+        left,
+        left_type,
+        with_type_tree(bindings, left_tree),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {right_expr, acc} =
-      range_operand(query, right, right_type, bindings, pred_embedded? || embedded?, acc)
+      range_operand(
+        query,
+        right,
+        right_type,
+        with_type_tree(bindings, right_tree),
+        pred_embedded? || embedded?,
+        acc
+      )
 
     {Ecto.Query.dynamic(fragment("(? -|- ?)", ^left_expr, ^right_expr)), acc}
   end
@@ -1241,14 +1284,14 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    {[determined_type], type} =
-      determine_types(bindings.sql_behaviour, RangeLower, [range], type)
+    {[determined_type], type, [range_tree]} =
+      determine_types(bindings, RangeLower, [range], type)
 
     {range_expr, acc} =
       do_dynamic_expr(
         query,
         range,
-        set_location(bindings, :sub_expr),
+        bindings |> with_type_tree(range_tree) |> set_location(:sub_expr),
         pred_embedded? || embedded?,
         acc,
         determined_type || type
@@ -1265,14 +1308,14 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    {[determined_type], type} =
-      determine_types(bindings.sql_behaviour, RangeUpper, [range], type)
+    {[determined_type], type, [range_tree]} =
+      determine_types(bindings, RangeUpper, [range], type)
 
     {range_expr, acc} =
       do_dynamic_expr(
         query,
         range,
-        set_location(bindings, :sub_expr),
+        bindings |> with_type_tree(range_tree) |> set_location(:sub_expr),
         pred_embedded? || embedded?,
         acc,
         determined_type || type
@@ -1316,8 +1359,11 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
+    {types, type, [condition_tree, when_true_tree, when_false_tree]} =
+      determine_types(bindings, If, [condition, when_true, when_false], type)
+
     {[condition_type, when_true_type, when_false_type], type} =
-      case determine_types(bindings.sql_behaviour, If, [condition, when_true, when_false], type) do
+      case {types, type} do
         {[condition_type, when_true], type} ->
           {[condition_type, when_true, when_true], type}
 
@@ -1344,7 +1390,7 @@ defmodule AshSql.Expr do
       do_dynamic_expr(
         query,
         condition,
-        set_location(bindings, :sub_expr),
+        bindings |> with_type_tree(condition_tree) |> set_location(:sub_expr),
         pred_embedded? || embedded?,
         acc,
         condition_type
@@ -1354,7 +1400,7 @@ defmodule AshSql.Expr do
       do_dynamic_expr(
         query,
         when_true,
-        set_location(bindings, :sub_expr),
+        bindings |> with_type_tree(when_true_tree) |> set_location(:sub_expr),
         pred_embedded? || embedded?,
         acc,
         when_true_type
@@ -1364,7 +1410,7 @@ defmodule AshSql.Expr do
       extract_cases(
         query,
         when_false,
-        set_location(bindings, :sub_expr),
+        bindings |> with_type_tree(when_false_tree) |> set_location(:sub_expr),
         pred_embedded? || embedded?,
         acc,
         when_false_type
@@ -1808,14 +1854,14 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
-    {[determined_type], type} =
-      determine_types(bindings.sql_behaviour, Ash.Query.Function.Minus, [arg], type)
+    {[determined_type], type, [arg_tree]} =
+      determine_types(bindings, Ash.Query.Function.Minus, [arg], type)
 
     {expr, acc} =
       do_dynamic_expr(
         query,
         arg,
-        set_location(bindings, :sub_expr),
+        bindings |> with_type_tree(arg_tree) |> set_location(:sub_expr),
         pred_embedded? || embedded?,
         acc,
         determined_type || type
@@ -1838,17 +1884,17 @@ defmodule AshSql.Expr do
          acc,
          type
        ) do
+    {types, type, [left_tree, right_tree]} = determine_types(bindings, mod, [left, right], type)
+
     {[left_type, right_type], type} =
       case operator do
         :/ ->
-          {types, result} = determine_types(bindings.sql_behaviour, mod, [left, right], type)
-
           {types, result} =
             {Enum.map(types, fn
                {Ash.Type.Float, _} -> {Ash.Type.Decimal, []}
                other -> other
              end),
-             case result do
+             case type do
                {Ash.Type.Float, _} -> {Ash.Type.Decimal, []}
                other -> other
              end}
@@ -1862,7 +1908,7 @@ defmodule AshSql.Expr do
           end
 
         _ ->
-          determine_types(bindings.sql_behaviour, mod, [left, right], type)
+          {types, type}
       end
 
     bindings =
@@ -1878,7 +1924,7 @@ defmodule AshSql.Expr do
         maybe_type_expr(
           query,
           left,
-          set_location(bindings, :sub_expr),
+          bindings |> with_type_tree(left_tree) |> set_location(:sub_expr),
           pred_embedded? || embedded?,
           acc,
           left_type
@@ -1887,7 +1933,7 @@ defmodule AshSql.Expr do
         do_dynamic_expr(
           query,
           left,
-          set_location(bindings, :sub_expr),
+          bindings |> with_type_tree(left_tree) |> set_location(:sub_expr),
           pred_embedded? || embedded?,
           acc,
           left_type
@@ -1937,7 +1983,7 @@ defmodule AshSql.Expr do
               evaluate_right(
                 query,
                 right,
-                bindings,
+                with_type_tree(bindings, right_tree),
                 pred_embedded? || embedded?,
                 acc,
                 right_type
@@ -1950,7 +1996,7 @@ defmodule AshSql.Expr do
             evaluate_right(
               query,
               right,
-              bindings,
+              with_type_tree(bindings, right_tree),
               pred_embedded? || embedded?,
               acc,
               right_type
@@ -2186,73 +2232,15 @@ defmodule AshSql.Expr do
        ) do
     calculation = %{calculation | load: calculation.name}
 
-    resource =
-      Ash.Resource.Info.related(
-        bindings.resource,
-        List.wrap(bindings[:refs_at_path]) ++ relationship_path
-      )
+    # Everything in this clause's input that its output depends on, other than the query's
+    # bindings, which are the same everywhere that `acc` is threaded, except in `parent/1`
+    # expressions (see `with_calculation_cache_scope/2`).
+    key =
+      {calculation, relationship_path, bindings[:refs_at_path], bindings[:location], embedded?}
 
-    case Ash.Filter.hydrate_refs(
-           Ash.Resource.Calculation.expression(
-             calculation.module,
-             calculation.opts,
-             calculation.context
-           ),
-           %{
-             resource: resource,
-             aggregates: %{},
-             calculations: %{},
-             public?: false,
-             parent_stack: query.__ash_bindings__[:parent_resources] || [],
-             source_context: calculation.context.source_context || %{}
-           }
-         ) do
-      {:ok, expression} ->
-        expression =
-          Ash.Actions.Read.add_calc_context_to_filter(
-            expression,
-            calculation.context.actor,
-            calculation.context.authorize?,
-            calculation.context.tenant,
-            calculation.context.tracer,
-            query.__ash_bindings__[:domain],
-            resource,
-            parent_stack: query.__ash_bindings__[:parent_resources] || [],
-            as_of: query.__ash_bindings__[:context][:private][:as_of]
-          )
-
-        updated_bindings =
-          bindings
-          |> set_location(:sub_expr)
-          |> Map.delete(:no_cast?)
-          |> Map.delete(:skip_cast_for_ref?)
-          |> then(fn bindings ->
-            if Enum.empty?(relationship_path) do
-              bindings
-            else
-              bindings
-              |> Map.put(:refs_at_path, List.wrap(bindings[:refs_at_path]) ++ relationship_path)
-            end
-          end)
-
-        updated_query = %{query | __ash_bindings__: updated_bindings}
-
-        do_dynamic_expr(
-          updated_query,
-          expression,
-          updated_bindings,
-          embedded?,
-          acc,
-          {calculation.type, Map.get(calculation, :constraints, [])}
-        )
-
-      {:error, error} ->
-        raise """
-        Failed to hydrate references for resource #{inspect(resource)} in #{inspect(Ash.Resource.Calculation.expression(calculation.module, calculation.opts, calculation.context))}
-
-        #{inspect(error)}
-        """
-    end
+    fetch_or_compile_calculation(acc, {calculation.name, relationship_path}, key, fn acc ->
+      compile_calculation_ref(query, calculation, relationship_path, bindings, embedded?, acc)
+    end)
   end
 
   defp default_dynamic_expr(
@@ -2743,14 +2731,16 @@ defmodule AshSql.Expr do
     new_bindings =
       set_location(Map.put(bindings.parent_bindings, :parent?, parent?), :sub_expr)
 
-    do_dynamic_expr(
-      %{query | __ash_bindings__: new_bindings},
-      expr,
-      set_location(new_bindings, :sub_expr),
-      embedded?,
-      acc,
-      type
-    )
+    with_calculation_cache_scope(acc, fn acc ->
+      do_dynamic_expr(
+        %{query | __ash_bindings__: new_bindings},
+        expr,
+        set_location(new_bindings, :sub_expr),
+        embedded?,
+        acc,
+        type
+      )
+    end)
   end
 
   defp default_dynamic_expr(
@@ -3499,8 +3489,11 @@ defmodule AshSql.Expr do
          type,
          list_acc
        ) do
+    {types, type, [condition_tree, when_true_tree, when_false_tree]} =
+      determine_types(bindings, If, [condition, when_true, when_false], type)
+
     {[condition_type, when_true_type, when_false_type], type} =
-      case determine_types(bindings.sql_behaviour, If, [condition, when_true, when_false], type) do
+      case {types, type} do
         {[condition_type, when_true], type} ->
           {[condition_type, when_true, when_true], type}
 
@@ -3524,7 +3517,7 @@ defmodule AshSql.Expr do
       do_dynamic_expr(
         query,
         condition,
-        set_location(bindings, :sub_expr),
+        bindings |> with_type_tree(condition_tree) |> set_location(:sub_expr),
         pred_embedded? || embedded?,
         acc,
         condition_type || type
@@ -3534,7 +3527,7 @@ defmodule AshSql.Expr do
       do_dynamic_expr(
         query,
         when_true,
-        set_location(bindings, :sub_expr),
+        bindings |> with_type_tree(when_true_tree) |> set_location(:sub_expr),
         pred_embedded? || embedded?,
         acc,
         when_true_type || type
@@ -3543,7 +3536,7 @@ defmodule AshSql.Expr do
     extract_cases(
       query,
       when_false,
-      set_location(bindings, :sub_expr),
+      bindings |> with_type_tree(when_false_tree) |> set_location(:sub_expr),
       embedded?,
       acc,
       when_false_type || type,
@@ -4131,6 +4124,106 @@ defmodule AshSql.Expr do
     end)
   end
 
+  defp compile_calculation_ref(query, calculation, relationship_path, bindings, embedded?, acc) do
+    resource =
+      Ash.Resource.Info.related(
+        bindings.resource,
+        List.wrap(bindings[:refs_at_path]) ++ relationship_path
+      )
+
+    case Ash.Filter.hydrate_refs(
+           Ash.Resource.Calculation.expression(
+             calculation.module,
+             calculation.opts,
+             calculation.context
+           ),
+           %{
+             resource: resource,
+             aggregates: %{},
+             calculations: %{},
+             public?: false,
+             parent_stack: query.__ash_bindings__[:parent_resources] || [],
+             source_context: calculation.context.source_context || %{}
+           }
+         ) do
+      {:ok, expression} ->
+        expression =
+          Ash.Actions.Read.add_calc_context_to_filter(
+            expression,
+            calculation.context.actor,
+            calculation.context.authorize?,
+            calculation.context.tenant,
+            calculation.context.tracer,
+            query.__ash_bindings__[:domain],
+            resource,
+            parent_stack: query.__ash_bindings__[:parent_resources] || [],
+            as_of: query.__ash_bindings__[:context][:private][:as_of]
+          )
+
+        updated_bindings =
+          bindings
+          |> set_location(:sub_expr)
+          |> Map.delete(:no_cast?)
+          |> Map.delete(:skip_cast_for_ref?)
+          |> then(fn bindings ->
+            if Enum.empty?(relationship_path) do
+              bindings
+            else
+              bindings
+              |> Map.put(:refs_at_path, List.wrap(bindings[:refs_at_path]) ++ relationship_path)
+            end
+          end)
+
+        updated_query = %{query | __ash_bindings__: updated_bindings}
+
+        do_dynamic_expr(
+          updated_query,
+          expression,
+          updated_bindings,
+          embedded?,
+          acc,
+          {calculation.type, Map.get(calculation, :constraints, [])}
+        )
+
+      {:error, error} ->
+        raise """
+        Failed to hydrate references for resource #{inspect(resource)} in #{inspect(Ash.Resource.Calculation.expression(calculation.module, calculation.opts, calculation.context))}
+
+        #{inspect(error)}
+        """
+    end
+  end
+
+  defp fetch_or_compile_calculation(%ExprInfo{} = acc, bucket, key, compile) do
+    entries = Map.get(acc.calculations, bucket, [])
+
+    case Enum.find(entries, fn {entry_key, _} -> entry_key === key end) do
+      {_, dynamic} ->
+        {dynamic, acc}
+
+      nil ->
+        case compile.(acc) do
+          {dynamic, %ExprInfo{} = acc} ->
+            {dynamic,
+             %{
+               acc
+               | calculations:
+                   Map.update(acc.calculations, bucket, [{key, dynamic}], &[{key, dynamic} | &1])
+             }}
+
+          other ->
+            other
+        end
+    end
+  end
+
+  defp with_calculation_cache_scope(%ExprInfo{calculations: calculations} = acc, compile) do
+    case compile.(%{acc | calculations: %{}}) do
+      {dynamic, %ExprInfo{} = acc} -> {dynamic, %{acc | calculations: calculations}}
+      other -> other
+    end
+  end
+
   @doc false
   def merge_accumulator(
         %{__ash_bindings__: %{expression_accumulator: expression_accumulator}} = query,
@@ -4205,22 +4298,61 @@ defmodule AshSql.Expr do
     "%" <> String.replace(text, ~r/([\\%_])/u, "\\\\\\0")
   end
 
-  defp determine_types(sql_behaviour, mod, args, returns) do
-    {types, new_returns} =
-      if function_exported?(sql_behaviour, :determine_types, 3) do
-        case sql_behaviour.determine_types(mod, args, returns) do
-          {types, returns} -> {types, returns}
-          types -> {types, nil}
-        end
-      else
-        case sql_behaviour.determine_types(mod, args) do
-          {types, returns} -> {types, returns}
-          types -> {types, nil}
-        end
+  defp determine_types(bindings, mod, args, returns) do
+    sql_behaviour = bindings.sql_behaviour
+
+    {types, new_returns, operand_trees} =
+      cond do
+        function_exported?(sql_behaviour, :determine_types, 4) ->
+          operand_trees = operand_type_trees(bindings, args)
+          operand_types = Enum.map(operand_trees, & &1.type)
+
+          case sql_behaviour.determine_types(mod, args, returns, operand_types) do
+            {types, returns} -> {types, returns, operand_trees}
+            types -> {types, nil, operand_trees}
+          end
+
+        function_exported?(sql_behaviour, :determine_types, 3) ->
+          case sql_behaviour.determine_types(mod, args, returns) do
+            {types, returns} -> {types, returns, Enum.map(args, fn _ -> nil end)}
+            types -> {types, nil, Enum.map(args, fn _ -> nil end)}
+          end
+
+        true ->
+          case sql_behaviour.determine_types(mod, args) do
+            {types, returns} -> {types, returns, Enum.map(args, fn _ -> nil end)}
+            types -> {types, nil, Enum.map(args, fn _ -> nil end)}
+          end
       end
 
-    {types, new_returns || returns}
+    {types, new_returns || returns, operand_trees}
   end
+
+  defp operand_type_trees(bindings, args) do
+    case bindings[:type_tree] do
+      %Ash.Expr.TypeTree{operands: [_ | _] = operand_trees} ->
+        if trees_for?(operand_trees, args) do
+          operand_trees
+        else
+          Enum.map(args, &Ash.Expr.determine_type_tree/1)
+        end
+
+      _ ->
+        Enum.map(args, &Ash.Expr.determine_type_tree/1)
+    end
+  end
+
+  defp trees_for?([], []), do: true
+
+  defp trees_for?([%Ash.Expr.TypeTree{expr: expr} | trees], [arg | args]) when expr === arg,
+    do: trees_for?(trees, args)
+
+  defp trees_for?(_, _), do: false
+
+  defp with_type_tree(bindings, %Ash.Expr.TypeTree{} = tree),
+    do: Map.put(bindings, :type_tree, tree)
+
+  defp with_type_tree(bindings, nil), do: Map.delete(bindings, :type_tree)
 
   defp maybe_type_expr(query, expr, bindings, embedded?, acc, type) do
     skip? =

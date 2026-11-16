@@ -67,70 +67,74 @@ defmodule AshSql.Calculation do
               Ecto.Query.select_merge(query, %{})
             end
 
-          {dynamics, query} =
-            Enum.reduce(calculations, {[], query}, fn {calculation, expression}, {list, query} ->
-              expression =
-                Ash.Actions.Read.add_calc_context_to_filter(
-                  expression,
-                  calculation.context.actor,
-                  calculation.context.authorize?,
-                  calculation.context.tenant,
-                  calculation.context.tracer,
-                  query.__ash_bindings__[:domain],
-                  query.__ash_bindings__[:resource],
-                  parent_stack: query.__ash_bindings__[:parent_resources] || [],
-                  as_of: query.__ash_bindings__[:context][:private][:as_of]
-                )
+          # `acc` is threaded through every calculation, so that the calculations that they share
+          # are compiled once (see `AshSql.Expr.ExprInfo`).
+          {dynamics, query, _acc} =
+            Enum.reduce(calculations, {[], query, %AshSql.Expr.ExprInfo{}}, fn
+              {calculation, expression}, {list, query, acc} ->
+                expression =
+                  Ash.Actions.Read.add_calc_context_to_filter(
+                    expression,
+                    calculation.context.actor,
+                    calculation.context.authorize?,
+                    calculation.context.tenant,
+                    calculation.context.tracer,
+                    query.__ash_bindings__[:domain],
+                    query.__ash_bindings__[:resource],
+                    parent_stack: query.__ash_bindings__[:parent_resources] || [],
+                    as_of: query.__ash_bindings__[:context][:private][:as_of]
+                  )
 
-              expression =
-                if calculation.context.type do
-                  case expression do
-                    %Ash.Query.Function.Type{arguments: [expression | _]} ->
-                      expression
+                expression =
+                  if calculation.context.type do
+                    case expression do
+                      %Ash.Query.Function.Type{arguments: [expression | _]} ->
+                        expression
 
-                    %Ash.Query.Call{name: :type, args: [expression | _]} ->
-                      expression
+                      %Ash.Query.Call{name: :type, args: [expression | _]} ->
+                        expression
 
-                    _ ->
-                      expression
+                      _ ->
+                        expression
+                    end
+                  else
+                    expression
                   end
-                else
-                  expression
-                end
 
-              expression =
-                if is_nil(calculation.context.type) ||
-                     map_type?(calculation.context.type, calculation.context.constraints || []) do
-                  expression
-                else
-                  {:ok, expression} =
-                    Ash.Query.Function.Type.new([
-                      expression,
-                      calculation.context.type,
-                      calculation.context.constraints || []
-                    ])
+                expression =
+                  if is_nil(calculation.context.type) ||
+                       map_type?(calculation.context.type, calculation.context.constraints || []) do
+                    expression
+                  else
+                    {:ok, expression} =
+                      Ash.Query.Function.Type.new([
+                        expression,
+                        calculation.context.type,
+                        calculation.context.constraints || []
+                      ])
 
-                  expression
-                end
+                    expression
+                  end
 
-              {expression, acc} =
-                AshSql.Expr.dynamic_expr(
-                  query,
-                  expression,
-                  Map.put(query.__ash_bindings__, :location, :select),
-                  false,
-                  {calculation.type, Map.get(calculation, :constraints, [])}
-                )
+                {expression, acc} =
+                  AshSql.Expr.dynamic_expr(
+                    query,
+                    expression,
+                    Map.put(query.__ash_bindings__, :location, :select),
+                    false,
+                    {calculation.type, Map.get(calculation, :constraints, [])},
+                    acc
+                  )
 
-              load =
-                if combinations? do
-                  calculation.name
-                else
-                  calculation.load
-                end
+                load =
+                  if combinations? do
+                    calculation.name
+                  else
+                    calculation.load
+                  end
 
-              {[{load, calculation.name, expression} | list],
-               AshSql.Expr.merge_accumulator(query, acc)}
+                {[{load, calculation.name, expression} | list],
+                 AshSql.Expr.merge_accumulator(query, acc), acc}
             end)
 
           {:ok, add_calculation_selects(query, dynamics)}

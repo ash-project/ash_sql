@@ -41,6 +41,23 @@ defmodule AshSql.Implementation do
   @callback determine_types(module, list(term), returns :: term) ::
               {list(term), term} | list(term)
 
+  @doc """
+  Like `c:determine_types/3`, but given the types of the arguments, one per argument, as
+  `Ash.Expr.determine_type/1` returns them. Pass them on to
+  `Ash.Expr.determine_types_with_operand_types/4`.
+
+  When this is defined, expressions are typed once, bottom up, and each node is handed the
+  types of its operands as it is compiled, rather than every node working the types of its
+  operands out again from their whole subtrees.
+  """
+  @callback determine_types(
+              module,
+              list(term),
+              returns :: term,
+              operand_types :: list({:ok, {Ash.Type.t(), Keyword.t()}} | :error)
+            ) ::
+              {list(term), term} | list(term)
+
   @callback list_aggregate(Ash.Resource.t()) :: String.t() | nil
 
   @doc """
@@ -86,7 +103,7 @@ defmodule AshSql.Implementation do
   """
   @callback aggregate_strategy(Ash.Resource.t()) :: :lateral | :grouped
 
-  @optional_callbacks determine_types: 3
+  @optional_callbacks determine_types: 3, determine_types: 4
 
   defmacro __using__(_) do
     quote do

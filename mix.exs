@@ -80,7 +80,7 @@ defmodule AshSql.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ash, ash_version("~> 3.37 and >= 3.37.3")},
+      {:ash, ash_version("~> 3.37 and >= 3.37.6")},
       {:ecto_sql, "~> 3.9"},
       {:ecto, "~> 3.13 and >= 3.13.4"},
       {:jason, "~> 1.0"},
