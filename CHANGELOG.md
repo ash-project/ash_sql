@@ -11,6 +11,19 @@ See [Conventional Commits](Https://conventionalcommits.org) for commit guideline
 
 <!-- changelog -->
 
+## [v0.8.9](https://github.com/ash-project/ash_sql/compare/v0.8.8...v0.8.9) (2026-11-16)
+
+
+
+
+### Improvements:
+
+* bottom up type determination by [@zachdaniel](https://github.com/zachdaniel)
+
+### Bug Fixes:
+
+* keep flattened calculations when wrapping a distinct query for aggregates (#284) by nat-e [(#284)](https://github.com/ash-project/ash_sql/pull/284)
+
 ## [v0.8.8](https://github.com/ash-project/ash_sql/compare/v0.8.7...v0.8.8) (2026-11-05)
 
 
