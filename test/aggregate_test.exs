@@ -408,6 +408,25 @@ defmodule AshSql.AggregateTest do
       assert expression_bindings(query.select.expr) == [2]
     end
 
+    test "selects an aggregate with no load into the aggregates map", context do
+      aggregate = %{context.ref.attribute | name: :aggregate_0, load: nil}
+
+      {:ok, query} =
+        AshSql.Aggregate.add_aggregates(select_none(Ticket), [aggregate], Ticket, true, 0)
+
+      assert {:%{}, _, [aggregates: aggregates]} = query.select.expr
+      assert selected_keys(aggregates) == [:aggregate_0]
+    end
+
+    test "selects a resource aggregate into its load field", context do
+      aggregate = %{context.ref.attribute | name: :aggregate_0, load: :assignee_name}
+
+      {:ok, query} =
+        AshSql.Aggregate.add_aggregates(select_none(Ticket), [aggregate], Ticket, true, 0)
+
+      assert selected_keys(query.select.expr) == [:assignee_name]
+    end
+
     test "same-named aggregate definitions retain their separate filtered joins", context do
       aggregate = context.ref.attribute
       other = %{aggregate | query: Ash.Query.filter(aggregate.query, id == 2)}
@@ -577,6 +596,15 @@ defmodule AshSql.AggregateTest do
   defp filtered_join?(_), do: false
 
   defp selected_keys({:%{}, _, fields}), do: fields |> Keyword.keys() |> Enum.sort()
+
+  defp select_none(resource) do
+    {:ok, query} =
+      resource
+      |> Ash.Query.for_read(:read, %{}, actor: %{id: 1})
+      |> Ash.Query.data_layer_query()
+
+    Ecto.Query.select(query, %{})
+  end
 
   defp selected_bindings(query) do
     query.select.expr
