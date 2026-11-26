@@ -195,14 +195,12 @@ defmodule AshSql.Aggregate.Lateral do
                      source_binding
                    ) do
                 {:ok, query, dynamic} ->
-                  query =
-                    if select? do
-                      select_or_merge(query, hd(aggregates).name, dynamic)
-                    else
-                      query
-                    end
-
-                  {:cont, {:ok, query, dynamics}}
+                  if select? do
+                    [aggregate] = aggregates
+                    {:cont, {:ok, query, [{aggregate.load, aggregate.name, dynamic} | dynamics]}}
+                  else
+                    {:cont, {:ok, query, dynamics}}
+                  end
 
                 {:error, error} ->
                   {:halt, {:error, error}}
